@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: 'postgres:18-alpine'
+    environment:
+      - 'POSTGRES_DB=chamberwatch'
+      - 'POSTGRES_PASSWORD=chamberwatch'
+      - 'POSTGRES_USER=chamberwatch'
+    ports:
+      - '5432'

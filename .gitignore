@@ -1,0 +1,12 @@
+# Dataset files are downloaded, never committed. See docs/DATA.md.
+/data/
+
+# Editors and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local environment
+.env
