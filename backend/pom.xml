@@ -57,6 +57,12 @@
 			<artifactId>guava</artifactId>
 			<version>33.6.0-jre</version>
 		</dependency>
+		<!-- the OpenAPI description at /v3/api-docs -->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+			<version>3.1.1</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>

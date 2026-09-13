@@ -101,6 +101,24 @@ public class RunStore {
 	}
 
 	/**
+	 * Records an engineer's label and gives the run the next label sequence value.
+	 *
+	 * @return the run's source, or empty when no run has that id
+	 */
+	public Optional<Source> relabel(RunId id, Label label) {
+		return jdbc.sql("""
+				update run r
+				set label = :label, label_seq = nextval('label_seq')
+				from lot l
+				where l.id = r.lot_id and r.id = :id
+				returning l.source""")
+			.param("label", label.name())
+			.param("id", id.value())
+			.query((rs, row) -> Source.valueOf(rs.getString("source")))
+			.optional();
+	}
+
+	/**
 	 * Stores a run with every recorded sample and, when it aligned, its phase summaries, in one transaction.
 	 *
 	 * @return the new id, or empty when the run key was already stored, in which case nothing was written
