@@ -190,8 +190,9 @@ class ApiTest {
 			.bodyJson()
 			.extractingPath("$.paths")
 			.asMap()
-			.containsKeys("/api/lots", "/api/runs", "/api/runs/{runId}", "/api/runs/{runId}/channels/{channel}/trace",
-					"/api/runs/{runId}/measurements", "/api/runs/{runId}/label");
+			.containsKeys("/api/lots", "/api/lots/{lotId}/drift", "/api/runs", "/api/runs/{runId}",
+					"/api/runs/{runId}/channels/{channel}/trace", "/api/runs/{runId}/measurements",
+					"/api/runs/{runId}/label", "/api/reports/drift-vs-depth");
 	}
 
 }

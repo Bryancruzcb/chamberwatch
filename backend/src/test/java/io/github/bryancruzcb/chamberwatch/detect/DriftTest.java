@@ -26,6 +26,20 @@ class DriftTest {
 	}
 
 	@Test
+	void aFitFromRegressionSumsIsTheSameFit() {
+		List<LotFit.Point> points = List.of(new LotFit.Point(1, 2), new LotFit.Point(2, 4.5), new LotFit.Point(3, 5.5),
+				new LotFit.Point(4, 8));
+
+		// what regr_count, regr_avgx, regr_avgy, regr_sxx, regr_sxy and regr_syy return for these points
+		LotFit fit = LotFit.fromSums(4, 4, 2.5, 5, 5, 9.5, 18.5);
+
+		assertThat(fit).isEqualTo(LotFit.of(points));
+		assertThat(fit.slope()).isCloseTo(1.9, within(1e-12));
+		assertThat(fit.intercept()).isCloseTo(0.25, within(1e-12));
+		assertThat(fit.tStat()).isCloseTo(1.9 / Math.sqrt(0.045), within(1e-9));
+	}
+
+	@Test
 	void aRisingLotIsProjectedToLeaveTheBand() {
 		// fitted value at wafer 4 is 14, and the line crosses 15 at wafer 5, so wafer 6 is the first outside
 		DriftProjection projection = HealthModel.project(LotFit.of(line(4, 10, 1)), band, rule);
