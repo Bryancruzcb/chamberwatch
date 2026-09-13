@@ -77,7 +77,7 @@ public final class AlignCommand {
 				report.irregularCycles(), report.note().map((note) -> " (" + note + ")").orElse(""));
 	}
 
-	private static String option(List<String> args, String name, String fallback) {
+	static String option(List<String> args, String name, String fallback) {
 		String prefix = "--" + name + "=";
 		return args.stream()
 			.filter((arg) -> arg.startsWith(prefix))

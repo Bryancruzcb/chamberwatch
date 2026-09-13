@@ -2,7 +2,7 @@
 
 Tool-health monitoring for a plasma etch tool. ChamberWatch reads each wafer's machine telemetry, learns what a good run looks like at each point in the recipe, and flags runs that go out of range or drift across a lot. For every flag it shows which sensor changed first, next to the measured result on the wafer.
 
-Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. The simulator and its evaluation come next. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
+Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). The HTTP API comes next. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
 
 ## Data
 
@@ -32,6 +32,12 @@ java -jar target/chamberwatch.jar align --data=../data/public/zenodo17122442 --m
 # A second run reads nothing, reuses the baseline and adds no rows.
 docker compose up -d
 java -jar target/chamberwatch.jar ingest --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
+
+# Score the detectors on 1,000 simulated wafers and compare with results/metrics.json. Needs no data and no database.
+./mvnw test -Dtest=EvaluationRegressionTest
+
+# Measure the simulator's template from the public wafers again, over the committed one.
+java -jar target/chamberwatch.jar sim-template --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
 ```
 
 ```bash
