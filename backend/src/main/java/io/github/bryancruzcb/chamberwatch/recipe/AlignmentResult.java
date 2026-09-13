@@ -17,7 +17,8 @@ public sealed interface AlignmentResult permits AlignmentResult.Aligned, Alignme
 		};
 	}
 
-	record Aligned(AlignedRun run) implements AlignmentResult {
+	/** @param slots the slot each recorded sample filled, for storing samples as rows */
+	record Aligned(AlignedRun run, SlotAssignment slots) implements AlignmentResult {
 
 		@Override
 		public RunKey key() {

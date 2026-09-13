@@ -69,7 +69,7 @@ public final class Aligner {
 		if (c4f8Phases.isEmpty()) {
 			return new AlignmentResult.Failed(raw.key(), "no C4F8 phase at etch power", samples);
 		}
-		return new AlignmentResult.Aligned(fill(raw, times, sf6Stretches, c4f8Phases, walk(sf6Stretches, c4f8Phases)));
+		return fill(raw, times, sf6Stretches, c4f8Phases, walk(sf6Stretches, c4f8Phases));
 	}
 
 	/** Finds every onset in time order: [SF6 1], C4F8 1, SF6 2, C4F8 2, and so on until no etch phase follows. */
@@ -159,7 +159,7 @@ public final class Aligner {
 		return !stretch.afterGap() && Math.abs(stretch.startS() - expectedS) <= rules.lockWindowS() + EPSILON;
 	}
 
-	private AlignedRun fill(RawRun raw, double[] times, List<Stretch> sf6Stretches, List<Stretch> c4f8Phases,
+	private AlignmentResult.Aligned fill(RawRun raw, double[] times, List<Stretch> sf6Stretches, List<Stretch> c4f8Phases,
 			Onsets onsets) {
 		List<Window> windows = new ArrayList<>(2 * onsets.lastCycle());
 		if (onsets.sf6Seen()[1]) {
@@ -182,6 +182,10 @@ public final class Aligner {
 		float[] values = new float[channels * slotCount];
 		Arrays.fill(slotTimes, Float.NaN);
 		Arrays.fill(values, Float.NaN);
+		int[] sampleSlots = new int[times.length];
+		int[] slotSamples = new int[slotCount];
+		Arrays.fill(sampleSlots, -1);
+		Arrays.fill(slotSamples, -1);
 		int preEtch = 0;
 		int postEtch = 0;
 		int steadyOverflow = 0;
@@ -220,6 +224,11 @@ public final class Aligner {
 					continue;
 				}
 			}
+			if (slotSamples[slot] >= 0) {
+				sampleSlots[slotSamples[slot]] = -1;
+			}
+			slotSamples[slot] = i;
+			sampleSlots[i] = slot;
 			slotTimes[slot] = (float) time;
 			for (int channel = 0; channel < channels; channel++) {
 				values[channel * slotCount + slot] = raw.value(channel, i);
@@ -265,7 +274,8 @@ public final class Aligner {
 		AlignmentReport report = new AlignmentReport(status, note, times.length, etchStartS, etchEndS,
 				onsets.sf6Seen()[1], c4f8Phases.size(), onsets.lastCycle(), tally.seen, tally.predicted, largestGap,
 				preEtch, postEtch, steadyOverflow, edgeOverflow, collisions, irregular);
-		return AlignedRun.adopt(raw.key(), grid, raw.channels(), values, slotTimes, report);
+		return new AlignmentResult.Aligned(AlignedRun.adopt(raw.key(), grid, raw.channels(), values, slotTimes, report),
+				new SlotAssignment(sampleSlots));
 	}
 
 	/** The last phase ends when its flow drops, plus trailing samples. A predicted one fills its capacity. */

@@ -242,7 +242,6 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 - Should drift use the global good-run band, or each lot's own first wafers? Conditioning shifts lot levels, so some lots may start outside the global band.
 - Good runs default to the first 3 wafers of each lot. Is 2, closer to the clean, better even though it leaves 20 runs?
 - A dropout that holds the last value is invisible to a band detector. v1 simulates dropouts as zeros. Is that acceptable?
-- The sample table is about 0.75 GB inside Docker Desktop's virtual disk. Is there room on the development machine?
 - The gas identities are an inference. Nothing in the dataset names the gas lines.
 
 ## Next implementation step

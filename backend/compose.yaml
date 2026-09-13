@@ -6,4 +6,4 @@ services:
       - 'POSTGRES_PASSWORD=chamberwatch'
       - 'POSTGRES_USER=chamberwatch'
     ports:
-      - '5432'
+      - '55432:5432'
