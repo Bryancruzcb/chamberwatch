@@ -7,11 +7,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import io.github.bryancruzcb.chamberwatch.health.HealthService;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentResult;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentStatus;
 import io.github.bryancruzcb.chamberwatch.recipe.RawRun;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
+import io.github.bryancruzcb.chamberwatch.recipe.Source;
 import io.github.bryancruzcb.chamberwatch.store.LotRecord;
 import io.github.bryancruzcb.chamberwatch.store.LotRef;
 import io.github.bryancruzcb.chamberwatch.store.MeasurementRecord;
@@ -23,9 +25,10 @@ import io.github.bryancruzcb.chamberwatch.store.RunStore;
 import org.springframework.stereotype.Service;
 
 /**
- * Loads the public files into PostgreSQL: lots, then telemetry, then both measurement files. Safe to
- * rerun at any point. Each file has a ledger row, each wafer commits in its own transaction, and a
- * wafer whose run key is stored is skipped without being decoded, so a rerun resumes and adds nothing.
+ * Loads the public files into PostgreSQL: lots, then telemetry, then both measurement files, and ends by
+ * refreshing the public baseline. Safe to rerun at any point. Each file has a ledger row, each wafer
+ * commits in its own transaction, and a wafer whose run key is stored is skipped without being decoded,
+ * so a rerun resumes and adds nothing.
  */
 @Service
 public class IngestService {
@@ -43,9 +46,12 @@ public class IngestService {
 
 	private final MeasurementStore measurements;
 
-	public IngestService(RunStore runs, MeasurementStore measurements) {
+	private final HealthService health;
+
+	public IngestService(RunStore runs, MeasurementStore measurements, HealthService health) {
 		this.runs = runs;
 		this.measurements = measurements;
+		this.health = health;
 	}
 
 	public IngestReport ingestPublic(Path dataDir, Path md5List) {
@@ -56,9 +62,10 @@ public class IngestService {
 		}
 		IngestReport.TelemetryLoad telemetry = loadTelemetry(files.get(AlignCommand.PROCESS_DATA),
 				files.get(AlignCommand.DICTIONARY), runs.publicLotsByDay());
-		return new IngestReport(telemetry,
-				List.of(loadMeasurements(files.get(NINE_POINT_CSV), MeasurementSet.NINE_POINT),
-						loadMeasurements(files.get(EIGHTY_NINE_POINT_CSV), MeasurementSet.EIGHTY_NINE_POINT)));
+		List<IngestReport.MeasurementLoad> measurementLoads = List.of(
+				loadMeasurements(files.get(NINE_POINT_CSV), MeasurementSet.NINE_POINT),
+				loadMeasurements(files.get(EIGHTY_NINE_POINT_CSV), MeasurementSet.EIGHTY_NINE_POINT));
+		return new IngestReport(telemetry, measurementLoads, health.refresh(Source.PUBLIC));
 	}
 
 	private IngestReport.TelemetryLoad loadTelemetry(DataFiles.VerifiedFile processData,

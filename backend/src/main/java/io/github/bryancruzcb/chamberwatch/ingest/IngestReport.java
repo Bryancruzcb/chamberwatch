@@ -5,10 +5,14 @@ import java.util.Locale;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import io.github.bryancruzcb.chamberwatch.health.Refresh;
 import io.github.bryancruzcb.chamberwatch.store.MeasurementSet;
 
-/** What one ingest did. A rerun on the same files reports every file as already ingested. */
-public record IngestReport(TelemetryLoad telemetry, List<MeasurementLoad> measurements) {
+/**
+ * What one ingest did. A rerun on the same files reports every file as already ingested and reuses the
+ * baseline without scoring anything.
+ */
+public record IngestReport(TelemetryLoad telemetry, List<MeasurementLoad> measurements, Refresh refresh) {
 
 	public IngestReport {
 		measurements = List.copyOf(measurements);
@@ -20,7 +24,9 @@ public record IngestReport(TelemetryLoad telemetry, List<MeasurementLoad> measur
 	}
 
 	public String describe() {
-		return Stream.concat(Stream.of(telemetry.describe()), measurements.stream().map(MeasurementLoad::describe))
+		return Stream
+			.concat(Stream.concat(Stream.of(telemetry.describe()), measurements.stream().map(MeasurementLoad::describe)),
+					Stream.of(refresh.describe()))
 			.collect(Collectors.joining(System.lineSeparator()));
 	}
 

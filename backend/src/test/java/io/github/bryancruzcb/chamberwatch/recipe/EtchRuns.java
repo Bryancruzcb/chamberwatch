@@ -56,6 +56,10 @@ public final class EtchRuns {
 
 		private int stuckSf6FromCycle;
 
+		private int pressureOffsetFromCycle;
+
+		private float pressureOffset;
+
 		private int dipCycle;
 
 		private int irregularCycle;
@@ -91,6 +95,13 @@ public final class EtchRuns {
 		/** Gas5Flow reads 250 instead of 600 in the SF6 phases of this cycle and every later one. */
 		public Builder stuckSf6From(int cycle) {
 			this.stuckSf6FromCycle = cycle;
+			return this;
+		}
+
+		/** Adds {@code delta} to Pressure in the SF6 phases of this cycle and every later one. */
+		public Builder pressureOffsetFrom(int cycle, float delta) {
+			this.pressureOffsetFromCycle = cycle;
+			this.pressureOffset = delta;
 			return this;
 		}
 
@@ -169,10 +180,12 @@ public final class EtchRuns {
 
 		private void sf6(List<float[]> rows, int cycle, int samples, int unpoweredTail) {
 			float flow = (stuckSf6FromCycle > 0 && cycle >= stuckSf6FromCycle) ? 250 : 600;
+			float pressure = (pressureOffsetFromCycle > 0 && cycle >= pressureOffsetFromCycle) ? 0.04f + pressureOffset
+					: 0.04f;
 			for (int i = 0; i < samples; i++) {
 				boolean dip = cycle == dipCycle && i == samples / 2;
 				float power = (i < samples - unpoweredTail) ? ETCH_POWER : 0;
-				rows.add(new float[] { 0, 0, dip ? 0 : flow, 0.04f, power });
+				rows.add(new float[] { 0, 0, dip ? 0 : flow, pressure, power });
 			}
 		}
 
