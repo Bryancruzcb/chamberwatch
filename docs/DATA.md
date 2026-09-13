@@ -36,7 +36,7 @@ md5sum -c ../../../docs/zenodo17122442.md5
 
 ## The experiment
 
-Every wafer ran the same recipe: a 1 s ignition, then 100 cycles of 4.5 s of SF6 etching and 1.5 s of C4F8 passivation. The wafers are 200 mm silicon with a 1 µm oxide mask.
+The Readme describes the recipe as a 1 s ignition, then 100 cycles of 4.5 s of SF6 etching and 1.5 s of C4F8 passivation. The wafers are 200 mm silicon with a 1 µm oxide mask. The telemetry shows a slightly different structure, covered under [Recipe position](#recipe-position).
 
 Before each lot the chamber was cleaned, then conditioned 1, 3 or 9 times on the chuck, on a silicon wafer, or on an oxide wafer. The lot's wafers then ran one after another, a minute apart, with no clean in between. Lot 7 has 6 wafers because the last 4 were damaged.
 
@@ -65,21 +65,25 @@ Before each lot the chamber was cleaned, then conditioned 1, 3 or 9 times on the
 | `feature` | string | feature | Channel names, all prefixed `Stat3_Etch_MV_`. |
 | `data` | uint16 | time, feature | Codes. A value is the entry at that code in the `data` variable of `Dictionary_process.nc`, which holds 49,290 sorted float32 values. |
 
+netCDF-Java `edu.ucar:cdm-core` 5.10.0 reads the file, strings and unsigned codes included, and decodes all 96 groups in about 0.3 s.
+
 - Sampling is 5 Hz: 0.2 s steps with 0.01 s of jitter.
 - Each wafer has 3,193 to 3,835 samples. In total there are 313,169 sample times and 10,132,286 values.
 - Lot 1 has 44 channels and lots 2 to 10 have 31. The 13 channels that only lot 1 has are all constant: Gas6Flow, Heater5Temp to Heater8Temp, SourceRFLoadCapacitor, SourceRF2LoadCapacitor, ThermoCouple1Temp to ThermoCouple4Temp, attenuatorRatio and moriOuterCurrent.
 - Gas3Flow, Gas8Flow, SourceRF2LoadPower and SourceRF2ReflectedPower are constant in every wafer. EpdIntensity is constant in 86 of the 96. Heater1Temp stays at 1371.
-- 70 of the 96 wafers have one gap in the record, 41 to 45 s long, starting 639 to 670 s after the first sample.
+- 69 of the 96 wafers have one gap in the record, 41 to 45 s long, starting 639 to 670 s after the first sample. The gap always comes after the etch has ended. Lots 9 and 10 have no gaps.
 - The dataset does not state units for the channels.
 
 ### Recipe position
 
 The file has no step or cycle column, so ChamberWatch derives the recipe position from the gas flows.
 
-- Gas5Flow near 600 marks an SF6 phase, 4.2 to 4.4 s long at 5 Hz.
-- Gas4Flow near 300 marks a C4F8 phase, 1.2 to 1.4 s long.
-- Every wafer has exactly 100 C4F8 phases and 100 to 102 SF6 segments. The extra SF6 segments are short steps before the etch.
-- The etch starts 18 to 147 s into the record and lasts 600 to 631 s.
+- A C4F8 phase is a stretch where Gas4Flow is at least 150 while Gas5Flow stays below 300. It lasts 1.2 to 1.4 s at 5 Hz, at most 8 samples. Every wafer has exactly 99 of them.
+- An SF6 phase is a stretch where Gas5Flow is at least 300. Between two C4F8 phases it lasts 4.2 to 4.4 s, 22 or 23 samples. One cycle, from one SF6 onset to the next, takes 5.8 to 6.2 s and usually 6.0 s.
+- Every etch ends with a longer SF6 phase of 5.4 to 5.6 s after the 99th C4F8 phase.
+- Etches start in one of three ways. In 62 wafers a 2.8 s SF6 phase comes right before the first C4F8 phase. In 10 wafers that SF6 phase lasts 4.2 to 4.4 s. In the other 24 the etch starts directly with a C4F8 phase. In lot 1, wafer 2, one of those 24, a 2.8 s SF6 step at low source power, about 140 instead of about 2,790, came first and was followed by about 10 s with no gas flow and no power.
+- The etch starts 18 to 147 s into the record and lasts about 600 s.
+- One cycle in the dataset is irregular: in lot 3, wafer 7, cycle 74 ran its SF6 phase for 5.0 s and its C4F8 phase for 0.8 s.
 
 The dataset does not label its gas lines. Gas5 as SF6 and Gas4 as C4F8 is an inference from the flows and the duty cycle, which match the recipe.
 
@@ -92,7 +96,7 @@ Channels jump between phases, so two wafers compared at the same clock time are 
 | ForeLinePressure | about 150 | about 80 |
 | Pressure | about 0.040 | about 0.050 |
 
-Before the etch, the tool runs Gas1Flow at 150 and Gas4Flow at 300, brings the helium backside pressure up to 15, and strikes the source plasma for about a second. During the strike SourceRFReflectedPower reads 1000, its highest value anywhere in the file.
+Before the etch, the tool runs Gas1Flow at 150 and Gas4Flow at 300 for 11.8 s and brings the helium backside pressure up to 15. A rule that looks only at Gas4Flow would count that step as a C4F8 phase, which is why the phase rule above also bounds the length. Short SF6 steps of 1.2 to 1.4 s run before the etch too. During the source plasma strike, SourceRFReflectedPower reads 1000, its highest value anywhere in the file.
 
 ## Wafer measurements
 
@@ -119,7 +123,7 @@ The two files still disagree by about 3 µm on mean depth, because the instrumen
 
 ## What the telemetry shows
 
-This is a first look, not a result. The correlations below are within lots: each lot's mean was removed first, so differences between lots do not count. Channel values are per-wafer means over the SF6 phases, and depth is the per-wafer mean of the 89-point file.
+This is a first look, not a result. The correlations below are within lots: each lot's mean was removed first, so differences between lots do not count. Channel values are per-wafer means over the samples where Gas5Flow is above 300, and depth is the per-wafer mean of the 89-point file.
 
 | Measure | Against position in the lot | Against measured depth |
 |---|---:|---:|
