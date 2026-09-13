@@ -76,13 +76,15 @@ netCDF-Java `edu.ucar:cdm-core` 5.10.0 reads the file, strings and unsigned code
 
 ### Recipe position
 
-The file has no step or cycle column, so ChamberWatch derives the recipe position from the gas flows.
+The file has no step or cycle column, so ChamberWatch derives the recipe position from the gas flows and the source power. The etch runs with SourceRFLoadPower at about 2,790. A plasma strike runs at about 140, and its gas steps can look exactly like etch phases, so only gas stretches at etch power count.
 
-- A C4F8 phase is a stretch where Gas4Flow is at least 150 while Gas5Flow stays below 300. It lasts 1.2 to 1.4 s at 5 Hz, at most 8 samples. Every wafer has exactly 99 of them.
-- An SF6 phase is a stretch where Gas5Flow is at least 300. Between two C4F8 phases it lasts 4.2 to 4.4 s, 22 or 23 samples. One cycle, from one SF6 onset to the next, takes 5.8 to 6.2 s and usually 6.0 s.
-- Every etch ends with a longer SF6 phase of 5.4 to 5.6 s after the 99th C4F8 phase.
-- Etches start in one of three ways. In 62 wafers a 2.8 s SF6 phase comes right before the first C4F8 phase. In 10 wafers that SF6 phase lasts 4.2 to 4.4 s. In the other 24 the etch starts directly with a C4F8 phase. In lot 1, wafer 2, one of those 24, a 2.8 s SF6 step at low source power, about 140 instead of about 2,790, came first and was followed by about 10 s with no gas flow and no power.
-- The etch starts 18 to 147 s into the record and lasts about 600 s.
+- A C4F8 phase is a stretch where Gas4Flow is at least 150 while Gas5Flow stays below 300, at etch power. It lasts 1.2 to 1.4 s at 5 Hz, at most 8 samples. 93 wafers have 99 of them. Three have 98: lot 3 wafer 10, lot 4 wafer 9, and lot 5 wafer 2.
+- An SF6 phase is a stretch where Gas5Flow is at least 300, at etch power. Between two C4F8 phases it lasts 4.2 to 4.4 s, 22 or 23 samples. One cycle, from one SF6 onset to the next, takes 5.8 to 6.2 s and usually 6.0 s.
+- Every etch ends with an SF6 phase after its last C4F8 phase. It runs 4.4 to 4.6 s at etch power, and its gas stays on for about another second after the plasma stops.
+- Etches start in one of three ways. In 65 wafers a 2.8 s SF6 phase comes right before the first C4F8 phase, and in 10 that SF6 phase lasts 4.2 to 4.4 s. In the other 21 the etch starts directly with a C4F8 phase.
+- Some wafers show strike steps at low power before the etch, followed by about 10 s with no gas flow and no power. In lot 1 wafer 2 the strike ran SF6 gas for 2.8 s. In lot 3 wafer 10, one of the three wafers with 98 C4F8 phases, it ran C4F8 gas for 1.4 s and then SF6 gas for 1.2 s.
+- Inside the etch, the source power drops below 1,000 for a single sample in 56 wafers.
+- The etch starts 18 to 147 s into the record and lasts about 592 to 599 s.
 - One cycle in the dataset is irregular: in lot 3, wafer 7, cycle 74 ran its SF6 phase for 5.0 s and its C4F8 phase for 0.8 s.
 
 The dataset does not label its gas lines. Gas5 as SF6 and Gas4 as C4F8 is an inference from the flows and the duty cycle, which match the recipe.

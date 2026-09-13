@@ -29,7 +29,34 @@
 	<properties>
 		<java.version>21</java.version>
 	</properties>
+	<repositories>
+		<!-- netCDF-Java is published to Unidata's repository, not to Maven Central -->
+		<repository>
+			<id>unidata-all</id>
+			<url>https://artifacts.unidata.ucar.edu/repository/unidata-all/</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
 	<dependencies>
+		<dependency>
+			<groupId>edu.ucar</groupId>
+			<artifactId>cdm-core</artifactId>
+			<version>5.10.0</version>
+			<exclusions>
+				<exclusion>
+					<groupId>commons-logging</groupId>
+					<artifactId>commons-logging</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<!-- cdm-core returns Guava collections from its API but declares Guava only for runtime -->
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>33.6.0-jre</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
@@ -109,6 +136,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>chamberwatch</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
