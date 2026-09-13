@@ -137,3 +137,52 @@ This is a first look, not a result. The correlations below are within lots: each
 | PlatenRFReflectedPower | +0.46 | -0.58 |
 
 Wafers etch shallower as a lot goes on. The chamber's drift shows up in the tool telemetry and lines up with the measured wafers, which is the signal the lot drift detector looks for.
+
+## What the detectors find
+
+`PublicDataDetectionTest` runs the detectors on all 96 wafers and pins the results in this section. Everything here uses the defaults: bands learned from wafers 1 to 3 of each lot, a limit rule of `k = 6` held for 5 samples, and a run-level threshold of 5.
+
+### Choosing the thresholds
+
+The dataset labels no faults, so the only wafers known to be good are the ones the baseline learns from. Each lot's good wafers were therefore scored against a baseline fitted on the other nine lots, and any alarm on them is a false alarm on a wafer the fit never saw.
+
+| Threshold | Limit alarms, good = wafers 1 to 3 | Run-level alarms, good = wafers 1 to 3 | Limit alarms, good = wafers 2 to 4 |
+|---:|---:|---:|---:|
+| 3 | 23 of 30 | 11 of 30 | 20 of 30 |
+| 4 | 10 of 30 | 3 of 30 | 11 of 30 |
+| 5 | 4 of 30 | 0 of 30 | 4 of 30 |
+| 6 | 2 of 30 | 0 of 30 | 2 of 30 |
+| 7 | 1 of 30 | 0 of 30 | 2 of 30 |
+| 8 | 1 of 30 | 0 of 30 | 2 of 30 |
+
+The tool channels are smooth. A wafer that reads 3 standard deviations high tends to stay there for seconds, so requiring 5 samples in a row barely helps at `k = 3`. The defaults are the smallest whole thresholds at which fewer than 10 percent of the held-out good wafers alarm. The two that still alarm at `k = 6` are both the first wafer after a clean: lot 2 wafer 1 on PlatenRFLoadCapacitor at 6.8, and lot 9 wafer 1 on PlatenRFTuningCapacitor at 10.2. Taking wafers 2 to 4 as the good runs does not help, because by wafer 4 the match capacitors have already moved in lots 6 and 7.
+
+A threshold on single samples would not work at all. All 30 held-out good wafers have some sample more than 8 standard deviations out. Most sit at phase edges: Gas5Flow reads almost exactly 0 early in a C4F8 phase, so one sample where the SF6 flow is still falling can score in the thousands.
+
+### Flagged wafers
+
+15 of the 96 wafers are flagged, all by the limit detector and all on the two platen match capacitors, PlatenRFLoadCapacitor and PlatenRFTuningCapacitor. No wafer has a run-level deviation, and none of the 30 good wafers is flagged.
+
+| Lot | Flagged wafers | Cycle of the first excursion | Largest persistent z |
+|---|---|---|---:|
+| 6 | 4 to 10 | 85 on wafer 4, down to 28 on wafer 10 | 24.9, wafer 6 |
+| 7 | 4 to 6 | 77, 56, 39 | 15.2, wafer 4 |
+| 8 | 7 | 88 | 9.6 |
+| 9 | 7 to 10 | 83, 74, 30, 34 | 24.8, wafer 10 |
+
+Once the capacitors leave the band they leave it again in most later cycles, and the later the wafer, the earlier in the etch that starts. No other wafer reaches a persistent z of 6. The highest is 5.5, on lot 2 wafer 1.
+
+The one irregular cycle, cycle 74 of lot 3 wafer 7, knocks the chamber pressure far out of band for a moment, with a peak z of 24. Over 5 samples in a row it holds only 4.3, so the limit rule does not flag it. The aligner already reports that cycle as irregular.
+
+### Flags and measured depth
+
+A flag says the tool behaved differently. It does not say the wafer came out worse. Take each wafer's depth loss as its mean depth subtracted from the mean of its lot's wafers 1 to 3. On the 89-point file, the 14 flagged wafers lost 0.60 µm on average, and the 44 unflagged wafers from position 4 on lost 0.64 µm. At each position from 4 to 10, flagged wafers lost about as much as unflagged wafers at the same position, or less. The 9-point file agrees, at 0.57 against 0.63 µm.
+
+So the match capacitors did something in lots 6 to 9 that the first wafers never showed, and the etch depth did not follow it. The drift that does follow depth is the slow rise of PlatenRFTuningCapacitor's SF6 mean, which correlates at -0.80 with depth within lots. By the last wafer, the fitted line is outside the good-run band in every lot. These channels leave the band or are projected to:
+
+| Channel | Outside the band by the last wafer | Projected to leave it within 10 wafers |
+|---|---|---|
+| PlatenRFTuningCapacitor | all 10 lots | |
+| PlatenRFPeakToPeak | lots 3, 6 and 9 | lot 7 |
+| PlatenRFReflectedPower | lots 4, 6 and 10 | |
+| SourceRFLoadPower | lot 6 | lot 7 |

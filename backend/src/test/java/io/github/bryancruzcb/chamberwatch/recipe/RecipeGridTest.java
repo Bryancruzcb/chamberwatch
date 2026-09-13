@@ -14,6 +14,7 @@ class RecipeGridTest {
 		assertThat(grid.slotCount()).isEqualTo(4000);
 		for (int slot = 0; slot < grid.slotCount(); slot++) {
 			assertThat(grid.slot(grid.position(slot))).isEqualTo(slot);
+			assertThat(grid.cycleOf(slot)).isEqualTo(grid.position(slot).cycle());
 		}
 	}
 

@@ -164,4 +164,19 @@ class AlignerTest {
 		assertThat(sf6Pressure.mean()).isCloseTo((22 * 0.04 + 0.03) / 23, within(1e-6));
 	}
 
+	@Test
+	void aShortEtchKeepsItsLastCycleOutOfTheScoredCycles() {
+		AlignedRun run = aligner.align(EtchRuns.etch().c4f8Phases(98).build().run()).orElseThrow();
+
+		PhaseSummary sf6Pressure = run.summaries()
+			.stream()
+			.filter((summary) -> summary.channel().equals(EtchRuns.PRESSURE) && summary.phase() == Phase.SF6)
+			.findFirst()
+			.orElseThrow();
+
+		assertThat(run.isScored(98)).isTrue();
+		assertThat(run.isScored(99)).isFalse();
+		assertThat(sf6Pressure.n()).isEqualTo(97 * 23);
+	}
+
 }
