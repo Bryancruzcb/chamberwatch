@@ -119,6 +119,16 @@ public class RunStore {
 		}));
 	}
 
+	/** Public runs by the measurement files' experiment key, {@code YYYY-MM-DD_NN}. */
+	public Map<String, RunId> publicRunsByExperimentKey() {
+		return jdbc.sql("select r.id, r.run_key from run r join lot l on l.id = r.lot_id where l.source = 'PUBLIC'")
+			.query((rs, row) -> Map.entry(RunKey.ofPublicGroup(rs.getString("run_key")).experimentKey().orElseThrow(),
+					new RunId(rs.getInt("id"))))
+			.list()
+			.stream()
+			.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+	}
+
 	public LedgerStatus ledger(String md5, int alignerVersion) {
 		return jdbc.sql("select status from ingest_file where md5 = :md5 and aligner_version = :version")
 			.param("md5", md5)

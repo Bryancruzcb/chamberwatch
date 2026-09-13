@@ -40,7 +40,7 @@ public class ChamberwatchCommands implements ApplicationRunner, ExitCodeGenerato
 			IngestReport report = ingest.ingestPublic(Path.of(option(args, "data", "data/public/zenodo17122442")),
 					Path.of(option(args, "md5", "docs/zenodo17122442.md5")));
 			System.out.println(report.describe());
-			exitCode = (report.failed() == 0) ? 0 : 1;
+			exitCode = report.hasProblems() ? 1 : 0;
 		}
 	}
 
