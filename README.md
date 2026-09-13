@@ -2,7 +2,7 @@
 
 Tool-health monitoring for a plasma etch tool. ChamberWatch reads each wafer's machine telemetry, learns what a good run looks like at each point in the recipe, and flags runs that go out of range or drift across a lot. For every flag it shows which sensor changed first, next to the measured result on the wafer.
 
-Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, and the detectors score every wafer against a baseline learned from the first wafers of each lot. Storing those scores comes next. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
+Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. The simulator and its evaluation come next. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
 
 ## Data
 
@@ -28,7 +28,8 @@ cd backend
 # Align the public wafers and print one line per wafer. Needs no database.
 java -jar target/chamberwatch.jar align --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
 
-# Start Postgres on port 55432, then load the public data. A second run reads nothing and adds no rows.
+# Start Postgres on port 55432, then load the public data, fit a baseline and score every wafer.
+# A second run reads nothing, reuses the baseline and adds no rows.
 docker compose up -d
 java -jar target/chamberwatch.jar ingest --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
 ```

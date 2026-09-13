@@ -20,6 +20,9 @@ import io.github.bryancruzcb.chamberwatch.recipe.PhaseSummary;
  */
 public final class HealthModel {
 
+	/** Bump when band learning or scoring changes, so stored baselines are fitted and scored again. */
+	public static final int VERSION = 1;
+
 	private HealthModel() {
 	}
 

@@ -82,13 +82,16 @@ void stuckSf6FlowIsCaughtOnGas5FlowFirst() {
 Ingest and relabeling both end in one call that converges:
 
 ```java
-public BaselineRef refresh(Source source) {
+public Refresh refresh(Source source) {
     RunRoster roster = runs.roster(source);
-    Set<RunKey> good = GoodRuns.select(roster.candidates(), config.goodRunsPerLot());
-    Fingerprint fp = Fingerprint.of(source, good, config, Aligner.VERSION);
-    BaselineRef ref = baselines.find(fp).orElseGet(() -> fitAndStore(source, good, fp, roster));
-    scoreUnscored(ref, roster);
-    return baselines.makeCurrent(ref, roster.labelsSeq());
+    SortedSet<RunKey> good = GoodRuns.select(roster.candidates(), config.goodRunsPerLot());
+    Fingerprint fingerprint = Fingerprint.of(source, good, config, Aligner.VERSION, HealthModel.VERSION);
+    BaselineRef baseline = baselines.find(fingerprint)
+        .orElseGet(() -> baselines.insert(source, fingerprint, roster.labelsSeq(), fit(good, roster), roster.ids()));
+    int scored = scoreUnscored(baseline);
+    boolean current = baselines.makeCurrent(baseline, roster.labelsSeq());
+    baselines.prune(source, GENERATIONS_KEPT);
+    return new Refresh(source, Optional.of(baseline), ...);
 }
 ```
 
@@ -108,9 +111,9 @@ public BaselineRef refresh(Source source) {
 
 Every decoded value is a row: `sample(run_id, channel_id, sample_idx, t_s, value, slot)`, keyed by `(run_id, channel_id, sample_idx)`. `slot` is null for samples outside the grid: before the etch, after it, and the rare overflow sample. The public data is 10,132,286 rows, about 0.75 GB with the key. Keeping pre-etch and post-etch samples lets the run page chart the whole record, and keeping every value as a row lets SQL answer the read side.
 
-`recipe_slot(slot, cycle, phase, offset)` has 4,000 rows. A Flyway migration fills it, and a test checks it against `RecipeGrid` so the two cannot drift apart. `band(baseline_id, channel_id, slot, mean, sd)` stores the per-slot bands, so the trace query can join the band to the samples.
+`recipe_slot(slot, cycle, phase, offset)` has 4,000 rows. A Flyway migration fills it, and a test checks it against `RecipeGrid` so the two cannot drift apart. `band(baseline_id, channel_id, slot, mean, sd)` stores the per-slot bands, with `sd` null where a slot has a mean but no band, so the trace query can join the band to the samples.
 
-The other tables are `lot`, `channel`, `ingest_file` (the ingest ledger), `run` (natural key, lot, position, the alignment report, label and label sequence), `run_phase_summary`, `measurement` (keyed by run, set and point number, with depth as a generated column `stepheight_um - postox_um`), `injected_fault`, `baseline` (unique fingerprint, one current row per source), `baseline_good_run`, `summary_band`, `run_assessment`, `channel_verdict` and `excursion`. Assessments, verdicts and excursions are keyed by baseline, so a refit writes new rows beside the old ones and a pointer flip makes them current.
+The other tables are `lot`, `channel`, `ingest_file` (the ingest ledger), `run` (natural key, lot, position, the alignment report, label and label sequence), `run_phase_summary`, `measurement` (keyed by run, set and point number, with depth as a generated column `stepheight_um - postox_um`), `injected_fault`, `baseline` (unique fingerprint and the settings it was fitted with), `current_baseline` (one row per source), `baseline_good_run`, `baseline_channel` (each channel's role), `summary_band`, `run_assessment` (flag counts, the largest persistent z, and the first channel and excursion), `channel_verdict` and `excursion`. Assessments, verdicts and excursions are keyed by baseline, so a refit writes new rows beside the old ones, and moving the `current_baseline` row makes them current. That move is a single upsert that applies only when the stored `labels_seq` is not newer, so two refreshes can race without a lock.
 
 The dominant reads:
 
@@ -250,4 +253,4 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Next implementation step
 
-The aligner, the ingest and the detectors are built. Next is storing what the detectors produce: the migration for baselines and assessments, `BaselineStore`, and `HealthService.refresh` at the end of the ingest, tested so that a second refresh writes nothing.
+The aligner, the ingest, the detectors and the stored baselines are built, and `ingest` ends by scoring every public wafer. Next is the simulator and the evaluation: seeded synthetic runs with the four fault kinds, scored in memory, with `results/metrics.json` checked in CI.
