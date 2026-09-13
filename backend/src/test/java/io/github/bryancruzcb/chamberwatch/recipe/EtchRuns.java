@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Builds raw runs with the public data's etch structure at exact 0.2 s steps, for aligner tests. */
-final class EtchRuns {
+/** Builds raw runs with the public data's etch structure at exact 0.2 s steps, for tests. */
+public final class EtchRuns {
 
 	static final double STEP_S = 0.2;
 
@@ -20,11 +20,11 @@ final class EtchRuns {
 	private EtchRuns() {
 	}
 
-	static Builder etch() {
+	public static Builder etch() {
 		return new Builder();
 	}
 
-	enum Start {
+	public enum Start {
 
 		/** A 2.8 s SF6 phase right before C4F8 phase 1, as in most public wafers. */
 		SHORT_SF6,
@@ -41,10 +41,12 @@ final class EtchRuns {
 	 * A generated run and the onset times the aligner should find. Index 0 is unused, and
 	 * {@code sf6Onsets[1]} is NaN when the etch starts with C4F8.
 	 */
-	record Generated(RawRun run, double[] sf6Onsets, double[] c4f8Onsets) {
+	public record Generated(RawRun run, double[] sf6Onsets, double[] c4f8Onsets) {
 	}
 
-	static final class Builder {
+	public static final class Builder {
+
+		private RunKey key = RunKey.simulated(1, 1, 1);
 
 		private Start start = Start.SHORT_SF6;
 
@@ -64,54 +66,59 @@ final class EtchRuns {
 
 		private boolean withGas5 = true;
 
-		Builder start(Start start) {
+		public Builder key(RunKey key) {
+			this.key = key;
+			return this;
+		}
+
+		public Builder start(Start start) {
 			this.start = start;
 			return this;
 		}
 
 		/** Adds a low-power strike with C4F8 and SF6 gas steps and a 10.6 s pause before the etch. */
-		Builder strike() {
+		public Builder strike() {
 			this.strike = true;
 			return this;
 		}
 
 		/** C4F8 phases in the etch; the etch then ends with SF6 phase {@code c4f8Phases + 1}. */
-		Builder c4f8Phases(int c4f8Phases) {
+		public Builder c4f8Phases(int c4f8Phases) {
 			this.c4f8Phases = c4f8Phases;
 			return this;
 		}
 
 		/** Gas5Flow reads 250 instead of 600 in the SF6 phases of this cycle and every later one. */
-		Builder stuckSf6From(int cycle) {
+		public Builder stuckSf6From(int cycle) {
 			this.stuckSf6FromCycle = cycle;
 			return this;
 		}
 
 		/** Gas5Flow drops to 0 for one sample in the middle of this cycle's SF6 phase. */
-		Builder dipInSf6(int cycle) {
+		public Builder dipInSf6(int cycle) {
 			this.dipCycle = cycle;
 			return this;
 		}
 
 		/** This cycle runs SF6 for 5.0 s and C4F8 for 0.8 s, like cycle 74 of lot 3 wafer 7. */
-		Builder irregular(int cycle) {
+		public Builder irregular(int cycle) {
 			this.irregularCycle = cycle;
 			return this;
 		}
 
 		/** Drops every sample from {@code startS} for {@code lengthS} seconds. */
-		Builder gap(double startS, double lengthS) {
+		public Builder gap(double startS, double lengthS) {
 			this.gapStartS = startS;
 			this.gapLengthS = lengthS;
 			return this;
 		}
 
-		Builder withoutGas5() {
+		public Builder withoutGas5() {
 			this.withGas5 = false;
 			return this;
 		}
 
-		Generated build() {
+		public Generated build() {
 			List<float[]> rows = new ArrayList<>();
 			double[] sf6Onsets = new double[101];
 			double[] c4f8Onsets = new double[100];
@@ -192,8 +199,7 @@ final class EtchRuns {
 			for (int i = 0; i < flat.length; i++) {
 				flat[i] = values.get(i);
 			}
-			return RawRun.of(RunKey.simulated(1, 1, 1), ChannelSet.of(names),
-					times.stream().mapToDouble(Double::doubleValue).toArray(), flat);
+			return RawRun.of(key, ChannelSet.of(names), times.stream().mapToDouble(Double::doubleValue).toArray(), flat);
 		}
 
 		/** Row layout follows the sorted channel names: Gas1Flow, Gas4Flow, Gas5Flow, Pressure, SourceRFLoadPower. */
