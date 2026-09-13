@@ -60,6 +60,14 @@ public record RecipeGrid(int cycles, double slotSeconds, int sf6Slots, int c4f8S
 		return (cycle - 1) * slotsPerCycle() + firstSlot(phase) + offset;
 	}
 
+	/** The cycle a slot belongs to, without building a {@link RecipePosition}. */
+	public int cycleOf(int slot) {
+		if (slot < 0 || slot >= slotCount()) {
+			throw new IllegalArgumentException("slot out of range: " + slot);
+		}
+		return slot / slotsPerCycle() + 1;
+	}
+
 	/** Inverse of {@link #slot(RecipePosition)}. */
 	public RecipePosition position(int slot) {
 		if (slot < 0 || slot >= slotCount()) {

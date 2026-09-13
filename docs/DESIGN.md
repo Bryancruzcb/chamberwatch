@@ -36,7 +36,7 @@ With no command the jar serves the API on port 8080, with the OpenAPI descriptio
 | Screen | Call |
 |---|---|
 | Runs table, lot filter | `GET /api/lots` |
-| Runs table | `GET /api/runs?lot=3&flagged=true` |
+| Runs table | `GET /api/runs?lot=6&flagged=true` |
 | Run page header, ranked channels, evidence | `GET /api/runs/{runId}` |
 | Run page chart | `GET /api/runs/{runId}/channels/{channel}/trace?fromCycle=1&toCycle=100&maxPoints=2000` |
 | Run page, mark good or bad | `PUT /api/runs/{runId}/label` with `{"label": "BAD"}` |
@@ -44,14 +44,14 @@ With no command the jar serves the API on port 8080, with the OpenAPI descriptio
 | Wafer page | `GET /api/runs/{runId}/measurements?set=EIGHTY_NINE_POINT` |
 | Lot list, public result | `GET /api/reports/drift-vs-depth` |
 
-`GET /api/runs?lot=3&flagged=true`
+`GET /api/runs?lot=6&flagged=true`
 
 ```json
-{ "baseline": { "id": 4, "goodRuns": 30, "k": 3.0, "n": 5 },
-  "runs": [ { "id": 27, "key": "Day_2024_07_09_Wafer_07", "lotNo": 3, "positionInLot": 7,
+{ "baseline": { "id": 4, "goodRuns": 30, "k": 6.0, "n": 5 },
+  "runs": [ { "id": 55, "key": "Day_2024_08_01_Wafer_05", "lotNo": 6, "positionInLot": 5,
               "label": "AUTO", "good": false, "alignment": "ALIGNED",
-              "limitFlags": 2, "deviationFlags": 0,
-              "firstChannel": "Gas4Flow", "firstTimeS": 467.2 } ] }
+              "limitFlags": 25, "deviationFlags": 0, "persistentZ": 18.8,
+              "firstChannel": "PlatenRFLoadCapacitor", "firstTimeS": 407.2 } ] }
 ```
 
 The trace call returns at most `maxPoints` buckets. Each bucket carries the minimum and maximum sample in it, so a one-sample spike survives downsampling, plus the good-run band at the same slots and the cycle, phase and offset of its first slot. Excursion markers come with it.
@@ -148,7 +148,7 @@ Dependencies point one way: `api` to `health` and `store`, `health` and `store` 
 
 On the public data all 96 wafers align cleanly, and a test checks that wherever the data has been downloaded. 93 wafers have 99 C4F8 phases and end with cycle 100. Three have 98 and end with cycle 99, so their cycle 99 has no C4F8 phase. Cycle 1 has a 2.8 s SF6 phase in 65 wafers, a 4.2 to 4.4 s one in 10, and none in 21. SF6 phases fill at most 25 slots in steady cycles, and C4F8 phases at most 8. Recording gaps all fall after the etch. The one irregular cycle is cycle 74 of lot 3 wafer 7.
 
-Cycles 1 and 100 differ between wafers, so v1 charts them and does not score them. The limit detector scores cycles 2 to 99.
+Cycles 1 and 100 differ between wafers, so v1 charts them and does not score them. The detectors score cycles 2 up to the run's second-to-last cycle. The last cycle ends the etch with the longer SF6 phase, so in the three wafers with 98 C4F8 phases cycle 99 looks like cycle 100 of the rest, and it stays out of the bands, the phase summaries and the limit detector.
 
 ## Detectors
 
@@ -160,15 +160,17 @@ static RunAssessment assess(AlignedRun run, Baseline baseline)
 static DriftProjection project(LotFit fit, SummaryBand band, DriftRule rule)
 ```
 
-Band learning streams one run at a time and keeps a count, a sum and a sum of squares per channel and slot. The mean is per slot. The standard deviation pools the variance over the same phase and offset in the two cycles on either side, so 30 good runs give about 150 observations per slot. It is floored at the larger of 5 percent of the channel's median pooled deviation and the channel's resolution, the smallest gap between two distinct good-run values. A slot with fewer than 5 observations gets no band. A channel whose good runs never vary is `CONSTANT` and is never scored, which covers lot 1's 13 extra channels.
+Band learning streams one run at a time and keeps a count, a sum and a sum of squares per channel and slot. The mean is per slot. The standard deviation pools the variance over the same phase and offset in the two cycles on either side, so 30 good runs give about 150 observations per slot. It is floored at the larger of 5 percent of the channel's median pooled deviation and the channel's resolution, the smallest gap between two distinct good-run values, taken as 0 once a channel shows more than 4,096 distinct values. A slot gets a band only when a good run filled it and the pooled observations reach 5. A channel whose good runs never vary is `CONSTANT` and is never scored, which covers lot 1's 13 extra channels.
 
-The limit detector walks slots in order and skips empty ones. `z = (x - mean) / sd`. A sample with `|z| > k` extends a streak, and an in-band sample, a slot without a band, or a gap resets it. When the streak reaches `n` samples the excursion is confirmed at that slot. The confirmation time is the alarm time used for latency, and the start slot is used for ranking. Defaults are `k = 3` and `n = 5`, one second at 5 Hz.
+The limit detector walks slots in order and skips empty ones. `z = (x - mean) / sd`. A sample with `|z| > k` extends a streak, and an in-band sample, a slot without a band, or a gap resets it. When the streak reaches `n` samples the excursion is confirmed at that slot. The confirmation time is the alarm time used for latency, and the start slot is used for ranking. The same pass records each channel's persistent z, the largest `|z|` it held for `n` samples in a row, so a run has an excursion exactly when a persistent z passes `k`. That gives the runs table a severity to sort by and lets a threshold be tried without rescoring. Defaults are `k = 6` and `n = 5`, one second at 5 Hz.
 
-The run deviation detector takes z-scores of each channel's phase mean and phase standard deviation against the good runs. A channel deviates when its largest `|z|` passes 4.
+The run deviation detector takes z-scores of each channel's phase mean and phase standard deviation against the good runs. A channel deviates when its largest `|z|` passes 5.
+
+Both sketches started from `k = 3` and a run-level threshold of 4, numbers that assume noise independent from one sample to the next. Tool channels are smooth, so a wafer that sits 3 standard deviations off stays there for seconds and the persistence rule adds little. Scored against a baseline fitted without its own lot, 23 of the 30 good public wafers alarm at `k = 3`. The defaults are the smallest whole thresholds at which fewer than 10 percent of those held-out good wafers alarm: `k = 6`, where 2 of 30 do, and a run-level threshold of 5, where none do. [DATA.md](DATA.md#what-the-detectors-find) has the table, and `PublicDataDetectionTest` pins it.
 
 Ranking puts channels with a confirmed excursion first, ordered by start slot, then larger peak `|z|`, then name. The rest follow by largest summary `|z|`. The earliest departure ranks first because later departures are often its effects: a stuck SF6 flow first, chamber pressure after.
 
-Lot drift fits the SF6 phase mean of each channel against position in lot. SQL computes the fits, as of every position. `HealthModel.project` turns a fit and the good-run band into a state. Below 4 runs the state is `INSUFFICIENT_RUNS`, and with a slope t-statistic under 2.5 it is `NO_TREND`. Otherwise the line is projected to the band edge in the slope's direction: `OUT_OF_BAND` when the fitted value is already outside, `WILL_EXIT` with the runs remaining when the exit comes within a 10-wafer lot, and `STAYS_IN` otherwise.
+Lot drift fits the SF6 phase mean of each channel against position in lot. `LotFit` is the least-squares fit as of one wafer. The lot page will compute the same fits in SQL, as of every position, and a test will hold the two together. `HealthModel.project` turns a fit and the good runs' band, their SF6 phase mean plus or minus 3 standard deviations, into a state. The checks run in this order. Below 4 runs the state is `INSUFFICIENT_RUNS`. When the fitted value at the latest wafer is already outside the band it is `OUT_OF_BAND`, trend or not, so a lot that sits outside the band is never reported as flat. With a slope t-statistic under 2.5 it is `NO_TREND`. Otherwise the line is projected to the band edge in the slope's direction: `WILL_EXIT` with the runs remaining when the exit comes within a 10-wafer lot, and `STAYS_IN` otherwise.
 
 Good runs are chosen in one place, `GoodRuns.select`: a run labeled GOOD, or a run labeled AUTO that is `ALIGNED` and among the first 3 wafers of its lot, closest to the clean. The chosen set is stored with the baseline, and every screen reads it from there.
 
@@ -219,7 +221,7 @@ Rejected from the aligned-profile sketch:
 - Profiles stored only as bytea. They are small, but nothing can query inside them.
 - Its onset rules. Both sketches assumed 100 C4F8 phases and SF6 phases of 3.5 to 5.5 s, which is what the first written notes on the data said. The files show 99 C4F8 phases in most wafers and 98 in three, a cycle 1 SF6 phase that is 2.8 s, 4.2 to 4.4 s or missing, and low-power strike steps that look like etch phases unless the source power is checked. As written, both aligners would have degraded or rejected every public wafer. The alignment section above is rebuilt from the measured structure, and the 96-wafer test holds it there.
 
-Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of idempotency, ranking by earliest excursion start, `k = 3` and `n = 5`, depth as step height minus remaining oxide, and treating lot 1's extra channels as constant. The first sketch stopped before writing its tradeoffs, so its rationale above comes from its schema, its code sketch and the sections it finished.
+Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of idempotency, ranking by earliest excursion start, `k = 3` and `n = 5`, depth as step height minus remaining oxide, and treating lot 1's extra channels as constant. The public data later moved `k` to 6, as [Detectors](#detectors) explains. The first sketch stopped before writing its tradeoffs, so its rationale above comes from its schema, its code sketch and the sections it finished.
 
 ## Tradeoffs accepted
 
@@ -240,10 +242,12 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 ## Open questions and risks
 
 - Should drift use the global good-run band, or each lot's own first wafers? Conditioning shifts lot levels, so some lots may start outside the global band.
-- Good runs default to the first 3 wafers of each lot. Is 2, closer to the clean, better even though it leaves 20 runs?
+- Would the first 2 wafers of each lot, closer to the clean, make a tighter reference than the first 3? Wafers 2 to 4 did no better than 1 to 3 on held-out alarms, and 1 to 2 has not been measured.
+- The public data has no labeled faults, so the thresholds rest on held-out good wafers from only 10 lots. More lots would show more spread between lots and could move them.
+- On the public data the limit flags mark a change in the platen match network in four lots, yet those wafers etch no shallower than wafers at the same position in other lots. A flag says the tool changed, not that the wafer is bad.
 - A dropout that holds the last value is invisible to a band detector. v1 simulates dropouts as zeros. Is that acceptable?
 - The gas identities are an inference. Nothing in the dataset names the gas lines.
 
 ## Next implementation step
 
-The aligner, the netCDF reader and the `align` command are built. Next is storage: the Flyway migration with `sample` and `recipe_slot`, the COPY writer, and an ingest that loads the public files into a Testcontainers database twice and checks that the second load adds no rows.
+The aligner, the ingest and the detectors are built. Next is storing what the detectors produce: the migration for baselines and assessments, `BaselineStore`, and `HealthService.refresh` at the end of the ingest, tested so that a second refresh writes nothing.

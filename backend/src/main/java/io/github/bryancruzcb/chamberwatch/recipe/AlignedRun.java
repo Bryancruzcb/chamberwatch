@@ -79,6 +79,15 @@ public final class AlignedRun {
 		return !Float.isNaN(slotTimes[slot]);
 	}
 
+	/**
+	 * Whether the detectors score this cycle: a steady cycle of the grid that is not the run's last. The
+	 * last cycle ends the etch with a longer SF6 phase, so in the three wafers with 98 C4F8 phases cycle
+	 * 99 looks like cycle 100 of every other wafer.
+	 */
+	public boolean isScored(int cycle) {
+		return grid.isSteady(cycle) && cycle < report.lastCycle();
+	}
+
 	public float[] copyProfile(int channelIndex) {
 		int from = channelIndex * grid.slotCount();
 		return Arrays.copyOfRange(values, from, from + grid.slotCount());
@@ -88,7 +97,7 @@ public final class AlignedRun {
 		return slotTimes.clone();
 	}
 
-	/** One summary per channel and phase over the steady cycles, ordered by channel, then phase. */
+	/** One summary per channel and phase over the scored cycles, ordered by channel, then phase. */
 	public List<PhaseSummary> summaries() {
 		List<PhaseSummary> summaries = new ArrayList<>(channels.size() * 2);
 		for (int channel = 0; channel < channels.size(); channel++) {
@@ -99,7 +108,7 @@ public final class AlignedRun {
 				float min = Float.POSITIVE_INFINITY;
 				float max = Float.NEGATIVE_INFINITY;
 				for (int cycle = 1; cycle <= grid.cycles(); cycle++) {
-					if (!grid.isSteady(cycle)) {
+					if (!isScored(cycle)) {
 						continue;
 					}
 					for (int offset = 0; offset < grid.capacity(phase); offset++) {
