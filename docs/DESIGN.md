@@ -39,7 +39,7 @@ With no command the jar serves the API on port 8080, with the OpenAPI descriptio
 | Screen | Call |
 |---|---|
 | Runs table, lot filter | `GET /api/lots` |
-| Runs table | `GET /api/runs?lot=6&flagged=true` |
+| Runs table | `GET /api/runs?source=PUBLIC&lot=6&flagged=true` |
 | Run page header, ranked channels, evidence | `GET /api/runs/{runId}` |
 | Run page chart | `GET /api/runs/{runId}/channels/{channel}/trace?fromCycle=1&toCycle=100&maxPoints=2000` |
 | Run page, mark good or bad | `PUT /api/runs/{runId}/label` with `{"label": "BAD"}` |
@@ -47,17 +47,19 @@ With no command the jar serves the API on port 8080, with the OpenAPI descriptio
 | Wafer page | `GET /api/runs/{runId}/measurements?set=EIGHTY_NINE_POINT` |
 | Lot list, public result | `GET /api/reports/drift-vs-depth` |
 
-`GET /api/runs?lot=6&flagged=true`
+`lot` is a lot id from `/api/lots`, and `source` defaults to `PUBLIC`. On the public data `GET /api/runs?lot=6&flagged=true` returns the 7 flagged wafers of lot 6, among them wafer 5:
 
 ```json
-{ "baseline": { "id": 4, "goodRuns": 30, "k": 6.0, "n": 5 },
-  "runs": [ { "id": 55, "key": "Day_2024_08_01_Wafer_05", "lotNo": 6, "positionInLot": 5,
-              "label": "AUTO", "good": false, "alignment": "ALIGNED",
-              "limitFlags": 25, "deviationFlags": 0, "persistentZ": 18.8,
+{ "baseline": { "id": 1, "goodRuns": 30, "k": 6.0, "n": 5, "runZ": 5.0 },
+  "runs": [ { "id": 55, "key": "Day_2024_08_01_Wafer_05", "lotId": 6, "lotNo": 6, "positionInLot": 5,
+              "label": "AUTO", "alignment": "ALIGNED", "good": false, "scored": true,
+              "limitFlags": 25, "deviationFlags": 0, "persistentZ": 18.810440063476562,
               "firstChannel": "PlatenRFLoadCapacitor", "firstTimeS": 407.2 } ] }
 ```
 
-The trace call returns at most `maxPoints` buckets. Each bucket carries the minimum and maximum sample in it, so a one-sample spike survives downsampling, plus the good-run band at the same slots and the cycle, phase and offset of its first slot. Excursion markers come with it.
+The trace call returns at most `maxPoints` buckets of consecutive samples, and the whole record when no cycle range is given. Each bucket carries its lowest and highest reading, so a one-sample spike survives downsampling, plus the cycle, phase and offset of its first slotted sample and the good-run band there. The channel's excursions come with it. Every read on the public data answers in under 100 ms, including 2,000 buckets of wafer 5's 3,246 PlatenRFLoadCapacitor samples.
+
+A relabel answers once the refresh is done, so the next read already reflects it. Marking a flagged public wafer GOOD took 12 s, because a new set of good runs meant a refit and rescoring all 96 wafers. Putting it back to AUTO found the old baseline by its fingerprint and took 25 ms. Errors are RFC 9457 problem details: 404 for an unknown run or channel, 400 for a bad parameter or label.
 
 ### Java call sites
 
@@ -120,7 +122,7 @@ The other tables are `lot`, `channel`, `ingest_file` (the ingest ledger), `run` 
 
 The dominant reads:
 
-- Run page trace: one `(run_id, channel_id)` range of the key, about 3,500 rows, bucketed with `ntile` and reduced to the minimum and maximum per bucket with `row_number`, then joined to `band` and `recipe_slot` on slot.
+- Run page trace: one `(run_id, channel_id)` range of the key, about 3,500 rows, bucketed with `ntile`, reduced to the minimum and maximum per bucket, then joined to `band` and `recipe_slot` on the bucket's first slot.
 - Runs table: `run` joined to `run_assessment` under the current baseline, filtered by lot and flagged.
 - Lot page: `run_phase_summary` for the lot's runs, with `regr_slope`, `regr_intercept`, `regr_r2`, `regr_count`, `regr_sxx` and `regr_syy` computed as window aggregates ordered by position. That gives the fit as of every wafer, which is what the detector would have said after each one.
 - Scoring and refits: one `run_id` range of the key, about 110,000 rows, rebuilt into an `AlignedRun`.
@@ -255,7 +257,8 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 - The gas identities are an inference. Nothing in the dataset names the gas lines.
 - The simulator's drift is a straight line along the lot, so its wafers 9 and 10 cross the run-level threshold on drifting channels, which no public late wafer did. A drift that levels off, fitted per channel, may match better.
 - Simulated channels are independent, so ranking is only tested against unrelated departures, never against a fault's own knock-on effects on other channels.
+- A relabel that changes the good runs holds the request for about 12 s on the public data. If that gets in the way on the run page, the call can answer 202 and the page can wait for the current baseline to move.
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors, the stored baselines, the simulator and the evaluation are built. Next is the HTTP API over the stored runs and assessments, with the OpenAPI description, then the React screens and the `simulate-lot` and `report` commands.
+The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, and the API behind the runs table, the run page and the wafer page are built. Next are the lot page and report calls, `/api/lots/{lotId}/drift` and `/api/reports/drift-vs-depth`, then the React screens and the `simulate-lot` and `report` commands.
