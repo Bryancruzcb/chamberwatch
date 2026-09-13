@@ -61,6 +61,8 @@ The trace call returns at most `maxPoints` buckets of consecutive samples, and t
 
 A relabel answers once the refresh is done, so the next read already reflects it. Marking a flagged public wafer GOOD took 12 s, because a new set of good runs meant a refit and rescoring all 96 wafers. Putting it back to AUTO found the old baseline by its fingerprint and took 25 ms. Errors are RFC 9457 problem details: 404 for an unknown run or channel, 400 for a bad parameter or label.
 
+The lot call returns every channel that has a good-run band on the phase mean. Each comes with the lot's wafers in position order, the fit of the wafers so far at each one, the drift state that fit gives, and the state as of the last wafer. Channels out of the band or projected to leave it come first. On the public data every lot call after the first answers in under 25 ms, and the states as of each lot's last wafer are exactly the table in [DATA.md](DATA.md#flags-and-measured-depth). The report averages each run's drift score by position in lot, next to mean depth and the depth lost since the lot's first 3 wafers, for each measurement set. On the 89-point file the depth loss grows from 0.27 µm at wafer 4 to 0.90 µm at wafer 10, and the mean drift score rises from 0.8 over wafers 1 to 3 to 1.36 at wafer 8.
+
 ### Java call sites
 
 A unit test scores one synthetic run with no Spring and no database:
@@ -124,7 +126,7 @@ The dominant reads:
 
 - Run page trace: one `(run_id, channel_id)` range of the key, about 3,500 rows, bucketed with `ntile`, reduced to the minimum and maximum per bucket, then joined to `band` and `recipe_slot` on the bucket's first slot.
 - Runs table: `run` joined to `run_assessment` under the current baseline, filtered by lot and flagged.
-- Lot page: `run_phase_summary` for the lot's runs, with `regr_slope`, `regr_intercept`, `regr_r2`, `regr_count`, `regr_sxx` and `regr_syy` computed as window aggregates ordered by position. That gives the fit as of every wafer, which is what the detector would have said after each one.
+- Lot page: `run_phase_summary` for the lot's runs, with `regr_count`, `regr_avgx`, `regr_avgy`, `regr_sxx`, `regr_sxy` and `regr_syy` computed as window aggregates over the wafers so far, ordered by position. Those sums give the fit as of every wafer, which is what the detector would have said after each one.
 - Scoring and refits: one `run_id` range of the key, about 110,000 rows, rebuilt into an `AlignedRun`.
 
 ### Module map
@@ -178,7 +180,7 @@ Both sketches started from `k = 3` and a run-level threshold of 4, numbers that 
 
 Ranking puts channels with a confirmed excursion first, ordered by start slot, then larger peak `|z|`, then name. The rest follow by largest summary `|z|`. The earliest departure ranks first because later departures are often its effects: a stuck SF6 flow first, chamber pressure after.
 
-Lot drift fits the SF6 phase mean of each channel against position in lot. `LotFit` is the least-squares fit as of one wafer. The lot page will compute the same fits in SQL, as of every position, and a test will hold the two together. `HealthModel.project` turns a fit and the good runs' band, their SF6 phase mean plus or minus 3 standard deviations, into a state. The checks run in this order. Below 4 runs the state is `INSUFFICIENT_RUNS`. When the fitted value at the latest wafer is already outside the band it is `OUT_OF_BAND`, trend or not, so a lot that sits outside the band is never reported as flat. With a slope t-statistic under 2.5 it is `NO_TREND`. Otherwise the line is projected to the band edge in the slope's direction: `WILL_EXIT` with the runs remaining when the exit comes within a 10-wafer lot, and `STAYS_IN` otherwise.
+Lot drift fits the SF6 phase mean of each channel against position in lot. `LotFit` is the least-squares fit as of one wafer. The lot page computes the same fits in SQL, as of every position. `LotFit.fromSums` turns the sums the regression aggregates keep into a fit, `LotFit.of` goes through the same method, and `DriftApiTest` holds each SQL fit to `LotFit.of` of the wafers so far. `HealthModel.project` turns a fit and the good runs' band, their SF6 phase mean plus or minus 3 standard deviations, into a state. The checks run in this order. Below 4 runs the state is `INSUFFICIENT_RUNS`. When the fitted value at the latest wafer is already outside the band it is `OUT_OF_BAND`, trend or not, so a lot that sits outside the band is never reported as flat. With a slope t-statistic under 2.5 it is `NO_TREND`. Otherwise the line is projected to the band edge in the slope's direction: `WILL_EXIT` with the runs remaining when the exit comes within a 10-wafer lot, and `STAYS_IN` otherwise.
 
 Good runs are chosen in one place, `GoodRuns.select`: a run labeled GOOD, or a run labeled AUTO that is `ALIGNED` and among the first 3 wafers of its lot, closest to the clean. The chosen set is stored with the baseline, and every screen reads it from there.
 
@@ -261,4 +263,4 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, and the API behind the runs table, the run page and the wafer page are built. Next are the lot page and report calls, `/api/lots/{lotId}/drift` and `/api/reports/drift-vs-depth`, then the React screens and the `simulate-lot` and `report` commands.
+The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation and the HTTP API are built. Next are the React screens, then the `simulate-lot` and `report` commands.

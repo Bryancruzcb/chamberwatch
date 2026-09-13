@@ -24,22 +24,37 @@ public record LotFit(int asOfPosition, int runs, double slope, double intercept,
 		double valueMean = points.stream().mapToDouble(Point::value).average().orElseThrow();
 		double sxx = 0;
 		double sxy = 0;
+		double syy = 0;
 		for (Point point : points) {
 			sxx += (point.position() - positionMean) * (point.position() - positionMean);
 			sxy += (point.position() - positionMean) * (point.value() - valueMean);
+			syy += (point.value() - valueMean) * (point.value() - valueMean);
 		}
-		if (sxx == 0) {
+		int asOf = points.stream().mapToInt(Point::position).max().orElseThrow();
+		return fromSums(asOf, n, positionMean, valueMean, sxx, sxy, syy);
+	}
+
+	/**
+	 * The fit from the sums a regression aggregate keeps, the ones PostgreSQL's {@code regr_count},
+	 * {@code regr_avgx}, {@code regr_avgy}, {@code regr_sxx}, {@code regr_sxy} and {@code regr_syy} return, so a
+	 * fit computed in SQL is judged exactly like one computed from points.
+	 *
+	 * @throws IllegalArgumentException with fewer than 2 points or with every point at one position
+	 */
+	public static LotFit fromSums(int asOfPosition, long n, double positionMean, double valueMean, double sxx,
+			double sxy, double syy) {
+		if (n < 2) {
+			throw new IllegalArgumentException("a lot fit needs at least 2 points");
+		}
+		if (!(sxx > 0)) {
 			throw new IllegalArgumentException("a lot fit needs points at more than one position");
 		}
 		double slope = sxy / sxx;
 		double intercept = valueMean - slope * positionMean;
 		double tStat = Double.NaN;
 		if (n >= 3) {
-			double squaredErrors = 0;
-			for (Point point : points) {
-				double residual = point.value() - intercept - slope * point.position();
-				squaredErrors += residual * residual;
-			}
+			// rounding can leave the squared residuals of an exact line a hair below zero
+			double squaredErrors = Math.max(0, syy - slope * sxy);
 			double standardError = Math.sqrt(squaredErrors / (n - 2) / sxx);
 			if (standardError > 0) {
 				tStat = slope / standardError;
@@ -48,8 +63,7 @@ public record LotFit(int asOfPosition, int runs, double slope, double intercept,
 				tStat = (slope == 0) ? 0 : Math.copySign(Double.POSITIVE_INFINITY, slope);
 			}
 		}
-		int asOf = points.stream().mapToInt(Point::position).max().orElseThrow();
-		return new LotFit(asOf, n, slope, intercept, tStat);
+		return new LotFit(asOfPosition, (int) n, slope, intercept, tStat);
 	}
 
 	public double valueAt(double position) {

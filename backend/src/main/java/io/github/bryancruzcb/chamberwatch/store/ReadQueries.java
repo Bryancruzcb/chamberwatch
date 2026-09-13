@@ -8,13 +8,21 @@ import java.sql.Types;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
+import io.github.bryancruzcb.chamberwatch.detect.DetectorConfig;
+import io.github.bryancruzcb.chamberwatch.detect.DriftProjection;
+import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
 import io.github.bryancruzcb.chamberwatch.detect.Label;
+import io.github.bryancruzcb.chamberwatch.detect.LotFit;
+import io.github.bryancruzcb.chamberwatch.detect.SummaryBand;
 import io.github.bryancruzcb.chamberwatch.recipe.Phase;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipePosition;
@@ -25,19 +33,34 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 /**
- * What the runs table, the run page and the wafer page read. Every answer uses the current baseline of the
- * run's source, and each takes a handful of statements. Times and values stored as {@code real} come back
- * with the digits that float held, not the noise of widening it.
+ * What the screens read: the runs table, the run page, the wafer page, the lot page and the drift report.
+ * Every answer uses the current baseline of the source, and each takes a handful of statements. Times and
+ * values stored as {@code real} come back with the digits that float held, not the noise of widening it.
  */
 @Repository
 public class ReadQueries {
 
 	private static final RecipeGrid GRID = RecipeGrid.STANDARD;
 
+	private static final String LOTS = """
+			select l.id, l.source, l.lot_no, l.run_date, l.conditioning_count, l.conditioning_surface,
+			       count(r.id) as runs,
+			       count(a.run_id) filter (where a.limit_flags + a.deviation_flags > 0) as flagged_runs
+			from lot l
+			left join run r on r.lot_id = l.id
+			left join current_baseline cb on cb.source = l.source
+			left join run_assessment a on a.baseline_id = cb.baseline_id and a.run_id = r.id
+			where cast(:lot as integer) is null or l.id = cast(:lot as integer)
+			group by l.id
+			order by l.source, l.lot_no""";
+
 	private final JdbcClient jdbc;
 
-	public ReadQueries(JdbcClient jdbc) {
+	private final DetectorConfig config;
+
+	public ReadQueries(JdbcClient jdbc, DetectorConfig config) {
 		this.jdbc = jdbc;
+		this.config = config;
 	}
 
 	/** @param flaggedRuns runs flagged under the current baseline of the lot's source */
@@ -115,21 +138,70 @@ public class ReadQueries {
 			List<MeasurementPoint> values) {
 	}
 
+	/**
+	 * One wafer on the lot page: its phase mean, and the drift detector's verdict once that wafer was in.
+	 *
+	 * @param z      the phase mean against the good runs' band, in their standard deviations
+	 * @param runs   wafers in the fit so far
+	 * @param slope  the fit of the wafers so far, null at the first wafer like {@code intercept} and {@code fitted}
+	 * @param tStat  null with fewer than 3 wafers, and for a line without scatter
+	 * @param fitted the fitted value at this wafer
+	 */
+	public record DriftPoint(int runId, String key, int position, double value, double z, int runs, Double slope,
+			Double intercept, Double tStat, Double fitted, DriftProjection.State state, Integer firstOutPosition,
+			Integer runsRemaining) {
+	}
+
+	/**
+	 * One channel on the lot page.
+	 *
+	 * @param low   the drift band's lower edge: the good runs' mean less the drift rule's k standard deviations
+	 * @param state the verdict as of the lot's last wafer
+	 */
+	public record DriftChannel(String channel, double bandMean, double bandSd, double low, double high,
+			DriftProjection.State state, List<DriftPoint> points) {
+	}
+
+	/** @param baseline null until the lot's source has been refreshed once */
+	public record LotDrift(Lot lot, Phase phase, BaselineSummary baseline, DetectorConfig.DriftRule rule,
+			List<DriftChannel> channels) {
+	}
+
+	/**
+	 * Measured depth at one position in lot, for one measurement set.
+	 *
+	 * @param wafers          wafers at the position measured in the set
+	 * @param meanDepthLossUm how much shallower than the mean of their lot's first wafers they etched, on average;
+	 *                        null when no lot has its first wafers measured in the set
+	 */
+	public record PositionDepth(MeasurementSet set, int wafers, double meanDepthUm, Double meanDepthLossUm) {
+	}
+
+	/**
+	 * @param scoredRuns     runs with a drift score under the current baseline
+	 * @param meanDriftScore their mean drift score, where a run's drift score is the root mean square of its
+	 *                       channels' SF6 phase mean z-scores
+	 */
+	public record PositionDrift(int position, int runs, int scoredRuns, Double meanDriftScore, int flaggedRuns,
+			List<PositionDepth> depth) {
+	}
+
+	/**
+	 * By position in lot, how far runs sit from the good runs, next to how deep they etched, with the measurement
+	 * sets kept apart.
+	 *
+	 * @param referenceWafers depth loss counts from the mean depth of each lot's first this many wafers
+	 */
+	public record DriftVsDepth(Source source, BaselineSummary baseline, int referenceWafers,
+			List<PositionDrift> positions) {
+	}
+
 	public List<Lot> lots() {
-		return jdbc.sql("""
-				select l.id, l.source, l.lot_no, l.run_date, l.conditioning_count, l.conditioning_surface,
-				       count(r.id) as runs,
-				       count(a.run_id) filter (where a.limit_flags + a.deviation_flags > 0) as flagged_runs
-				from lot l
-				left join run r on r.lot_id = l.id
-				left join current_baseline cb on cb.source = l.source
-				left join run_assessment a on a.baseline_id = cb.baseline_id and a.run_id = r.id
-				group by l.id
-				order by l.source, l.lot_no""")
-			.query((rs, row) -> new Lot(rs.getInt("id"), Source.valueOf(rs.getString("source")), rs.getInt("lot_no"),
-					date(rs, "run_date"), integer(rs, "conditioning_count"), rs.getString("conditioning_surface"),
-					rs.getInt("runs"), rs.getInt("flagged_runs")))
-			.list();
+		return lots(null);
+	}
+
+	public Optional<Lot> lot(int lotId) {
+		return lots(lotId).stream().findFirst();
 	}
 
 	public Optional<BaselineSummary> currentBaseline(Source source) {
@@ -341,6 +413,152 @@ public class ReadQueries {
 		return Optional.of(new Measurements(set, values.size(), mean, sd, values));
 	}
 
+	/**
+	 * The lot page. Each channel with a band for the phase mean comes with the lot's wafers in position order, and
+	 * at each wafer the least-squares fit of the wafers so far, which PostgreSQL's regression aggregates compute
+	 * over a growing window, judged by {@link HealthModel#project}. Channels out of the band or projected to leave
+	 * it come first, then the ones whose latest fitted value sits furthest from the good runs' mean.
+	 *
+	 * @return empty when no lot has that id; no channels until the lot's source has a baseline
+	 */
+	public Optional<LotDrift> lotDrift(int lotId, Phase phase) {
+		Optional<Lot> lot = lot(lotId);
+		if (lot.isEmpty()) {
+			return Optional.empty();
+		}
+		DetectorConfig.DriftRule rule = config.drift();
+		Optional<BaselineSummary> baseline = currentBaseline(lot.get().source());
+		if (baseline.isEmpty()) {
+			return Optional.of(new LotDrift(lot.get(), phase, null, rule, List.of()));
+		}
+		record Row(String channel, SummaryBand band, int runId, String key, int position, double value, long runs,
+				double positionMean, double valueMean, double sxx, double sxy, double syy) {
+		}
+		Map<String, List<Row>> rowsByChannel = new LinkedHashMap<>();
+		jdbc.sql("""
+				select c.name, b.mean as band_mean, b.sd as band_sd, r.id as run_id, r.run_key, r.position_in_lot, s.mean,
+				       regr_count(s.mean, r.position_in_lot) over wafers_so_far as runs,
+				       regr_avgx(s.mean, r.position_in_lot) over wafers_so_far as position_mean,
+				       regr_avgy(s.mean, r.position_in_lot) over wafers_so_far as value_mean,
+				       regr_sxx(s.mean, r.position_in_lot) over wafers_so_far as sxx,
+				       regr_sxy(s.mean, r.position_in_lot) over wafers_so_far as sxy,
+				       regr_syy(s.mean, r.position_in_lot) over wafers_so_far as syy
+				from run r
+				join run_phase_summary s on s.run_id = r.id and s.phase = :phase
+				join summary_band b on b.baseline_id = :baseline and b.channel_id = s.channel_id and b.phase = s.phase
+				                   and b.stat = 'MEAN'
+				join channel c on c.id = s.channel_id
+				where r.lot_id = :lot
+				window wafers_so_far as (partition by s.channel_id order by r.position_in_lot
+				                         rows between unbounded preceding and current row)
+				order by c.name, r.position_in_lot""")
+			.param("phase", phase.name())
+			.param("baseline", baseline.get().id())
+			.param("lot", lotId)
+			.query((RowCallbackHandler) (rs) -> rowsByChannel.computeIfAbsent(rs.getString("name"), (name) -> new ArrayList<>())
+				.add(new Row(rs.getString("name"), new SummaryBand(rs.getDouble("band_mean"), rs.getDouble("band_sd")),
+						rs.getInt("run_id"), rs.getString("run_key"), rs.getInt("position_in_lot"), rs.getDouble("mean"),
+						rs.getLong("runs"), rs.getDouble("position_mean"), rs.getDouble("value_mean"), rs.getDouble("sxx"),
+						rs.getDouble("sxy"), rs.getDouble("syy"))));
+		List<DriftChannel> channels = new ArrayList<>();
+		for (List<Row> rows : rowsByChannel.values()) {
+			SummaryBand band = rows.get(0).band();
+			List<DriftPoint> points = new ArrayList<>();
+			for (Row row : rows) {
+				if (row.runs() < 2) {
+					// one wafer makes no line, and every drift rule wants at least three
+					points.add(new DriftPoint(row.runId(), row.key(), row.position(), row.value(), band.z(row.value()), 1,
+							null, null, null, null, DriftProjection.State.INSUFFICIENT_RUNS, null, null));
+					continue;
+				}
+				LotFit fit = LotFit.fromSums(row.position(), row.runs(), row.positionMean(), row.valueMean(), row.sxx(),
+						row.sxy(), row.syy());
+				DriftProjection projection = HealthModel.project(fit, band, rule);
+				points.add(new DriftPoint(row.runId(), row.key(), row.position(), row.value(), band.z(row.value()),
+						fit.runs(), fit.slope(), fit.intercept(), finite(fit.tStat()), fit.valueAt(row.position()),
+						projection.state(), boxed(projection.firstOutPosition()), boxed(projection.runsRemaining())));
+			}
+			channels.add(new DriftChannel(rows.get(0).channel(), band.mean(), band.sd(), band.low(rule.k()),
+					band.high(rule.k()), points.get(points.size() - 1).state(), points));
+		}
+		channels.sort(Comparator.comparingInt((DriftChannel channel) -> urgency(channel.state()))
+			.thenComparing(Comparator.comparingDouble(ReadQueries::distanceFromMean).reversed())
+			.thenComparing(DriftChannel::channel));
+		return Optional.of(new LotDrift(lot.get(), phase, baseline.get(), rule, channels));
+	}
+
+	/** The drift report, over every lot of the source. */
+	public DriftVsDepth driftVsDepth(Source source) {
+		Optional<BaselineSummary> baseline = currentBaseline(source);
+		int referenceWafers = config.goodRunsPerLot();
+		Map<Integer, List<PositionDepth>> depth = new HashMap<>();
+		jdbc.sql("""
+				with source_run as (
+				    select r.id, r.lot_id, r.position_in_lot
+				    from run r
+				    join lot l on l.id = r.lot_id
+				    where l.source = :source
+				),
+				wafer as (
+				    select m.run_id, m.measurement_set, avg(m.depth_um) as depth
+				    from measurement m
+				    join source_run sr on sr.id = m.run_id
+				    group by m.run_id, m.measurement_set
+				),
+				reference as (
+				    select sr.lot_id, w.measurement_set, avg(w.depth) as depth
+				    from wafer w
+				    join source_run sr on sr.id = w.run_id
+				    where sr.position_in_lot <= :referenceWafers
+				    group by sr.lot_id, w.measurement_set
+				)
+				select sr.position_in_lot, w.measurement_set, count(*) as wafers, avg(w.depth) as mean_depth,
+				       avg(ref.depth - w.depth) as mean_loss
+				from wafer w
+				join source_run sr on sr.id = w.run_id
+				left join reference ref on ref.lot_id = sr.lot_id and ref.measurement_set = w.measurement_set
+				group by sr.position_in_lot, w.measurement_set
+				order by sr.position_in_lot, w.measurement_set""")
+			.param("source", source.name())
+			.param("referenceWafers", referenceWafers)
+			.query((RowCallbackHandler) (rs) -> depth.computeIfAbsent(rs.getInt("position_in_lot"), (position) -> new ArrayList<>())
+				.add(new PositionDepth(MeasurementSet.valueOf(rs.getString("measurement_set")), rs.getInt("wafers"),
+						rs.getDouble("mean_depth"), decimal(rs, "mean_loss"))));
+		List<PositionDrift> positions = jdbc.sql("""
+				with drift as (
+				    select v.run_id, sqrt(avg(v.sf6_mean_z * v.sf6_mean_z)) as score
+				    from channel_verdict v
+				    where v.baseline_id = :baseline and v.sf6_mean_z is not null
+				    group by v.run_id
+				)
+				select r.position_in_lot, count(*) as runs, count(d.score) as scored_runs, avg(d.score) as mean_drift_score,
+				       count(a.run_id) filter (where a.limit_flags + a.deviation_flags > 0) as flagged_runs
+				from run r
+				join lot l on l.id = r.lot_id
+				left join run_assessment a on a.baseline_id = :baseline and a.run_id = r.id
+				left join drift d on d.run_id = r.id
+				where l.source = :source
+				group by r.position_in_lot
+				order by r.position_in_lot""")
+			.param("baseline", baseline.map(BaselineSummary::id).orElse(null), Types.INTEGER)
+			.param("source", source.name())
+			.query((rs, row) -> new PositionDrift(rs.getInt("position_in_lot"), rs.getInt("runs"),
+					rs.getInt("scored_runs"), decimal(rs, "mean_drift_score"), rs.getInt("flagged_runs"),
+					depth.getOrDefault(rs.getInt("position_in_lot"), List.of())))
+			.list();
+		return new DriftVsDepth(source, baseline.orElse(null), referenceWafers, positions);
+	}
+
+	/** @param lotId one lot, or every lot when null */
+	private List<Lot> lots(Integer lotId) {
+		return jdbc.sql(LOTS)
+			.param("lot", lotId, Types.INTEGER)
+			.query((rs, row) -> new Lot(rs.getInt("id"), Source.valueOf(rs.getString("source")), rs.getInt("lot_no"),
+					date(rs, "run_date"), integer(rs, "conditioning_count"), rs.getString("conditioning_surface"),
+					rs.getInt("runs"), rs.getInt("flagged_runs")))
+			.list();
+	}
+
 	private List<Channel> channels(int baselineId, int runId) {
 		Map<String, List<Excursion>> excursions = new HashMap<>();
 		excursions(baselineId, runId, null, slotTimes(runId))
@@ -431,6 +649,30 @@ public class ReadQueries {
 		double[] sdBand = (bands == null) ? null : bands.get(phase + "-SD");
 		return new PhaseEvidence(phase, part(summary, 0), part(summary, 1), part(meanBand, 0), part(meanBand, 1), meanZ,
 				part(sdBand, 0), part(sdBand, 1), sdZ);
+	}
+
+	/** Out of the band first, then projected to leave it, then the rest. */
+	private static int urgency(DriftProjection.State state) {
+		return switch (state) {
+			case OUT_OF_BAND -> 0;
+			case WILL_EXIT -> 1;
+			default -> 2;
+		};
+	}
+
+	/** The latest fitted value's distance from the good runs' mean in their standard deviations, or the value's before a fit. */
+	private static double distanceFromMean(DriftChannel channel) {
+		DriftPoint latest = channel.points().get(channel.points().size() - 1);
+		double value = (latest.fitted() != null) ? latest.fitted() : latest.value();
+		return Math.abs(value - channel.bandMean()) / channel.bandSd();
+	}
+
+	private static Double finite(double value) {
+		return Double.isFinite(value) ? value : null;
+	}
+
+	private static Integer boxed(OptionalInt value) {
+		return value.isPresent() ? value.getAsInt() : null;
 	}
 
 	private static Double part(double[] pair, int index) {
