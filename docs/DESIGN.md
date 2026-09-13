@@ -19,6 +19,9 @@ java -jar backend/target/chamberwatch.jar align --data=data/public/zenodo1712244
 # Load the public files, then fit a baseline and score every run. A rerun adds zero rows.
 java -jar backend/target/chamberwatch.jar ingest --data=data/public/zenodo17122442
 
+# Measure the simulator's template from the public wafers. Writes backend/src/main/resources/sim/template.tsv.
+java -jar backend/target/chamberwatch.jar sim-template --data=data/public/zenodo17122442 --out=backend/src/main/resources/sim/template.tsv
+
 # Store one seeded synthetic lot with known faults, for the UI.
 java -jar backend/target/chamberwatch.jar simulate-lot --seed=7 --lot=901
 
@@ -67,14 +70,14 @@ void stuckSf6FlowIsCaughtOnGas5FlowFirst() {
     Baseline baseline = HealthModel.fit(
         sim.cleanTrainingRuns(30).map(r -> Aligner.STANDARD.align(r.raw()).orElseThrow()),
         DetectorConfig.defaults());
-    SimulatedRun simulated = sim.run(RunSpec.faulted(901, 7,
-        FaultPlan.persistent(FaultKind.GAS_FLOW_STUCK_LOW, ChannelName.of("Gas5Flow"), 30.25, 0.45)));
+    SimulatedRun simulated = sim.run(RunSpec.faulted(901, 2,
+        FaultPlan.gasFlowStuckLow(ChannelName.GAS5_FLOW, 30.25, 0.45)));
     AlignedRun run = Aligner.STANDARD.align(simulated.raw()).orElseThrow();
 
     RunAssessment result = HealthModel.assess(run, baseline);
 
-    assertThat(result.firstChannel()).contains(ChannelName.of("Gas5Flow"));
-    Excursion first = result.verdict(ChannelName.of("Gas5Flow")).firstExcursion().orElseThrow();
+    assertThat(result.firstChannel()).contains(ChannelName.GAS5_FLOW);
+    Excursion first = result.verdict(ChannelName.GAS5_FLOW).firstExcursion().orElseThrow();
     assertThat(run.timeAt(first.confirmSlot()) - simulated.fault().orElseThrow().startS()).isBetween(0.0, 6.0);
 }
 ```
@@ -191,13 +194,13 @@ A crash loses at most the wafer in flight, and a rerun resumes. Spring Batch is 
 
 ## Evaluation
 
-`Evaluation.run(EvaluationConfig)` is pure and needs no database. It fits a baseline on 30 clean simulated runs, the first 3 wafers of 10 lots, then generates 1,000 test runs in lots of 10 with 100 faulted, 25 per kind, starting between cycle 5 and cycle 90. Each run is simulated, aligned, scored and dropped, so memory stays small.
+`Evaluation.run(EvaluationConfig, SimulationTemplate)` is pure and needs no database. It fits a baseline on 30 clean simulated runs, the first 3 wafers of 10 lots, then generates 1,000 test runs in lots of 10 with 100 faulted, 25 per kind, starting between cycle 5 and cycle 90. Each run is simulated, aligned, scored and dropped, so memory stays small.
 
-The simulator draws each run from its own `SplittableRandom`, seeded from the seed, the stream, the lot and the position, so a run does not depend on generation order. It uses `StrictMath`, so a seed gives the same bits on Windows and Linux. Channel levels and noise per phase and offset come from a template built once from the public baseline and committed, so CI never needs the public files. Runs carry the public data's quirks: start offsets, the pre-etch steps, all three etch starts, the longer last SF6 phase, jitter, and gaps after the etch.
+The simulator seeds each run from the seed, the lot, the position and the purpose of the draw, so a run does not depend on generation order. It uses `StrictMath`, so a seed gives the same bits on Windows and Linux. A template measured once from the public wafers and committed gives, per channel and phase, the average shape, the per-cycle trend, lot and run levels, drift along the lot, slow wander, fast noise, and the swings good runs showed, so CI never needs the public files. Runs carry the public data's quirks: start offsets, the pre-etch steps, all three etch starts, the longer last SF6 phase, jitter, single-sample power dips, and gaps after the etch. The data cannot measure two settings, the shape of the lot-level distribution and the swing rate. Both were chosen so that simulated good wafers from unseen lots alarm like the public ones, and `SimulatorCalibrationTest` holds them there.
 
 The four fault kinds are a gas flow stuck low, a pressure spike, a reflected power rise, and a sensor dropout to zero. A flow stuck below half its setpoint also hides its phase marker, so the aligner predicts onsets and marks the run degraded. That is evidence too, and the run page shows it.
 
-`FaultSignature` maps a first excursion to the kind it looks like, so precision can be counted per kind. The metrics are precision and recall per kind, median detection latency in seconds after the fault starts, false alarms per 1,000 clean runs, and how often the rank 1 channel is the injected one. `results/metrics.json` has sorted keys and 4 decimals, and CI fails when a rate moves more than 0.02 or a latency more than 0.5 s.
+`FaultSignature` maps the first matching excursion to the kind it looks like, so precision can be counted per kind. The metrics are precision and recall per kind, median detection latency in seconds after the fault starts, the share of clean runs flagged, and how often the rank 1 channel is the injected one. `results/metrics.json` has sorted keys and 4 decimals, and CI fails when a rate moves more than 0.02 or a latency more than 0.5 s. [EVALUATION.md](EVALUATION.md) has the model, the calibration and the results.
 
 On public data the output is descriptive only: each run's drift score, the root mean square of its SF6-mean z-scores, averaged by position in lot, next to measured depth by position, with the 9-point and 89-point sets kept apart.
 
@@ -250,7 +253,9 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 - On the public data the limit flags mark a change in the platen match network in four lots, yet those wafers etch no shallower than wafers at the same position in other lots. A flag says the tool changed, not that the wafer is bad.
 - A dropout that holds the last value is invisible to a band detector. v1 simulates dropouts as zeros. Is that acceptable?
 - The gas identities are an inference. Nothing in the dataset names the gas lines.
+- The simulator's drift is a straight line along the lot, so its wafers 9 and 10 cross the run-level threshold on drifting channels, which no public late wafer did. A drift that levels off, fitted per channel, may match better.
+- Simulated channels are independent, so ranking is only tested against unrelated departures, never against a fault's own knock-on effects on other channels.
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors and the stored baselines are built, and `ingest` ends by scoring every public wafer. Next is the simulator and the evaluation: seeded synthetic runs with the four fault kinds, scored in memory, with `results/metrics.json` checked in CI.
+The aligner, the ingest, the detectors, the stored baselines, the simulator and the evaluation are built. Next is the HTTP API over the stored runs and assessments, with the OpenAPI description, then the React screens and the `simulate-lot` and `report` commands.
