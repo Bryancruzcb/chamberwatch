@@ -108,7 +108,7 @@ All lengths are in micrometres, including the X and Y coordinates.
 
 The last 9 rows of that file have no experiment_key, lot or wafer. Comparing their pre-etch oxide readings with the 89-point file does not identify a wafer, because the same comparison cannot tell two known wafers apart either. ChamberWatch skips those rows.
 
-`Si_Oxide_etch_89_points.csv` was measured again in February 2025, with different instruments, at 89 locations. Its columns are experiment_key, lot_number, wafer_number, X, Y, preox_thickness, postox_thickness, postox_thickness_nan, stepheight, oxide_etch and si_etch. Per the Readme, the pre-etch oxide was interpolated from 15 measured points. Where the post-etch oxide reading failed, `postox_thickness_nan` is blank, 157 cells in all, and `postox_thickness` holds an interpolated value.
+`Si_Oxide_etch_89_points.csv` was measured again in February 2025, with different instruments, at 89 locations. Its columns are experiment_key, lot_number, wafer_number, X, Y, preox_thickness, postox_thickness, postox_thickness_nan, stepheight, oxide_etch and si_etch. Per the Readme, the pre-etch oxide was interpolated from 15 measured points. Where the post-etch oxide reading failed, `postox_thickness_nan` reads `N/A`, 157 cells in all, and `postox_thickness` holds an interpolated value.
 
 `experiment_key` is `YYYY-MM-DD_NN`, the lot date and the wafer number. It matches the telemetry group `Day_YYYY_MM_DD_Wafer_NN`.
 
