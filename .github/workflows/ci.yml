@@ -42,4 +42,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm run build
+      - run: npm test
+      - name: Install the Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Build, then drive the built app
+        run: npm run e2e

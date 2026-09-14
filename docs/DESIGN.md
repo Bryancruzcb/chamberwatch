@@ -63,6 +63,10 @@ A relabel answers once the refresh is done, so the next read already reflects it
 
 The lot call returns every channel that has a good-run band on the phase mean. Each comes with the lot's wafers in position order, the fit of the wafers so far at each one, the drift state that fit gives, and the state as of the last wafer. Channels out of the band or projected to leave it come first. On the public data every lot call after the first answers in under 25 ms, and the states as of each lot's last wafer are exactly the table in [DATA.md](DATA.md#flags-and-measured-depth). The report averages each run's drift score by position in lot, next to mean depth and the depth lost since the lot's first 3 wafers, for each measurement set. On the 89-point file the depth loss grows from 0.27 µm at wafer 4 to 0.90 µm at wafer 10, and the mean drift score rises from 0.8 over wafers 1 to 3 to 1.36 at wafer 8.
 
+### Web app
+
+`frontend/` is a React app that reads only the HTTP API. Every response goes through a zod schema where it enters the app, so a field the server stops sending fails in one place instead of deep inside a page. The run page's chart is SVG drawn from the trace buckets: the lowest and highest reading per bucket, the good-run band where the slot has one, and each excursion shaded. The pointer or the arrow keys read one bucket at a time, and the chart has a table view. `npm run e2e` builds the app and drives the built bundle in Chromium, answering API calls with responses captured from the public data, so the tests need no backend.
+
 ### Java call sites
 
 A unit test scores one synthetic run with no Spring and no database:
@@ -263,4 +267,4 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation and the HTTP API are built. Next are the React screens, then the `simulate-lot` and `report` commands.
+The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API, and the runs table and run page are built. Next are the lot page, the wafer page and the report page, then the `simulate-lot` and `report` commands.

@@ -2,7 +2,7 @@
 
 Tool-health monitoring for a plasma etch tool. ChamberWatch reads each wafer's machine telemetry, learns what a good run looks like at each point in the recipe, and flags runs that go out of range or drift across a lot. For every flag it shows which sensor changed first, next to the measured result on the wafer.
 
-Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). An HTTP API serves the runs table, each run's ranked channels and charts, wafer measurements, relabeling, lot drift and a drift-versus-depth report. The React screens come next. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
+Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). An HTTP API serves the runs table, each run's ranked channels and charts, wafer measurements, relabeling, lot drift and a drift-versus-depth report. A React app shows the runs table and each run's page, with its trace against the good-run band. The lot, wafer and report pages come next. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
 
 ## Data
 
@@ -46,5 +46,9 @@ java -jar target/chamberwatch.jar sim-template --data=../data/public/zenodo17122
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev     # http://localhost:5173, passing /api to the backend on port 8080
+npm test        # unit tests
+npm run e2e     # build, then drive the built app in Chromium against API responses captured from the public data
 ```
+
+If the backend runs on another port, point the dev server at it with `CHAMBERWATCH_API=http://localhost:18080 npm run dev`.
