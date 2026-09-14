@@ -1,9 +1,6 @@
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { serveApi } from './api.ts'
-
-function stat(page: Page, label: string): Locator {
-  return page.locator('.stat').filter({ has: page.locator('dt', { hasText: label }) }).locator('.stat-value')
-}
+import { stat } from './locators.ts'
 
 test('shows why a flagged wafer was flagged', async ({ page }) => {
   await serveApi(page)

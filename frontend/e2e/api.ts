@@ -16,7 +16,8 @@ export interface ApiLog {
 
 /**
  * Answers the page's API calls with responses captured from the real API on the public data: the lot list, the runs
- * table, runs 55 and 11, and one trace, which serves for any channel. Every other run is missing, like run 9999.
+ * table, runs 55 and 11, one trace that serves for any channel, run 55's measurements, lot 6's drift and the drift
+ * report. Every other run and lot is missing, like run 9999.
  */
 export async function serveApi(page: Page): Promise<ApiLog> {
   const log: ApiLog = { requests: [], relabels: [] }
@@ -41,6 +42,21 @@ function answer(request: Request, url: URL, log: ApiLog): { status: number; body
   }
   if (path === '/api/runs') {
     return found(filterRuns(read('runs.json'), url.searchParams))
+  }
+  if (path === '/api/reports/drift-vs-depth') {
+    return found(read('drift-vs-depth.json'))
+  }
+  const lot = /^\/api\/lots\/(\d+)\/drift$/.exec(path)?.[1]
+  if (lot !== undefined) {
+    return lot === '6' ? found(inPhase(read('drift-6.json'), url.searchParams.get('phase') ?? 'SF6')) : missing(`no lot ${lot}`)
+  }
+  const measured = /^\/api\/runs\/(\d+)\/measurements$/.exec(path)?.[1]
+  if (measured !== undefined) {
+    const set = url.searchParams.get('set') ?? 'EIGHTY_NINE_POINT'
+    if (measured !== '55') {
+      return found({ set, points: 0, meanDepthUm: null, sdDepthUm: null, values: [] })
+    }
+    return found(read(set === 'NINE_POINT' ? 'measurements-55-nine.json' : 'measurements-55.json'))
   }
   const run = /^\/api\/runs\/(\d+)$/.exec(path)?.[1]
   if (run !== undefined) {
@@ -85,6 +101,11 @@ function asAsked(trace: unknown, channel: string, params: URLSearchParams): unkn
   const from = params.get('fromCycle')
   const to = params.get('toCycle')
   return { ...trace, channel, fromCycle: from === null ? null : Number(from), toCycle: to === null ? null : Number(to) }
+}
+
+/** The captured lot drift, labeled with the phase the page asked for. */
+function inPhase(drift: unknown, phase: string): unknown {
+  return isObject(drift) ? { ...drift, phase } : drift
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

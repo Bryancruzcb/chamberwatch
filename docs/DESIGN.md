@@ -65,7 +65,7 @@ The lot call returns every channel that has a good-run band on the phase mean. E
 
 ### Web app
 
-`frontend/` is a React app that reads only the HTTP API. Every response goes through a zod schema where it enters the app, so a field the server stops sending fails in one place instead of deep inside a page. The run page's chart is SVG drawn from the trace buckets: the lowest and highest reading per bucket, the good-run band where the slot has one, and each excursion shaded. The pointer or the arrow keys read one bucket at a time, and the chart has a table view. `npm run e2e` builds the app and drives the built bundle in Chromium, answering API calls with responses captured from the public data, so the tests need no backend.
+`frontend/` is a React app that reads only the HTTP API. Every response goes through a zod schema where it enters the app, so a field the server stops sending fails in one place instead of deep inside a page. The charts are SVG, with no chart library. The run page draws each trace bucket's lowest and highest reading against the good-run band, with the excursions shaded. The lot page plots a channel's phase mean by wafer against the band, with the fitted line dashed where it projects. The wafer page places every measured site on the wafer, shaded by depth on one blue ramp. The lots page puts the drift score and the depth loss by wafer position in two charts, never on two axes of one. The pointer or the arrow keys read one value at a time, and every chart has a table view. `npm run e2e` builds the app and drives the built bundle in Chromium, answering API calls with responses captured from the public data, so the tests need no backend.
 
 ### Java call sites
 
@@ -267,4 +267,4 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API, and the runs table and run page are built. Next are the lot page, the wafer page and the report page, then the `simulate-lot` and `report` commands.
+The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API and the web app are built. Next are the `simulate-lot` and `report` commands.
