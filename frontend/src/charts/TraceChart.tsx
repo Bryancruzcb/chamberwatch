@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, type PointerEvent, useCallback, useId, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, useId, useMemo, useState } from 'react'
 import type { Trace, TracePoint } from '../api/schema'
 import { formatScore, formatSeconds, formatValue, MISSING } from '../format'
 import { type LinearScale, linearScale, niceInterval, niceTicks } from './scale'
@@ -14,6 +14,7 @@ import {
   traceExtent,
   type Vertex,
 } from './trace'
+import { useWidth } from './useWidth'
 
 const PLOT_HEIGHT = 280
 const MARGIN = { top: 12, right: 16, bottom: 44, left: 64 } as const
@@ -309,27 +310,4 @@ function areaPath(segment: readonly BandVertex[], x: LinearScale, y: LinearScale
   const upper = segment.map((vertex): Vertex => [vertex.time, vertex.high])
   const lower = segment.map((vertex): Vertex => [vertex.time, vertex.low]).reverse()
   return `${linePath([...upper, ...lower], x, y)}Z`
-}
-
-/** The rendered width of an element, kept current as the layout changes. */
-function useWidth(): [number, (element: HTMLDivElement | null) => void] {
-  const [width, setWidth] = useState(0)
-  const observer = useRef<ResizeObserver | null>(null)
-  const measure = useCallback((element: HTMLDivElement | null) => {
-    observer.current?.disconnect()
-    observer.current = null
-    if (element === null) {
-      return
-    }
-    setWidth(Math.round(element.getBoundingClientRect().width))
-    const watcher = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (entry !== undefined) {
-        setWidth(Math.round(entry.contentRect.width))
-      }
-    })
-    watcher.observe(element)
-    observer.current = watcher
-  }, [])
-  return [width, measure]
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { type AlignmentStatus, isFlagged, type Score } from '../api/schema'
+import { type AlignmentStatus, type DriftState, isFlagged, type Score } from '../api/schema'
+import { formatDriftState } from '../format'
 
 type Tone = 'good' | 'warning' | 'serious' | 'critical' | 'neutral'
 
@@ -11,6 +12,14 @@ const ICONS: Record<Tone, ReactNode> = {
   critical: <circle cx="6" cy="6" r="5" fill="currentColor" />,
   neutral: <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />,
 }
+
+const DRIFT_TONES = {
+  OUT_OF_BAND: 'critical',
+  WILL_EXIT: 'warning',
+  STAYS_IN: 'neutral',
+  NO_TREND: 'good',
+  INSUFFICIENT_RUNS: 'neutral',
+} as const satisfies Record<DriftState, Tone>
 
 export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
@@ -30,6 +39,11 @@ export function RunStatus({ alignment, score, good }: { alignment: AlignmentStat
       {good && <span className="tag">Baseline run</span>}
     </span>
   )
+}
+
+/** The lot drift detector's verdict on a channel. */
+export function DriftBadge({ state }: { state: DriftState }) {
+  return <Badge tone={DRIFT_TONES[state]}>{formatDriftState(state)}</Badge>
 }
 
 function Verdict({ alignment, score }: { alignment: AlignmentStatus; score: Score | null }) {

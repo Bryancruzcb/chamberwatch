@@ -13,6 +13,14 @@
   --link: #1c5cab;
   --focus: #2a78d6;
   --series-1: #2a78d6;
+  --series-2: #eb6834;
+  /* One blue ramp for magnitude, shallow to deep. */
+  --seq-1: #86b6ef;
+  --seq-2: #5598e7;
+  --seq-3: #2a78d6;
+  --seq-4: #1c5cab;
+  --seq-5: #104281;
+  --seq-6: #0d366b;
   --band: rgba(137, 135, 129, 0.18);
   --good: #0ca30c;
   --warning: #fab219;
@@ -55,6 +63,14 @@
     --link: #86b6ef;
     --focus: #3987e5;
     --series-1: #3987e5;
+    --series-2: #d95926;
+    /* The ramp flips in dark mode, so the shallow end sits near the surface. */
+    --seq-1: #184f95;
+    --seq-2: #256abf;
+    --seq-3: #3987e5;
+    --seq-4: #6da7ec;
+    --seq-5: #9ec5f4;
+    --seq-6: #cde2fb;
     --band: rgba(195, 194, 183, 0.13);
     --critical-wash: rgba(208, 59, 59, 0.24);
     --shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
@@ -685,6 +701,164 @@ tbody tr.selected a {
 .readout dd {
   margin: 0;
   text-align: right;
+}
+
+.head-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: var(--text-sm);
+}
+
+.chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.chart-title {
+  font-weight: 600;
+}
+
+.chart-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 24px;
+}
+
+.position-frame {
+  min-height: 272px;
+}
+
+.series-1 {
+  --series: var(--series-1);
+}
+
+.series-2 {
+  --series: var(--series-2);
+}
+
+.key-line.series-2 {
+  background: var(--series-2);
+}
+
+.series-line {
+  fill: none;
+  stroke: var(--series);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dot {
+  fill: var(--series);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.fit-line {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.fit-projection {
+  stroke-dasharray: 4 3;
+}
+
+.key-fit {
+  width: 16px;
+  border-top: 2px solid var(--ink-2);
+}
+
+.key-projection {
+  border-top-style: dashed;
+}
+
+.wafer-chart {
+  grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px 32px;
+}
+
+.wafer-chart .table-wrap {
+  grid-column: 1 / -1;
+}
+
+.wafer-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .wafer-chart {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.wafer-frame {
+  position: relative;
+  width: min(100%, 460px);
+}
+
+.wafer-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.wafer {
+  fill: var(--wash);
+  stroke: var(--axis);
+  stroke-width: 1;
+}
+
+.site {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.site.active {
+  stroke: var(--ink);
+}
+
+.site-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.seq-1 { fill: var(--seq-1); background: var(--seq-1); }
+.seq-2 { fill: var(--seq-2); background: var(--seq-2); }
+.seq-3 { fill: var(--seq-3); background: var(--seq-3); }
+.seq-4 { fill: var(--seq-4); background: var(--seq-4); }
+.seq-5 { fill: var(--seq-5); background: var(--seq-5); }
+.seq-6 { fill: var(--seq-6); background: var(--seq-6); }
+
+.scale-legend {
+  display: grid;
+  gap: 4px;
+  width: min(100%, 320px);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.scale-swatches {
+  display: flex;
+  gap: 2px;
+}
+
+.scale-swatches span {
+  flex: 1;
+  height: 10px;
+}
+
+.scale-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .readout-alert dt::before {

@@ -80,6 +80,10 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
         </p>
         <h1 className="key">{run.key}</h1>
         <RunStatus alignment={run.alignment.kind === 'failed' ? 'FAILED' : run.alignment.status} score={assessment} good={run.good} />
+        <p className="head-links">
+          <Link to={`/runs/${run.id}/wafer`}>Measured depth</Link>
+          <Link to={`/lots/${run.lotId}`}>{`Lot ${run.lotNo} drift`}</Link>
+        </p>
       </header>
       {assessment === null
         ? <p className="status-line">This run has no score under the current baseline.</p>
