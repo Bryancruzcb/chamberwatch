@@ -2,6 +2,7 @@ package io.github.bryancruzcb.chamberwatch.api;
 
 import java.util.List;
 
+import io.github.bryancruzcb.chamberwatch.detect.DriftReference;
 import io.github.bryancruzcb.chamberwatch.recipe.Phase;
 import io.github.bryancruzcb.chamberwatch.store.ReadQueries;
 
@@ -30,11 +31,15 @@ class LotsController {
 		return queries.lots();
 	}
 
-	/** Each channel's phase mean across the lot, with the drift detector's verdict as of every wafer. */
+	/**
+	 * Each channel's phase mean across the lot, with the drift detector's verdict as of every wafer. The band is
+	 * centered on the good runs, or with {@code reference=LOT} on the lot's own first wafers.
+	 */
 	@GetMapping("/{lotId}/drift")
 	ReadQueries.LotDrift drift(@PathVariable("lotId") int lotId,
-			@RequestParam(name = "phase", defaultValue = "SF6") Phase phase) {
-		return queries.lotDrift(lotId, phase)
+			@RequestParam(name = "phase", defaultValue = "SF6") Phase phase,
+			@RequestParam(name = "reference", defaultValue = "GLOBAL") DriftReference reference) {
+		return queries.lotDrift(lotId, phase, reference)
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "no lot " + lotId));
 	}
 

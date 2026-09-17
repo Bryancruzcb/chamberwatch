@@ -19,6 +19,7 @@ import java.util.OptionalInt;
 
 import io.github.bryancruzcb.chamberwatch.detect.DetectorConfig;
 import io.github.bryancruzcb.chamberwatch.detect.DriftProjection;
+import io.github.bryancruzcb.chamberwatch.detect.DriftReference;
 import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
 import io.github.bryancruzcb.chamberwatch.detect.Label;
 import io.github.bryancruzcb.chamberwatch.detect.LotFit;
@@ -171,9 +172,14 @@ public class ReadQueries {
 			DriftProjection.State state, List<DriftPoint> points) {
 	}
 
-	/** @param baseline null until the lot's source has been refreshed once */
+	/**
+	 * @param baseline        null until the lot's source has been refreshed once
+	 * @param reference       what centers each channel's band: the good runs, or this lot's own first wafers
+	 * @param referenceWafers how many of the lot's first wafers a {@code LOT} reference averages, at most; a channel
+	 *                        with none of them summarized keeps the good runs' mean
+	 */
 	public record LotDrift(Lot lot, Phase phase, BaselineSummary baseline, DetectorConfig.DriftRule rule,
-			List<DriftChannel> channels) {
+			DriftReference reference, int referenceWafers, List<DriftChannel> channels) {
 	}
 
 	/**
@@ -440,22 +446,30 @@ public class ReadQueries {
 	 *
 	 * @return empty when no lot has that id; no channels until the lot's source has a baseline
 	 */
-	public Optional<LotDrift> lotDrift(int lotId, Phase phase) {
+	/**
+	 * @param reference {@code LOT} centers each channel's band on the mean of the lot's first wafers, as many as
+	 *                  the good-run policy takes per lot, keeping the good runs' spread; {@code GLOBAL} keeps the
+	 *                  good runs' mean
+	 */
+	public Optional<LotDrift> lotDrift(int lotId, Phase phase, DriftReference reference) {
 		Optional<Lot> lot = lot(lotId);
 		if (lot.isEmpty()) {
 			return Optional.empty();
 		}
 		DetectorConfig.DriftRule rule = config.drift();
+		int referenceWafers = config.goodRunsPerLot();
 		Optional<BaselineSummary> baseline = currentBaseline(lot.get().source());
 		if (baseline.isEmpty()) {
-			return Optional.of(new LotDrift(lot.get(), phase, null, rule, List.of()));
+			return Optional.of(new LotDrift(lot.get(), phase, null, rule, reference, referenceWafers, List.of()));
 		}
-		record Row(String channel, SummaryBand band, int runId, String key, int position, double value, long runs,
-				double positionMean, double valueMean, double sxx, double sxy, double syy) {
+		record Row(String channel, SummaryBand band, Double lotStart, int runId, String key, int position, double value,
+				long runs, double positionMean, double valueMean, double sxx, double sxy, double syy) {
 		}
 		Map<String, List<Row>> rowsByChannel = new LinkedHashMap<>();
 		jdbc.sql("""
 				select c.name, b.mean as band_mean, b.sd as band_sd, r.id as run_id, r.run_key, r.position_in_lot, s.mean,
+				       avg(s.mean) filter (where r.position_in_lot <= :referenceWafers)
+				           over (partition by s.channel_id) as lot_start,
 				       regr_count(s.mean, r.position_in_lot) over wafers_so_far as runs,
 				       regr_avgx(s.mean, r.position_in_lot) over wafers_so_far as position_mean,
 				       regr_avgy(s.mean, r.position_in_lot) over wafers_so_far as value_mean,
@@ -474,14 +488,18 @@ public class ReadQueries {
 			.param("phase", phase.name())
 			.param("baseline", baseline.get().id())
 			.param("lot", lotId)
+			.param("referenceWafers", referenceWafers)
 			.query((RowCallbackHandler) (rs) -> rowsByChannel.computeIfAbsent(rs.getString("name"), (name) -> new ArrayList<>())
 				.add(new Row(rs.getString("name"), new SummaryBand(rs.getDouble("band_mean"), rs.getDouble("band_sd")),
-						rs.getInt("run_id"), rs.getString("run_key"), rs.getInt("position_in_lot"), rs.getDouble("mean"),
+						decimal(rs, "lot_start"), rs.getInt("run_id"), rs.getString("run_key"), rs.getInt("position_in_lot"),
+						rs.getDouble("mean"),
 						rs.getLong("runs"), rs.getDouble("position_mean"), rs.getDouble("value_mean"), rs.getDouble("sxx"),
 						rs.getDouble("sxy"), rs.getDouble("syy"))));
 		List<DriftChannel> channels = new ArrayList<>();
 		for (List<Row> rows : rowsByChannel.values()) {
-			SummaryBand band = rows.get(0).band();
+			// the lot's own start centers the band only where the lot has first wafers to average
+			SummaryBand band = (reference == DriftReference.LOT && rows.get(0).lotStart() != null)
+					? new SummaryBand(rows.get(0).lotStart(), rows.get(0).band().sd()) : rows.get(0).band();
 			List<DriftPoint> points = new ArrayList<>();
 			for (Row row : rows) {
 				if (row.runs() < 2) {
@@ -503,7 +521,7 @@ public class ReadQueries {
 		channels.sort(Comparator.comparingInt((DriftChannel channel) -> urgency(channel.state()))
 			.thenComparing(Comparator.comparingDouble(ReadQueries::distanceFromMean).reversed())
 			.thenComparing(DriftChannel::channel));
-		return Optional.of(new LotDrift(lot.get(), phase, baseline.get(), rule, channels));
+		return Optional.of(new LotDrift(lot.get(), phase, baseline.get(), rule, reference, referenceWafers, channels));
 	}
 
 	/** The drift report, over every lot of the source. */

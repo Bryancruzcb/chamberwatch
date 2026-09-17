@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from 'react-router'
-import { type DriftChannel, type DriftRule, type LotDrift, lotDriftSchema, type Phase } from '../api/schema'
+import { type DriftChannel, type DriftReference, type DriftRule, type LotDrift, lotDriftSchema, type Phase } from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { PositionChart, type PositionFit } from '../charts/PositionChart'
@@ -11,6 +11,7 @@ import { formatConditioning, formatDate, formatDriftState, formatScore, formatVa
 import { NotFound } from './NotFound'
 
 const PHASES = [['SF6', 'SF6'], ['C4F8', 'C4F8']] as const
+const REFERENCES = [['GLOBAL', 'Good runs of every lot'], ['LOT', "This lot's first wafers"]] as const
 
 export function LotPage() {
   const { lotId } = useParams()
@@ -23,16 +24,22 @@ export function LotPage() {
 function LotView({ lotId }: { lotId: number }) {
   const [params, setParams] = useSearchParams()
   const phase: Phase = params.get('phase') === 'C4F8' ? 'C4F8' : 'SF6'
-  const [drift] = useResource(`/api/lots/${lotId}/drift?phase=${phase}`, lotDriftSchema)
+  const reference: DriftReference = params.get('reference') === 'LOT' ? 'LOT' : 'GLOBAL'
+  const query = new URLSearchParams({ phase })
+  if (reference !== 'GLOBAL') {
+    query.set('reference', reference)
+  }
+  const [drift] = useResource(`/api/lots/${lotId}/drift?${query}`, lotDriftSchema)
 
-  function choosePhase(next: Phase) {
+  /** Sets one query parameter, dropping it at its default so the plain link stays the plain link. */
+  function choose(name: string, value: string, fallback: string) {
     setParams((current) => {
       const search = new URLSearchParams(current)
-      if (next === 'SF6') {
-        search.delete('phase')
+      if (value === fallback) {
+        search.delete(name)
       }
       else {
-        search.set('phase', next)
+        search.set(name, value)
       }
       return search
     }, { replace: true, preventScrollReset: true })
@@ -40,12 +47,24 @@ function LotView({ lotId }: { lotId: number }) {
 
   return (
     <Loaded resource={drift}>
-      {(data) => <LotDetails drift={data} phase={phase} onPhase={choosePhase} />}
+      {(data) => (
+        <LotDetails
+          drift={data}
+          phase={phase}
+          onPhase={(next) => choose('phase', next, 'SF6')}
+          onReference={(next) => choose('reference', next, 'GLOBAL')}
+        />
+      )}
     </Loaded>
   )
 }
 
-function LotDetails({ drift, phase, onPhase }: { drift: LotDrift; phase: Phase; onPhase: (phase: Phase) => void }) {
+function LotDetails({ drift, phase, onPhase, onReference }: {
+  drift: LotDrift
+  phase: Phase
+  onPhase: (phase: Phase) => void
+  onReference: (reference: DriftReference) => void
+}) {
   const [params] = useSearchParams()
   const { lot, rule, channels } = drift
   const selected = channels.find((channel) => channel.channel === params.get('channel')) ?? channels[0]
@@ -74,7 +93,10 @@ function LotDetails({ drift, phase, onPhase }: { drift: LotDrift; phase: Phase; 
         <Stat label="Out of the band" value={outOfBand} detail={`Channels whose ${phase} mean left the good runs' band`} />
         <Stat label="Projected to leave" value={leaving} detail={`Within ${rule.plannedLotSize} wafers`} />
       </dl>
-      <Segmented label="Phase" value={phase} options={PHASES} onChange={onPhase} />
+      <div className="filters">
+        <Segmented label="Phase" value={phase} options={PHASES} onChange={onPhase} />
+        <Segmented label="Reference" value={drift.reference} options={REFERENCES} onChange={onReference} />
+      </div>
       <div className="run-layout">
         <section className="panel" aria-labelledby="drift-channels-title">
           <h2 id="drift-channels-title">Channels</h2>
@@ -82,7 +104,7 @@ function LotDetails({ drift, phase, onPhase }: { drift: LotDrift; phase: Phase; 
         </section>
         {selected === undefined
           ? <section className="panel"><p className="status-line">No channel has a good-run band for this phase.</p></section>
-          : <DriftPanel channel={selected} rule={rule} phase={phase} />}
+          : <DriftPanel channel={selected} rule={rule} phase={phase} reference={drift.reference} referenceWafers={drift.referenceWafers} />}
       </div>
     </>
   )
@@ -128,8 +150,17 @@ function DriftChannelsTable({ channels, selected }: { channels: readonly DriftCh
   }
 }
 
-function DriftPanel({ channel, rule, phase }: { channel: DriftChannel; rule: DriftRule; phase: Phase }) {
+function DriftPanel({ channel, rule, phase, reference, referenceWafers }: {
+  channel: DriftChannel
+  rule: DriftRule
+  phase: Phase
+  reference: DriftReference
+  referenceWafers: number
+}) {
   const last = channel.points.at(-1)
+  const bandLabel = reference === 'LOT'
+    ? `This lot's first ${referenceWafers} wafers ± ${formatScore(rule.k)} sd of the good runs`
+    : `Good-run band, mean ± ${formatScore(rule.k)} sd`
   const positions = Math.max(rule.plannedLotSize, last?.position ?? 0)
   const projecting = last !== undefined && (last.state === 'WILL_EXIT' || last.state === 'STAYS_IN')
   const fit: PositionFit | null = last === undefined || last.fit === null
@@ -147,7 +178,7 @@ function DriftPanel({ channel, rule, phase }: { channel: DriftChannel; rule: Dri
         <h2 id="drift-title">{channel.channel}</h2>
         <DriftBadge state={channel.state} />
       </header>
-      <p className="note">{explain(channel, rule)}</p>
+      <p className="note">{explain(channel, rule, reference)}</p>
       <PositionChart
         title={`${phase} phase mean`}
         label={`${phase} phase mean of ${channel.channel} by wafer position`}
@@ -159,7 +190,7 @@ function DriftPanel({ channel, rule, phase }: { channel: DriftChannel; rule: Dri
           connect: false,
           points: channel.points.map((point) => ({ position: point.position, value: point.value })),
         }]}
-        band={{ low: channel.low, high: channel.high, mean: channel.bandMean, label: `Good-run band, mean ± ${formatScore(rule.k)} sd` }}
+        band={{ low: channel.low, high: channel.high, mean: channel.bandMean, label: bandLabel }}
         fit={fit}
         formatValue={formatValue}
         details={(position) => {
@@ -207,15 +238,16 @@ function DriftPanel({ channel, rule, phase }: { channel: DriftChannel; rule: Dri
   )
 }
 
-function explain(channel: DriftChannel, rule: DriftRule): string {
+function explain(channel: DriftChannel, rule: DriftRule, reference: DriftReference): string {
   const last = channel.points.at(-1)
+  const band = reference === 'LOT' ? "the band around this lot's first wafers" : "the good runs' band"
   switch (channel.state) {
     case 'OUT_OF_BAND':
-      return `By wafer ${last?.position ?? '?'} the fitted mean is outside the good runs' band.`
+      return `By wafer ${last?.position ?? '?'} the fitted mean is outside ${band}.`
     case 'WILL_EXIT':
-      return `The fitted line leaves the good runs' band at wafer ${last?.firstOutPosition ?? '?'}, inside a lot of ${rule.plannedLotSize}.`
+      return `The fitted line leaves ${band} at wafer ${last?.firstOutPosition ?? '?'}, inside a lot of ${rule.plannedLotSize}.`
     case 'STAYS_IN':
-      return `The mean trends, but the fitted line stays inside the good runs' band through wafer ${rule.plannedLotSize}.`
+      return `The mean trends, but the fitted line stays inside ${band} through wafer ${rule.plannedLotSize}.`
     case 'NO_TREND':
       return `No trend: the slope's t-statistic stays under ${formatScore(rule.minAbsT)}.`
     case 'INSUFFICIENT_RUNS':

@@ -26,6 +26,12 @@ test('opens a lot on the channel that left the band', async ({ page }) => {
 
   await expect(page).toHaveURL(/phase=C4F8/)
   await expect.poll(() => api.requests.some((path) => path.startsWith('/api/lots/6/drift') && path.includes('phase=C4F8'))).toBe(true)
+
+  await page.getByRole('group', { name: 'Reference' }).getByRole('button', { name: "This lot's first wafers" }).click()
+
+  await expect(page).toHaveURL(/reference=LOT/)
+  await expect.poll(() => api.requests.some((path) => path.startsWith('/api/lots/6/drift') && path.includes('reference=LOT'))).toBe(true)
+  await expect(page.getByText("This lot's first 3 wafers ± 3.0 sd of the good runs")).toBeVisible()
 })
 
 test('switches to the simulated lots, which drift but have no measured depth', async ({ page }) => {
