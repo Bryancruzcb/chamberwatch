@@ -269,4 +269,4 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API, the web app with its source switch, and the `simulate-lot` and `report` commands are built. Everything in this design exists; what is left is deciding when the repository goes public, and the open questions above.
+The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API, the web app with its source switch, and the `simulate-lot` and `report` commands are built. Everything in this design exists and the repository is public; what is left is the open questions above.

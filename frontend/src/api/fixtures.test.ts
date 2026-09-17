@@ -32,6 +32,7 @@ describe('captured API responses', () => {
     ['run-133.json', runDetailSchema],
     ['drift-vs-depth-synthetic.json', driftVsDepthSchema],
     ['trace-55.json', traceSchema],
+    ['trace-133.json', traceSchema],
     ['measurements-55.json', measurementsSchema],
     ['measurements-55-nine.json', measurementsSchema],
     ['drift-6.json', lotDriftSchema],
