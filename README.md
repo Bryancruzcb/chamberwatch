@@ -2,7 +2,7 @@
 
 Tool-health monitoring for a plasma etch tool. ChamberWatch reads each wafer's machine telemetry, learns what a good run looks like at each point in the recipe, and flags runs that go out of range or drift across a lot. For every flag it shows which sensor changed first, next to the measured result on the wafer.
 
-Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). An HTTP API serves the runs table, each run's ranked channels and charts, wafer measurements, relabeling, lot drift and a drift-versus-depth report. A React app covers the runs table, each run's trace against the good-run band, each lot's drift channel by channel, each wafer's depth map, and drift against depth by wafer position. [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
+Status: in progress. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). An HTTP API serves the runs table, each run's ranked channels and charts, wafer measurements, relabeling, lot drift and a drift-versus-depth report. A React app covers the runs table, each run's trace against the good-run band, each lot's drift channel by channel, each wafer's depth map, and drift against depth by wafer position. A `simulate-lot` command stores a seeded synthetic lot with four known faults next to the clean lots its baseline learns from, with the injected fault kept beside each run, and `report` writes the drift-versus-depth report to a file ([results/public-drift.json](results/public-drift.json)). [docs/DESIGN.md](docs/DESIGN.md) describes the whole plan.
 
 ## Data
 
@@ -32,6 +32,12 @@ java -jar target/chamberwatch.jar align --data=../data/public/zenodo17122442 --m
 # A second run reads nothing, reuses the baseline and adds no rows.
 docker compose up -d
 java -jar target/chamberwatch.jar ingest --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
+
+# Store a seeded synthetic lot with four known faults, plus the clean training lots its baseline learns from. A rerun adds nothing.
+java -jar target/chamberwatch.jar simulate-lot --seed=7 --lot=901
+
+# Write the drift-versus-depth report for the public data next to the metrics file.
+java -jar target/chamberwatch.jar report --out=../results/public-drift.json
 
 # Serve the API on port 8080, with the OpenAPI description at /v3/api-docs. Add --server.port=18080 if 8080 is taken.
 java -jar target/chamberwatch.jar

@@ -109,12 +109,21 @@ public class ReadQueries {
 	}
 
 	/**
+	 * The fault the simulator injected into a synthetic run, in the run's own seconds. {@code durationS} is
+	 * null for a fault that lasted to the end of the etch, and for a reflected power rise it is the ramp.
+	 */
+	public record InjectedFault(String kind, String channel, double startS, double endS, Double durationS,
+			double magnitude) {
+	}
+
+	/**
 	 * The run page. {@code baseline}, {@code assessment} and the channels are empty until the run is scored
-	 * under the current baseline; channels come in rank order.
+	 * under the current baseline; channels come in rank order. {@code injectedFault} is null for public runs
+	 * and clean synthetic ones.
 	 */
 	public record RunDetail(int id, String key, Source source, int lotId, int lotNo, LocalDate runDate,
 			int positionInLot, Label label, int sampleCount, Alignment alignment, BaselineSummary baseline, boolean good,
-			Assessment assessment, List<Channel> channels) {
+			Assessment assessment, List<Channel> channels, InjectedFault injectedFault) {
 	}
 
 	/**
@@ -300,9 +309,19 @@ public class ReadQueries {
 				channels = channels(baselineId, runId);
 			}
 		}
+		InjectedFault injected = jdbc.sql("""
+				select f.kind, c.name as channel, f.start_s, f.end_s, f.duration_s, f.magnitude
+				from injected_fault f
+				join channel c on c.id = f.channel_id
+				where f.run_id = :run""")
+			.param("run", runId)
+			.query((rs, row) -> new InjectedFault(rs.getString("kind"), rs.getString("channel"), rs.getFloat("start_s"),
+					rs.getFloat("end_s"), real(rs, "duration_s"), rs.getDouble("magnitude")))
+			.optional()
+			.orElse(null);
 		return Optional.of(new RunDetail(runId, header.key(), header.source(), header.lotId(), header.lotNo(),
 				header.runDate(), header.position(), header.label(), header.sampleCount(), header.alignment(),
-				baseline.orElse(null), good, assessment.orElse(null), channels));
+				baseline.orElse(null), good, assessment.orElse(null), channels, injected));
 	}
 
 	/**
