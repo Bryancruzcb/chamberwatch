@@ -146,16 +146,18 @@ Wafers etch shallower as a lot goes on. The chamber's drift shows up in the tool
 
 The dataset labels no faults, so the only wafers known to be good are the ones the baseline learns from. Each lot's good wafers were therefore scored against a baseline fitted on the other nine lots, and any alarm on them is a false alarm on a wafer the fit never saw.
 
-| Threshold | Limit alarms, good = wafers 1 to 3 | Run-level alarms, good = wafers 1 to 3 | Limit alarms, good = wafers 2 to 4 |
-|---:|---:|---:|---:|
-| 3 | 23 of 30 | 11 of 30 | 20 of 30 |
-| 4 | 10 of 30 | 3 of 30 | 11 of 30 |
-| 5 | 4 of 30 | 0 of 30 | 4 of 30 |
-| 6 | 2 of 30 | 0 of 30 | 2 of 30 |
-| 7 | 1 of 30 | 0 of 30 | 2 of 30 |
-| 8 | 1 of 30 | 0 of 30 | 2 of 30 |
+| Threshold | Limit alarms, good = wafers 1 to 3 | Run-level alarms, good = wafers 1 to 3 | Limit alarms, good = wafers 2 to 4 | Limit alarms, good = wafers 1 to 2 | Run-level alarms, good = wafers 1 to 2 |
+|---:|---:|---:|---:|---:|---:|
+| 3 | 23 of 30 | 11 of 30 | 20 of 30 | 14 of 20 | 6 of 20 |
+| 4 | 10 of 30 | 3 of 30 | 11 of 30 | 7 of 20 | 1 of 20 |
+| 5 | 4 of 30 | 0 of 30 | 4 of 30 | 2 of 20 | 0 of 20 |
+| 6 | 2 of 30 | 0 of 30 | 2 of 30 | 2 of 20 | 0 of 20 |
+| 7 | 1 of 30 | 0 of 30 | 2 of 30 | 1 of 20 | 0 of 20 |
+| 8 | 1 of 30 | 0 of 30 | 2 of 30 | 1 of 20 | 0 of 20 |
 
 The tool channels are smooth. A wafer that reads 3 standard deviations high tends to stay there for seconds, so requiring 5 samples in a row barely helps at `k = 3`. The defaults are the smallest whole thresholds at which fewer than 10 percent of the held-out good wafers alarm. The two that still alarm at `k = 6` are both the first wafer after a clean: lot 2 wafer 1 on PlatenRFLoadCapacitor at 6.8, and lot 9 wafer 1 on PlatenRFTuningCapacitor at 10.2. Taking wafers 2 to 4 as the good runs does not help, because by wafer 4 the match capacitors have already moved in lots 6 and 7.
+
+Taking only wafers 1 to 2, the two closest to the clean, does not help either. The same two wafers alarm at `k = 6`, now 2 of 20, and the price shows when every wafer is scored against a baseline of 20 good runs instead of 30: the summary bands are tighter, the tuning capacitor's ordinary rise along a lot becomes a run-level deviation in every lot, and 49 of the 96 wafers are flagged (36 by the limit detector, 45 at run level, PlatenRFTuningCapacitor first in 47), against 15 with three good wafers per lot. Three stays the default.
 
 A threshold on single samples would not work at all. All 30 held-out good wafers have some sample more than 8 standard deviations out. Most sit at phase edges: Gas5Flow reads almost exactly 0 early in a C4F8 phase, so one sample where the SF6 flow is still falling can score in the thousands.
 
