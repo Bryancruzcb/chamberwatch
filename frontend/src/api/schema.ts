@@ -173,6 +173,25 @@ export const channelSchema = z.object({
 })
 export type Channel = z.infer<typeof channelSchema>
 
+export const faultKindSchema = z.enum(['GAS_FLOW_STUCK_LOW', 'PRESSURE_SPIKE', 'REFLECTED_POWER_RISE', 'SENSOR_DROPOUT'])
+export type FaultKind = z.infer<typeof faultKindSchema>
+
+/**
+ * The fault the simulator put into a synthetic run, in the run's own seconds. `durationS` is null for a fault that
+ * lasted to the end of the etch, and for a reflected power rise it is the ramp. `magnitude` is the share of its flow
+ * a stuck gas still delivers, a pressure rise as a share of the SF6 pressure, watts of reflected power, or 0.
+ */
+export const injectedFaultSchema = z.object({
+  kind: faultKindSchema,
+  channel: z.string(),
+  startS: seconds,
+  endS: seconds,
+  durationS: seconds.nullable(),
+  magnitude: z.number(),
+})
+export type InjectedFault = z.infer<typeof injectedFaultSchema>
+
+/** `injectedFault` is null for public runs and for clean synthetic ones. */
 export const runDetailSchema = z.object({
   id,
   key: z.string(),
@@ -188,6 +207,7 @@ export const runDetailSchema = z.object({
   good: z.boolean(),
   assessment: scoreSchema.nullable(),
   channels: z.array(channelSchema),
+  injectedFault: injectedFaultSchema.nullable(),
 })
 export type RunDetail = z.infer<typeof runDetailSchema>
 

@@ -27,3 +27,16 @@ test('opens a lot on the channel that left the band', async ({ page }) => {
   await expect(page).toHaveURL(/phase=C4F8/)
   await expect.poll(() => api.requests.some((path) => path.startsWith('/api/lots/6/drift') && path.includes('phase=C4F8'))).toBe(true)
 })
+
+test('switches to the simulated lots, which drift but have no measured depth', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots')
+  await page.getByRole('group', { name: 'Source' }).getByRole('button', { name: 'Simulated' }).click()
+
+  await expect(page).toHaveURL(/source=SYNTHETIC/)
+  await expect(page.locator('table.lots tbody tr')).toHaveCount(11)
+  await expect(page.getByRole('img', { name: /^Mean drift score by wafer position/ }).locator('[data-kind="dot"]')).toHaveCount(10)
+  await expect(page.getByRole('img', { name: /^Depth loss by wafer position/ })).toHaveCount(0)
+  await expect(page.getByText('Simulated wafers have no measured depth')).toBeVisible()
+  await expect(page.getByRole('link', { name: '5', exact: true })).toHaveAttribute('href', /lot=\d+&flagged=true&source=SYNTHETIC/)
+})

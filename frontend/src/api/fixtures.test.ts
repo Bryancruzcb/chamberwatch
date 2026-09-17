@@ -28,6 +28,9 @@ describe('captured API responses', () => {
     ['runs.json', runsPageSchema],
     ['run-55.json', runDetailSchema],
     ['run-11.json', runDetailSchema],
+    ['runs-synthetic.json', runsPageSchema],
+    ['run-133.json', runDetailSchema],
+    ['drift-vs-depth-synthetic.json', driftVsDepthSchema],
     ['trace-55.json', traceSchema],
     ['measurements-55.json', measurementsSchema],
     ['measurements-55-nine.json', measurementsSchema],
@@ -44,6 +47,20 @@ describe('captured API responses', () => {
 
     expect(page.runs).toHaveLength(96)
     expect(page.runs.filter((run) => isFlagged(run.score))).toHaveLength(15)
+  })
+
+  it('count the 40 simulated wafers, 8 flagged, and carry the fault put into wafer 7 of lot 901', () => {
+    const page = runsPageSchema.parse(fixture('runs-synthetic.json'))
+    const run = runDetailSchema.parse(fixture('run-133.json'))
+
+    expect(page.runs).toHaveLength(40)
+    expect(page.runs.filter((run) => isFlagged(run.score))).toHaveLength(8)
+    expect(run.source).toBe('SYNTHETIC')
+    expect(run.injectedFault?.kind).toBe('GAS_FLOW_STUCK_LOW')
+    expect(run.injectedFault?.channel).toBe('Gas5Flow')
+    expect(run.injectedFault?.durationS).toBeNull()
+    expect(run.assessment?.firstChannel).toBe('Gas5Flow')
+    expect(runDetailSchema.parse(fixture('run-55.json')).injectedFault).toBeNull()
   })
 
   it('put the tuning capacitor first in lot 6, out of the band, with no fit at the first wafer', () => {

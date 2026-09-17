@@ -1,30 +1,45 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
-import { type DriftVsDepth, driftVsDepthSchema, type Lot, lotsSchema, type MeasurementSet } from '../api/schema'
+import { Link, useSearchParams } from 'react-router'
+import { type DriftVsDepth, driftVsDepthSchema, type Lot, lotsSchema, type MeasurementSet, type Source } from '../api/schema'
+import { readSource, withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { PositionChart, type PositionPoint, type PositionSeries } from '../charts/PositionChart'
 import { Loaded } from '../components/Loaded'
+import { SourceSwitch } from '../components/SourceSwitch'
 import { formatConditioning, formatDate, formatMicrons, MISSING } from '../format'
 
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+const SUBTITLES = {
+  PUBLIC: 'The public lots, each started after a chamber clean, and how wafers change with their position in a lot.',
+  SYNTHETIC: 'The simulated lots: the clean training lots the baseline learns from, and the lot with known faults.',
+} as const satisfies Record<Source, string>
+
 export function LotsPage() {
+  const [params, setParams] = useSearchParams()
+  const source = readSource(params)
   const [lots] = useResource('/api/lots', lotsSchema)
-  const [report] = useResource('/api/reports/drift-vs-depth', driftVsDepthSchema)
+  const [report] = useResource(withSource('/api/reports/drift-vs-depth', source), driftVsDepthSchema)
   return (
     <>
       <title>Lots · ChamberWatch</title>
       <header className="page-head">
         <h1>Lots</h1>
-        <p className="subtitle">The public lots, each started after a chamber clean, and how wafers change with their position in a lot.</p>
+        <p className="subtitle">{SUBTITLES[source]}</p>
       </header>
-      <Loaded resource={lots}>{(data) => <LotsTable lots={data.filter((lot) => lot.source === 'PUBLIC')} />}</Loaded>
+      <div className="filters">
+        <SourceSwitch
+          value={source}
+          onChange={(next) => setParams(next === 'PUBLIC' ? {} : { source: next }, { replace: true })}
+        />
+      </div>
+      <Loaded resource={lots}>{(data) => <LotsTable lots={data.filter((lot) => lot.source === source)} source={source} />}</Loaded>
       <Loaded resource={report}>{(data) => <DriftReport report={data} />}</Loaded>
     </>
   )
 }
 
-function LotsTable({ lots }: { lots: readonly Lot[] }) {
+function LotsTable({ lots, source }: { lots: readonly Lot[]; source: Source }) {
   return (
     <div className="panel table-wrap">
       <table className="lots">
@@ -49,7 +64,9 @@ function LotsTable({ lots }: { lots: readonly Lot[] }) {
                   : formatConditioning(lot.conditioningCount, lot.conditioningSurface)}
               </td>
               <td className="num">{lot.runs}</td>
-              <td className="num">{lot.flaggedRuns === 0 ? 0 : <Link to={`/?lot=${lot.id}&flagged=true`}>{lot.flaggedRuns}</Link>}</td>
+              <td className="num">
+                {lot.flaggedRuns === 0 ? 0 : <Link to={withSource(`/?lot=${lot.id}&flagged=true`, source)}>{lot.flaggedRuns}</Link>}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -61,6 +78,7 @@ function LotsTable({ lots }: { lots: readonly Lot[] }) {
 function DriftReport({ report }: { report: DriftVsDepth }) {
   const [tableShown, setTableShown] = useState(false)
   const positions = Math.max(0, ...report.positions.map((position) => position.position))
+  const measured = report.positions.some((position) => position.depth.length > 0)
   const score: PositionSeries = {
     id: 'score',
     name: 'Mean drift score',
@@ -81,6 +99,7 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
         {`Each position averages every lot. A run's drift score is the root mean square of its channels' SF6 phase mean
         z-scores. Depth loss is how much shallower a wafer etched than the mean of the first ${report.referenceWafers}
         wafers of its lot. The two measurement sets come from different instruments, so each keeps its own line.`}
+        {!measured && ' Simulated wafers have no measured depth, so only the drift score is shown.'}
       </p>
       <div className="chart-pair">
         <PositionChart
@@ -90,13 +109,15 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
           series={[score]}
           formatValue={(value) => twoDecimals.format(value)}
         />
-        <PositionChart
-          title="Depth loss, µm"
-          label="Depth loss by wafer position"
-          positions={positions}
-          series={loss}
-          formatValue={(value) => twoDecimals.format(value)}
-        />
+        {measured && (
+          <PositionChart
+            title="Depth loss, µm"
+            label="Depth loss by wafer position"
+            positions={positions}
+            series={loss}
+            formatValue={(value) => twoDecimals.format(value)}
+          />
+        )}
       </div>
       <button type="button" className="link-button" aria-expanded={tableShown} onClick={() => setTableShown(!tableShown)}>
         {tableShown ? 'Hide the table' : 'Show as a table'}
