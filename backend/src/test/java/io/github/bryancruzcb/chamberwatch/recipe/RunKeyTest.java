@@ -24,6 +24,8 @@ class RunKeyTest {
 		RunKey key = RunKey.simulated(7, 901, 3);
 
 		assertThat(key.value()).isEqualTo("SIM-s7-L901-W03");
+		assertThat(key.seed()).hasValue(7);
+		assertThat(RunKey.ofPublicGroup("Day_2024_07_02_Wafer_01").seed()).isEmpty();
 		assertThat(key.day()).isEmpty();
 		assertThat(key.experimentKey()).isEmpty();
 	}

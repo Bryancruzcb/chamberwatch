@@ -22,11 +22,11 @@ java -jar backend/target/chamberwatch.jar ingest --data=data/public/zenodo171224
 # Measure the simulator's template from the public wafers. Writes backend/src/main/resources/sim/template.tsv.
 java -jar backend/target/chamberwatch.jar sim-template --data=data/public/zenodo17122442 --out=backend/src/main/resources/sim/template.tsv
 
-# Store one seeded synthetic lot with known faults, for the UI.
-java -jar backend/target/chamberwatch.jar simulate-lot --seed=7 --lot=901
+# Store one seeded synthetic lot with four known faults, and the clean training lots its baseline learns from. A rerun adds zero rows.
+java -jar backend/target/chamberwatch.jar simulate-lot --seed=7 --lot=901 --wafers=10 --training-lots=10
 
-# Drift score by position in lot next to measured depth, for the public data.
-java -jar backend/target/chamberwatch.jar report --out=results/public-drift.json
+# Drift score by position in lot next to measured depth, for the public data, as the report endpoint serves it.
+java -jar backend/target/chamberwatch.jar report --source=PUBLIC --out=results/public-drift.json
 
 # Score 1,000 seeded synthetic runs in memory and compare with results/metrics.json. No database.
 ./mvnw test -Dtest=EvaluationRegressionTest
@@ -59,7 +59,7 @@ With no command the jar serves the API on port 8080, with the OpenAPI descriptio
 
 The trace call returns at most `maxPoints` buckets of consecutive samples, and the whole record when no cycle range is given. Each bucket carries its lowest and highest reading, so a one-sample spike survives downsampling, plus the cycle, phase and offset of its first slotted sample and the good-run band there. The channel's excursions come with it. Every read on the public data answers in under 100 ms, including 2,000 buckets of wafer 5's 3,246 PlatenRFLoadCapacitor samples.
 
-A relabel answers once the refresh is done, so the next read already reflects it. Marking a flagged public wafer GOOD took 12 s, because a new set of good runs meant a refit and rescoring all 96 wafers. Putting it back to AUTO found the old baseline by its fingerprint and took 25 ms. Errors are RFC 9457 problem details: 404 for an unknown run or channel, 400 for a bad parameter or label.
+A relabel answers once the refresh is done, so the next read already reflects it. Marking a flagged public wafer GOOD took 12 s, because a new set of good runs meant a refit and rescoring all 96 wafers. Putting it back to AUTO found the old baseline by its fingerprint and took 25 ms. Errors are RFC 9457 problem details: 404 for an unknown run or channel, 400 for a bad parameter or label. A synthetic run's detail also carries `injectedFault`, the kind, channel, start, end and size the simulator put in, which is null for public runs and clean synthetic ones.
 
 The lot call returns every channel that has a good-run band on the phase mean. Each comes with the lot's wafers in position order, the fit of the wafers so far at each one, the drift state that fit gives, and the state as of the last wafer. Channels out of the band or projected to leave it come first. On the public data every lot call after the first answers in under 25 ms, and the states as of each lot's last wafer are exactly the table in [DATA.md](DATA.md#flags-and-measured-depth). The report averages each run's drift score by position in lot, next to mean depth and the depth lost since the lot's first 3 wafers, for each measurement set. On the 89-point file the depth loss grows from 0.27 µm at wafer 4 to 0.90 µm at wafer 10, and the mean drift score rises from 0.8 over wafers 1 to 3 to 1.36 at wafer 8.
 
@@ -124,7 +124,7 @@ Every decoded value is a row: `sample(run_id, channel_id, sample_idx, t_s, value
 
 `recipe_slot(slot, cycle, phase, offset)` has 4,000 rows. A Flyway migration fills it, and a test checks it against `RecipeGrid` so the two cannot drift apart. `band(baseline_id, channel_id, slot, mean, sd)` stores the per-slot bands, with `sd` null where a slot has a mean but no band, so the trace query can join the band to the samples.
 
-The other tables are `lot`, `channel`, `ingest_file` (the ingest ledger), `run` (natural key, lot, position, the alignment report, label and label sequence), `run_phase_summary`, `measurement` (keyed by run, set and point number, with depth as a generated column `stepheight_um - postox_um`), `injected_fault`, `baseline` (unique fingerprint and the settings it was fitted with), `current_baseline` (one row per source), `baseline_good_run`, `baseline_channel` (each channel's role), `summary_band`, `run_assessment` (flag counts, the largest persistent z, and the first channel and excursion), `channel_verdict` and `excursion`. Assessments, verdicts and excursions are keyed by baseline, so a refit writes new rows beside the old ones, and moving the `current_baseline` row makes them current. That move is a single upsert that applies only when the stored `labels_seq` is not newer, so two refreshes can race without a lock.
+The other tables are `lot`, `channel`, `ingest_file` (the ingest ledger), `run` (natural key, lot, position, the alignment report, label and label sequence), `run_phase_summary`, `measurement` (keyed by run, set and point number, with depth as a generated column `stepheight_um - postox_um`), `injected_fault` (the fault the simulator put into a synthetic run: kind, channel, start, end and size, so a run page can show what went in next to what was caught), `baseline` (unique fingerprint and the settings it was fitted with), `current_baseline` (one row per source), `baseline_good_run`, `baseline_channel` (each channel's role), `summary_band`, `run_assessment` (flag counts, the largest persistent z, and the first channel and excursion), `channel_verdict` and `excursion`. Assessments, verdicts and excursions are keyed by baseline, so a refit writes new rows beside the old ones, and moving the `current_baseline` row makes them current. That move is a single upsert that applies only when the stored `labels_seq` is not newer, so two refreshes can race without a lock.
 
 The dominant reads:
 
@@ -147,7 +147,7 @@ The dominant reads:
 | `api` | Controllers, JSON views, error mapping | Spring MVC |
 | root | Application, properties, the command-line commands | Spring Boot |
 
-Dependencies point one way: `api` to `health` and `store`, `health` and `store` to `detect`, `detect` to `recipe`. `ingest` uses `store`, `health` and `recipe`, and `eval` uses `sim`, `detect` and `recipe`. The four pure packages import nothing from Spring or JDBC.
+Dependencies point one way: `api` to `health` and `store`, `health` and `store` to `detect`, `detect` to `recipe`. `ingest` uses `store`, `health`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. The four pure packages import nothing from Spring or JDBC.
 
 ## Alignment
 
@@ -208,6 +208,8 @@ The simulator seeds each run from the seed, the lot, the position and the purpos
 
 The four fault kinds are a gas flow stuck low, a pressure spike, a reflected power rise, and a sensor dropout to zero. A flow stuck below half its setpoint also hides its phase marker, so the aligner predicts onsets and marks the run degraded. That is evidence too, and the run page shows it.
 
+`simulate-lot` stores one such lot for the web app, with the truth beside it. It stores the clean wafers 1 to 3 of lots 1 to 10, the training runs the evaluation fits on, then a demo lot whose first 3 wafers are clean and whose other 7 carry four faults, one of each kind, on wafers drawn from the seed and the lot number in the evaluation's size ranges. Each faulted run gets an `injected_fault` row, and the refresh at the end fits the synthetic baseline on 33 good runs, the training wafers plus the demo lot's first 3, as the good-run policy would for any lot. A run key carries its seed, so a lot that holds runs from another seed is refused rather than mixed, and a rerun with the same seed finds every run stored, writes nothing and reuses the baseline. With seed 7 and lot 901 all four faults are caught and ranked first on their channel: a 28 W reflected power rise 10.5 s after it starts, an 8 % pressure spike 0.1 s in, a Gas5Flow stuck at 36 % 1.4 s in, with the run degraded because its phase markers went, and a HeliumBPPressure dropout at once. Clean wafer 10 deviates at run level on ForeLinePressure, and 3 of the 30 training wafers are flagged, the early-wafer rate the calibration allows. The command takes 20 s on this PC, and a rerun 5 s.
+
 `FaultSignature` maps the first matching excursion to the kind it looks like, so precision can be counted per kind. The metrics are precision and recall per kind, median detection latency in seconds after the fault starts, the share of clean runs flagged, and how often the rank 1 channel is the injected one. `results/metrics.json` has sorted keys and 4 decimals, and CI fails when a rate moves more than 0.02 or a latency more than 0.5 s. [EVALUATION.md](EVALUATION.md) has the model, the calibration and the results.
 
 On public data the output is descriptive only: each run's drift score, the root mean square of its SF6-mean z-scores, averaged by position in lot, next to measured depth by position, with the 9-point and 89-point sets kept apart.
@@ -267,4 +269,4 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Next implementation step
 
-The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API and the web app are built. Next are the `simulate-lot` and `report` commands.
+The aligner, the ingest, the detectors, the stored baselines, the simulator, the evaluation, the HTTP API, the web app and the `simulate-lot` and `report` commands are built. Next is a source switch in the web app, so the synthetic lot and its injected faults show there.

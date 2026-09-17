@@ -4,6 +4,7 @@ import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +58,16 @@ public record RunKey(String value, Source source, int positionInLot) implements 
 		Matcher matcher = PUBLIC.matcher(value);
 		matcher.matches();
 		return Optional.of(dayOf(matcher));
+	}
+
+	/** The seed a synthetic run was simulated from, empty for public runs. */
+	public OptionalLong seed() {
+		if (source != Source.SYNTHETIC) {
+			return OptionalLong.empty();
+		}
+		Matcher matcher = SYNTHETIC.matcher(value);
+		matcher.matches();
+		return OptionalLong.of(Long.parseLong(matcher.group(1)));
 	}
 
 	/** The measurement files' {@code experiment_key}, {@code YYYY-MM-DD_NN}, for public runs. */

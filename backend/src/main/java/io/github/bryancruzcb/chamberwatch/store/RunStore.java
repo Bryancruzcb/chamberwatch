@@ -3,6 +3,7 @@ package io.github.bryancruzcb.chamberwatch.store;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,6 +32,8 @@ import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
 import io.github.bryancruzcb.chamberwatch.recipe.SlotAssignment;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
+import io.github.bryancruzcb.chamberwatch.sim.FaultPlan;
+import io.github.bryancruzcb.chamberwatch.sim.InjectedFault;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
@@ -100,6 +103,14 @@ public class RunStore {
 			.single();
 	}
 
+	public Optional<RunId> id(RunKey key) {
+		return jdbc.sql("select id from run where run_key = :key")
+			.param("key", key.value())
+			.query(Integer.class)
+			.optional()
+			.map(RunId::new);
+	}
+
 	/**
 	 * Records an engineer's label and gives the run the next label sequence value.
 	 *
@@ -139,6 +150,36 @@ public class RunStore {
 			}
 			return Optional.of(new RunId(id.get()));
 		}));
+	}
+
+	/**
+	 * Records the fault the simulator injected into a stored run, so a run page can put what was injected next
+	 * to what was caught. Writing it again for the same run changes nothing, so a rerun that finds the run
+	 * stored can still complete a fault row a crash left out.
+	 */
+	public void insertInjectedFault(RunId run, InjectedFault fault) {
+		short channelId = channelIds.computeIfAbsent(fault.channel(), this::channelId);
+		FaultPlan plan = fault.plan();
+		jdbc.sql("""
+				insert into injected_fault (run_id, kind, channel_id, start_s, end_s, duration_s, magnitude)
+				values (:run, :kind, :channel, :start, :end, :duration, :magnitude)
+				on conflict (run_id) do nothing""")
+			.param("run", run.value())
+			.param("kind", fault.kind().name())
+			.param("channel", channelId)
+			.param("start", (float) fault.startS())
+			.param("end", (float) fault.endS())
+			.param("duration", Double.isFinite(plan.durationS()) ? (float) plan.durationS() : null, Types.REAL)
+			.param("magnitude", plan.magnitude())
+			.update();
+	}
+
+	/** The keys of the lot's stored runs, in position order. */
+	public List<RunKey> runKeys(LotRef lot) {
+		return jdbc.sql("select run_key, position_in_lot from run where lot_id = :lot order by position_in_lot")
+			.param("lot", lot.id())
+			.query((rs, row) -> new RunKey(rs.getString("run_key"), lot.source(), rs.getInt("position_in_lot")))
+			.list();
 	}
 
 	/** Every stored run of the source, with its label and alignment, read in one statement. */
