@@ -15,9 +15,10 @@ export interface ApiLog {
 }
 
 /**
- * Answers the page's API calls with responses captured from the real API on the public data: the lot list, the runs
- * table, runs 55 and 11, one trace that serves for any channel, run 55's measurements, lot 6's drift and the drift
- * report. Every other run and lot is missing, like run 9999.
+ * Answers the page's API calls with responses captured from the real API: the lot list, the runs table of either
+ * source, public runs 55 and 11, synthetic run 133 with its injected fault, one trace that serves for any channel,
+ * run 55's measurements, lot 6's drift and the drift report of either source. Every other run and lot is missing,
+ * like run 9999.
  */
 export async function serveApi(page: Page): Promise<ApiLog> {
   const log: ApiLog = { requests: [], relabels: [] }
@@ -40,11 +41,12 @@ function answer(request: Request, url: URL, log: ApiLog): { status: number; body
   if (path === '/api/lots') {
     return found(read('lots.json'))
   }
+  const synthetic = url.searchParams.get('source') === 'SYNTHETIC'
   if (path === '/api/runs') {
-    return found(filterRuns(read('runs.json'), url.searchParams))
+    return found(filterRuns(read(synthetic ? 'runs-synthetic.json' : 'runs.json'), url.searchParams))
   }
   if (path === '/api/reports/drift-vs-depth') {
-    return found(read('drift-vs-depth.json'))
+    return found(read(synthetic ? 'drift-vs-depth-synthetic.json' : 'drift-vs-depth.json'))
   }
   const lot = /^\/api\/lots\/(\d+)\/drift$/.exec(path)?.[1]
   if (lot !== undefined) {

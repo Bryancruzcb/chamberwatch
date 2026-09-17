@@ -5,21 +5,24 @@ import {
   type Alignment,
   type Channel,
   type Excursion,
+  type InjectedFault,
   type Label,
   type PhaseEvidence,
   relabelResultSchema,
   type RelabelResult,
   runDetailSchema,
   type RunDetail,
+  type Score,
   traceSchema,
 } from '../api/schema'
+import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { TraceChart } from '../charts/TraceChart'
 import { Loaded } from '../components/Loaded'
 import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
-import { formatLabel, formatScore, formatSeconds, formatValue } from '../format'
+import { describeFault, formatFaultKind, formatLabel, formatScore, formatSeconds, formatValue } from '../format'
 import { NotFound } from './NotFound'
 
 /** Etch cycles on the recipe grid. */
@@ -72,9 +75,9 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
       <title>{`${run.key} · ChamberWatch`}</title>
       <header className="page-head">
         <p className="breadcrumb">
-          <Link to="/">Runs</Link>
+          <Link to={withSource('/', run.source)}>Runs</Link>
           <span aria-hidden="true"> / </span>
-          <Link to={`/?lot=${run.lotId}`}>Lot {run.lotNo}</Link>
+          <Link to={withSource(`/?lot=${run.lotId}`, run.source)}>Lot {run.lotNo}</Link>
           <span aria-hidden="true"> / </span>
           Wafer {run.positionInLot}
         </p>
@@ -110,6 +113,9 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
         )}
       <div className="run-layout">
         <div className="stack">
+          {run.injectedFault !== null && (
+            <InjectedFaultPanel fault={run.injectedFault} assessment={assessment} scoredChannels={run.channels} />
+          )}
           <section className="panel" aria-labelledby="channels-title">
             <h2 id="channels-title">Channels by rank</h2>
             <ChannelsTable channels={run.channels} selected={selected} k={baseline?.k ?? null} />
@@ -353,6 +359,53 @@ function describeRefit(result: RelabelResult): string {
   const summary = `Baseline #${result.baselineId} ${result.fitted ? 'fitted' : 'reused'} from ${result.goodRuns ?? 0} good runs. `
     + `${result.scored} runs scored, ${result.flagged} flagged.`
   return result.current ? summary : `${summary} A relabel that read newer labels finished first, and its baseline is the current one.`
+}
+
+/** What the simulator put into a synthetic run, next to what the detectors made of it. The detectors never see this. */
+function InjectedFaultPanel({ fault, assessment, scoredChannels }: {
+  fault: InjectedFault
+  assessment: Score | null
+  scoredChannels: readonly Channel[]
+}) {
+  const scored = scoredChannels.some((channel) => channel.channel === fault.channel)
+  return (
+    <section className="panel" aria-labelledby="fault-title">
+      <h2 id="fault-title">Injected fault</h2>
+      <p className="note">
+        This is a simulated run. The simulator put one fault into it, and the detectors scored the run without knowing.
+      </p>
+      <dl className="facts">
+        <dt>Kind</dt>
+        <dd>{formatFaultKind(fault.kind)}</dd>
+        <dt>Channel</dt>
+        <dd>
+          {scored
+            ? <Link to={{ search: `?channel=${encodeURIComponent(fault.channel)}` }} replace preventScrollReset>{fault.channel}</Link>
+            : fault.channel}
+        </dd>
+        <dt>What it did</dt>
+        <dd>{describeFault(fault)}</dd>
+        <dt>Caught</dt>
+        <dd>{describeCatch(fault, assessment)}</dd>
+      </dl>
+    </section>
+  )
+}
+
+function describeCatch(fault: InjectedFault, assessment: Score | null): string {
+  if (assessment === null) {
+    return 'Not scored under the current baseline.'
+  }
+  if (assessment.firstChannel === fault.channel) {
+    const latency = assessment.firstTimeS === null ? null : Math.max(0, assessment.firstTimeS - fault.startS)
+    return latency === null
+      ? `Yes. ${fault.channel} was named first.`
+      : `Yes. ${fault.channel} was named first, ${formatSeconds(latency)} after the fault began.`
+  }
+  if (assessment.firstChannel !== null) {
+    return `The run was flagged, but ${assessment.firstChannel} was named first, not ${fault.channel}.`
+  }
+  return 'No. The run was not flagged.'
 }
 
 function AlignmentFacts({ alignment }: { alignment: Alignment }) {

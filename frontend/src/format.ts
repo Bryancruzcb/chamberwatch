@@ -1,6 +1,7 @@
-import type { ConditioningSurface, DriftState, Label, MeasurementSet } from './api/schema'
+import type { ConditioningSurface, DriftState, FaultKind, InjectedFault, Label, MeasurementSet, Source } from './api/schema'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
+const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 })
 const oneDecimal = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // Dates arrive as plain days, so they are formatted in UTC to keep the day from shifting with the reader's time zone.
@@ -20,6 +21,15 @@ const DRIFT_STATE_NAMES = {
   NO_TREND: 'No trend',
   INSUFFICIENT_RUNS: 'Too few wafers',
 } as const satisfies Record<DriftState, string>
+
+const SOURCE_NAMES = { PUBLIC: 'Public', SYNTHETIC: 'Simulated' } as const satisfies Record<Source, string>
+
+const FAULT_KIND_NAMES = {
+  GAS_FLOW_STUCK_LOW: 'Gas flow stuck low',
+  PRESSURE_SPIKE: 'Pressure spike',
+  REFLECTED_POWER_RISE: 'Reflected power rise',
+  SENSOR_DROPOUT: 'Sensor dropout',
+} as const satisfies Record<FaultKind, string>
 
 const SURFACE_NAMES = {
   CHUCK: 'the bare chuck',
@@ -70,4 +80,31 @@ export function formatMicrons(value: number | null): string {
 /** A day as the API sends it, YYYY-MM-DD. */
 export function formatDate(value: string): string {
   return day.format(new Date(`${value}T00:00:00Z`))
+}
+
+export function formatSource(source: Source): string {
+  return SOURCE_NAMES[source]
+}
+
+export function formatFaultKind(kind: FaultKind): string {
+  return FAULT_KIND_NAMES[kind]
+}
+
+/** What the simulator did to the channel, for example "Gas5Flow delivers 36% of its flow from 187.9 s to the end of the etch." */
+export function describeFault(fault: InjectedFault): string {
+  const from = formatSeconds(fault.startS)
+  switch (fault.kind) {
+    case 'GAS_FLOW_STUCK_LOW':
+      return `${fault.channel} delivers ${percent.format(fault.magnitude)} of its flow from ${from} to the end of the etch.`
+    case 'PRESSURE_SPIKE':
+      return `${fault.channel} rises ${percent.format(fault.magnitude)} for ${formatSeconds(fault.durationS)} from ${from}.`
+    case 'REFLECTED_POWER_RISE':
+      return `${fault.channel} climbs ${significant.format(fault.magnitude)} W over ${formatSeconds(fault.durationS)} from ${from}, then holds.`
+    case 'SENSOR_DROPOUT':
+      return `${fault.channel} reads 0 for ${formatSeconds(fault.durationS)} from ${from}.`
+    default: {
+      const exhaustive: never = fault.kind
+      return exhaustive
+    }
+  }
 }

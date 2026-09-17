@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { formatConditioning, formatDate, formatMicrons, formatScore, formatSeconds, formatValue, MISSING } from './format'
+import {
+  describeFault,
+  formatConditioning,
+  formatDate,
+  formatFaultKind,
+  formatMicrons,
+  formatScore,
+  formatSeconds,
+  formatValue,
+  MISSING,
+} from './format'
 
 describe('format', () => {
   it('prints readings to four significant digits', () => {
@@ -18,6 +28,19 @@ describe('format', () => {
     expect(formatDate('2024-08-01')).toBe('Aug 1, 2024')
     expect(formatConditioning(9, 'SILICON')).toBe('Conditioned 9 times on a silicon wafer')
     expect(formatConditioning(1, 'CHUCK')).toBe('Conditioned once on the bare chuck')
+  })
+
+  it('says what the simulator did to a channel', () => {
+    const stuck = { kind: 'GAS_FLOW_STUCK_LOW', channel: 'Gas5Flow', startS: 187.89386, endS: 716.46735, durationS: null, magnitude: 0.35579 } as const
+    const dropout = { kind: 'SENSOR_DROPOUT', channel: 'HeliumBPPressure', startS: 618.3042, endS: 628.0, durationS: 9.7, magnitude: 0 } as const
+
+    expect(formatFaultKind('REFLECTED_POWER_RISE')).toBe('Reflected power rise')
+    expect(describeFault(stuck)).toBe('Gas5Flow delivers 36% of its flow from 187.9 s to the end of the etch.')
+    expect(describeFault(dropout)).toBe('HeliumBPPressure reads 0 for 9.7 s from 618.3 s.')
+    expect(describeFault({ kind: 'PRESSURE_SPIKE', channel: 'Pressure', startS: 135.3, endS: 136.8, durationS: 1.5, magnitude: 0.08 }))
+      .toBe('Pressure rises 8% for 1.5 s from 135.3 s.')
+    expect(describeFault({ kind: 'REFLECTED_POWER_RISE', channel: 'SourceRFReflectedPower', startS: 299.2, endS: 716.5, durationS: 11.2, magnitude: 28.4 }))
+      .toBe('SourceRFReflectedPower climbs 28.4 W over 11.2 s from 299.2 s, then holds.')
   })
 
   it('marks a missing value', () => {

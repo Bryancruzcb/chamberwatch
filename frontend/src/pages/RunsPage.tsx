@@ -1,8 +1,10 @@
 import { Link, useSearchParams } from 'react-router'
-import { type Baseline, isFlagged, lotsSchema, type RunRow, runsPageSchema } from '../api/schema'
+import { type Baseline, isFlagged, lotsSchema, type RunRow, runsPageSchema, type Source } from '../api/schema'
+import { readSource, sourceQuery } from '../api/source'
 import { useResource } from '../api/useResource'
 import { Loaded } from '../components/Loaded'
 import { Segmented } from '../components/Segmented'
+import { SourceSwitch } from '../components/SourceSwitch'
 import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
@@ -14,12 +16,17 @@ type Order = 'lot' | 'z'
 const FLAG_FILTERS = [['all', 'All runs'], ['flagged', 'Flagged'], ['clean', 'Not flagged']] as const
 const ORDERS = [['lot', 'Lot and wafer'], ['z', 'Highest persistent z']] as const
 
+const SUBTITLES = {
+  PUBLIC: 'Every wafer of the public data, scored against the baseline learned from the good runs.',
+  SYNTHETIC: 'Simulated wafers, some with a known fault, scored against a baseline learned from the clean first wafers of each simulated lot.',
+} as const satisfies Record<Source, string>
+
 export function RunsPage() {
   const [params, setParams] = useSearchParams()
-  const { lotId, flags, order } = readFilters(params)
+  const { source, lotId, flags, order } = readFilters(params)
   const [lots] = useResource('/api/lots', lotsSchema)
-  const [page] = useResource(runsPath(lotId, flags), runsPageSchema)
-  const publicLots = lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === 'PUBLIC') : []
+  const [page] = useResource(runsPath(source, lotId, flags), runsPageSchema)
+  const lotsOfSource = lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === source) : []
 
   function update(changes: Record<string, string | null>) {
     setParams((current) => {
@@ -41,14 +48,15 @@ export function RunsPage() {
       <title>Runs · ChamberWatch</title>
       <header className="page-head">
         <h1>Runs</h1>
-        <p className="subtitle">Every wafer of the public data, scored against the baseline learned from the good runs.</p>
+        <p className="subtitle">{SUBTITLES[source]}</p>
       </header>
       <div className="filters">
+        <SourceSwitch value={source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />
         <label className="field">
           Lot
           <select value={lotId ?? ''} onChange={(event) => update({ lot: event.target.value === '' ? null : event.target.value })}>
             <option value="">All lots</option>
-            {publicLots.map((lot) => (
+            {lotsOfSource.map((lot) => (
               <option key={lot.id} value={lot.id}>
                 {`Lot ${lot.lotNo}${lot.runDate === null ? '' : `, ${lot.runDate}`}, ${lot.flaggedRuns} flagged`}
               </option>
@@ -125,18 +133,19 @@ function RunsTable({ runs, baseline }: { runs: readonly RunRow[]; baseline: Base
   )
 }
 
-function readFilters(params: URLSearchParams): { lotId: number | null; flags: FlagFilter; order: Order } {
+function readFilters(params: URLSearchParams): { source: Source; lotId: number | null; flags: FlagFilter; order: Order } {
   const lot = params.get('lot')
   const flagged = params.get('flagged')
   return {
+    source: readSource(params),
     lotId: lot !== null && /^\d+$/.test(lot) ? Number(lot) : null,
     flags: flagged === 'true' ? 'flagged' : flagged === 'false' ? 'clean' : 'all',
     order: params.get('order') === 'z' ? 'z' : 'lot',
   }
 }
 
-function runsPath(lotId: number | null, flags: FlagFilter): string {
-  const query = new URLSearchParams()
+function runsPath(source: Source, lotId: number | null, flags: FlagFilter): string {
+  const query = new URLSearchParams(sourceQuery(source))
   if (lotId !== null) {
     query.set('lot', String(lotId))
   }
