@@ -84,9 +84,13 @@ class PublicDataDetectionTest {
 	void goodWafersScoredWithoutTheirOwnLotRarelyAlarmAtTheDefaults() throws IOException {
 		SortedMap<RunKey, RunAssessment> firstThree = heldOut(1, 3);
 		SortedMap<RunKey, RunAssessment> secondToFourth = heldOut(2, 4);
+		SortedMap<RunKey, RunAssessment> firstTwo = heldOut(1, 2);
 		try (PrintStream out = report("public-calibration.txt")) {
 			calibration(out, "good runs = wafers 1 to 3", firstThree);
 			calibration(out, "good runs = wafers 2 to 4", secondToFourth);
+			calibration(out, "good runs = wafers 1 to 2", firstTwo);
+			out.println("full scoring with the first 2 wafers of each lot as the good runs");
+			scoredWith(2).values().forEach((assessment) -> out.println(describe(assessment, Set.of())));
 		}
 
 		assertThat(alarmsAbove(firstThree, 3.0)).hasSize(23);
@@ -99,6 +103,11 @@ class PublicDataDetectionTest {
 			}
 		});
 		assertThat(alarmsAbove(secondToFourth, CONFIG.limit().k())).hasSize(2);
+		// two good wafers per lot alarm no less on held-out wafers, the same two, and the tighter summary bands
+		// then flag half the public wafers as run-level deviations, so three stays the default
+		assertThat(alarmsAbove(firstTwo, 3.0)).hasSize(14);
+		assertThat(alarmsAbove(firstTwo, CONFIG.limit().k())).containsExactlyElementsOf(alarmsAbove(firstThree, CONFIG.limit().k()));
+		assertThat(scoredWith(2).values().stream().filter(RunAssessment::flagged)).hasSize(49);
 	}
 
 	@Test
@@ -136,6 +145,18 @@ class PublicDataDetectionTest {
 		assertThat(assessments.get(RunKey.ofPublicGroup("Day_2024_07_09_Wafer_07")).verdict(ChannelName.of("Pressure"))
 			.persistentZ()).isBetween(4.0, 5.0);
 		assertThat(tuningDrift).hasSize(10).allSatisfy((lot, state) -> assertThat(state).isEqualTo(DriftProjection.State.OUT_OF_BAND));
+	}
+
+	/** Every wafer scored against a baseline fitted on the first {@code perLot} wafers of each lot. */
+	private static SortedMap<RunKey, RunAssessment> scoredWith(int perLot) {
+		SortedSet<RunKey> good = GoodRuns.select(runs.values()
+			.stream()
+			.map((run) -> new GoodRuns.Candidate(run.key(), Label.AUTO, run.report().status() == AlignmentStatus.ALIGNED))
+			.toList(), perLot);
+		Baseline baseline = HealthModel.fit(good.stream().map(runs::get), CONFIG);
+		SortedMap<RunKey, RunAssessment> assessments = new TreeMap<>();
+		runs.values().forEach((run) -> assessments.put(run.key(), HealthModel.assess(run, baseline)));
+		return assessments;
 	}
 
 	/** Each good run scored against a baseline fitted on the good runs of the other lots. */
