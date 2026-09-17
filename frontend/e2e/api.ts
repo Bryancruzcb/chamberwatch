@@ -16,9 +16,9 @@ export interface ApiLog {
 
 /**
  * Answers the page's API calls with responses captured from the real API: the lot list, the runs table of either
- * source, public runs 55 and 11, synthetic run 133 with its injected fault, one trace that serves for any channel,
- * run 55's measurements, the drift of lots 6 and 901 and the drift report of either source. Every other run and lot
- * is missing, like run 9999.
+ * source, public runs 55 and 11, synthetic run 133 with its injected fault and its own Gas5Flow trace, run 55's
+ * trace for every other channel, run 55's measurements, the drift of lots 6 and 901 and the drift report of either
+ * source. Every other run and lot is missing, like run 9999.
  */
 export async function serveApi(page: Page): Promise<ApiLog> {
   const log: ApiLog = { requests: [], relabels: [] }
@@ -68,9 +68,11 @@ function answer(request: Request, url: URL, log: ApiLog): { status: number; body
     const name = `run-${run}.json`
     return existsSync(join(FIXTURES, name)) ? found(read(name)) : missing(`no run ${run}`)
   }
-  const channel = /^\/api\/runs\/\d+\/channels\/([^/]+)\/trace$/.exec(path)?.[1]
-  if (channel !== undefined) {
-    return found(asAsked(read('trace-55.json'), decodeURIComponent(channel), url.searchParams))
+  const traced = /^\/api\/runs\/(\d+)\/channels\/([^/]+)\/trace$/.exec(path)
+  if (traced !== null) {
+    const own = `trace-${traced[1]}.json`
+    const name = existsSync(join(FIXTURES, own)) ? own : 'trace-55.json'
+    return found(asAsked(read(name), decodeURIComponent(traced[2] ?? ''), url.searchParams))
   }
   if (/^\/api\/runs\/\d+\/label$/.test(path) && request.method() === 'PUT') {
     log.relabels.push(request.postDataJSON())
