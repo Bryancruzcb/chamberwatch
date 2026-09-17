@@ -35,6 +35,7 @@ describe('captured API responses', () => {
     ['measurements-55.json', measurementsSchema],
     ['measurements-55-nine.json', measurementsSchema],
     ['drift-6.json', lotDriftSchema],
+    ['drift-31.json', lotDriftSchema],
     ['drift-vs-depth.json', driftVsDepthSchema],
   ] as const)('%s parses', (name, schema) => {
     const parsed = schema.safeParse(fixture(name))

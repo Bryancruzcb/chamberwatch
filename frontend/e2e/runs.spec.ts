@@ -48,4 +48,5 @@ test('switches to the simulated lots and opens a wafer with a known fault', asyn
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('SIM-s7-L901-W07')
   await expect(page.locator('.breadcrumb').getByRole('link', { name: 'Runs' })).toHaveAttribute('href', '/?source=SYNTHETIC')
+  await expect(page.getByRole('link', { name: 'Measured depth' })).toHaveCount(0)
 })

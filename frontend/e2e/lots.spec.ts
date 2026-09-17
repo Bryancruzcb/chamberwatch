@@ -39,4 +39,9 @@ test('switches to the simulated lots, which drift but have no measured depth', a
   await expect(page.getByRole('img', { name: /^Depth loss by wafer position/ })).toHaveCount(0)
   await expect(page.getByText('Simulated wafers have no measured depth')).toBeVisible()
   await expect(page.getByRole('link', { name: '5', exact: true })).toHaveAttribute('href', /lot=\d+&flagged=true&source=SYNTHETIC/)
+  await page.getByRole('link', { name: 'Lot 901', exact: true }).click()
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lot 901')
+  await expect(page.locator('.breadcrumb').getByRole('link', { name: 'Lots' })).toHaveAttribute('href', '/lots?source=SYNTHETIC')
+  await expect(page.getByRole('link', { name: 'Show them in the runs table' })).toHaveAttribute('href', /^\/\?lot=\d+&source=SYNTHETIC$/)
 })

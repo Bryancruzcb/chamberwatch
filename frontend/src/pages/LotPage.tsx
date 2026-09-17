@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router'
 import { type DriftChannel, type DriftRule, type LotDrift, lotDriftSchema, type Phase } from '../api/schema'
+import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { PositionChart, type PositionFit } from '../charts/PositionChart'
 import { Loaded } from '../components/Loaded'
@@ -58,7 +59,7 @@ function LotDetails({ drift, phase, onPhase }: { drift: LotDrift; phase: Phase; 
       <title>{`Lot ${lot.lotNo} · ChamberWatch`}</title>
       <header className="page-head">
         <p className="breadcrumb">
-          <Link to="/lots">Lots</Link>
+          <Link to={withSource('/lots', lot.source)}>Lots</Link>
           <span aria-hidden="true"> / </span>
           {`Lot ${lot.lotNo}`}
         </p>
@@ -68,7 +69,7 @@ function LotDetails({ drift, phase, onPhase }: { drift: LotDrift; phase: Phase; 
         </p>
       </header>
       <dl className="stats">
-        <Stat label="Runs" value={lot.runs} detail={<Link to={`/?lot=${lot.id}`}>Show them in the runs table</Link>} />
+        <Stat label="Runs" value={lot.runs} detail={<Link to={withSource(`/?lot=${lot.id}`, lot.source)}>Show them in the runs table</Link>} />
         <Stat label="Flagged runs" value={lot.flaggedRuns} />
         <Stat label="Out of the band" value={outOfBand} detail={`Channels whose ${phase} mean left the good runs' band`} />
         <Stat label="Projected to leave" value={leaving} detail={`Within ${rule.plannedLotSize} wafers`} />

@@ -147,7 +147,7 @@ The dominant reads:
 | `api` | Controllers, JSON views, error mapping | Spring MVC |
 | root | Application, properties, the command-line commands | Spring Boot |
 
-Dependencies point one way: `api` to `health` and `store`, `health` and `store` to `detect`, `detect` to `recipe`. `ingest` uses `store`, `health`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. The four pure packages import nothing from Spring or JDBC.
+Dependencies point one way: `api` to `health`, `store`, `detect` and `recipe`; `health` and `store` to `detect` and `recipe`; `detect` and `sim` to `recipe`. `ingest` uses `store`, `health`, `detect`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. The four pure packages import nothing from Spring or JDBC.
 
 ## Alignment
 

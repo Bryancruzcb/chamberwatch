@@ -84,7 +84,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
         <h1 className="key">{run.key}</h1>
         <RunStatus alignment={run.alignment.kind === 'failed' ? 'FAILED' : run.alignment.status} score={assessment} good={run.good} />
         <p className="head-links">
-          <Link to={`/runs/${run.id}/wafer`}>Measured depth</Link>
+          {run.source === 'PUBLIC' && <Link to={`/runs/${run.id}/wafer`}>Measured depth</Link>}
           <Link to={`/lots/${run.lotId}`}>{`Lot ${run.lotNo} drift`}</Link>
         </p>
       </header>

@@ -84,7 +84,7 @@ The file has no step or cycle column, so ChamberWatch derives the recipe positio
 - Etches start in one of three ways. In 65 wafers a 2.8 s SF6 phase comes right before the first C4F8 phase, and in 10 that SF6 phase lasts 4.2 to 4.4 s. In the other 21 the etch starts directly with a C4F8 phase.
 - Some wafers show strike steps at low power before the etch, followed by about 10 s with no gas flow and no power. In lot 1 wafer 2 the strike ran SF6 gas for 2.8 s. In lot 3 wafer 10, one of the three wafers with 98 C4F8 phases, it ran C4F8 gas for 1.4 s and then SF6 gas for 1.2 s.
 - Inside the etch, the source power drops below 1,000 for a single sample in 56 wafers.
-- The etch starts 18 to 147 s into the record and lasts about 592 to 599 s.
+- The etch starts 18 to 147 s into the record and lasts about 592 to 599 s. The aligner's etch span, which ends when the last SF6 gas stops, runs 593 to 600 s.
 - One cycle in the dataset is irregular: in lot 3, wafer 7, cycle 74 ran its SF6 phase for 5.0 s and its C4F8 phase for 0.8 s.
 
 The dataset does not label its gas lines. Gas5 as SF6 and Gas4 as C4F8 is an inference from the flows and the duty cycle, which match the recipe.
