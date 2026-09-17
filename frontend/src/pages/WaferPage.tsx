@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router'
 import { type Measurements, type MeasurementSet, measurementsSchema, runDetailSchema } from '../api/schema'
+import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { WaferMap } from '../charts/WaferMap'
 import { Loaded } from '../components/Loaded'
@@ -31,7 +32,7 @@ function WaferView({ runId }: { runId: number }) {
             <>
               <title>{`${detail.key} depth · ChamberWatch`}</title>
               <p className="breadcrumb">
-                <Link to="/">Runs</Link>
+                <Link to={withSource('/', detail.source)}>Runs</Link>
                 <span aria-hidden="true"> / </span>
                 <Link to={`/lots/${detail.lotId}`}>{`Lot ${detail.lotNo}`}</Link>
                 <span aria-hidden="true"> / </span>
@@ -72,7 +73,9 @@ function MeasurementsView({ measurements }: { measurements: Measurements }) {
           Depth is step height less the oxide left on top. The 9-point and 89-point sets were measured months apart with
           different instruments, so they are never mixed.
         </p>
-        <WaferMap measurements={measurements} />
+        {measurements.points === 0
+          ? <p className="status-line">No measured depth in this set.</p>
+          : <WaferMap measurements={measurements} />}
       </section>
     </>
   )
