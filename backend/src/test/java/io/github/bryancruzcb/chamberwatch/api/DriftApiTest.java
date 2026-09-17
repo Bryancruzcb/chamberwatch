@@ -145,9 +145,30 @@ class DriftApiTest {
 	}
 
 	@Test
-	void anUnknownLotOrPhaseIsAClientError() {
+	void theLotReferenceCentersTheBandOnTheLotsOwnFirstWafers() throws Exception {
+		String global = mvc.get().uri("/api/lots/{id}/drift", lotId).exchange().getResponse().getContentAsString();
+		String own = mvc.get().uri("/api/lots/{id}/drift?reference=LOT", lotId).exchange().getResponse().getContentAsString();
+		String pressure = "$.channels[?(@.channel == 'Pressure')]";
+
+		assertThat((String) JsonPath.read(global, "$.reference")).isEqualTo("GLOBAL");
+		assertThat((String) JsonPath.read(own, "$.reference")).isEqualTo("LOT");
+		assertThat((Integer) JsonPath.read(own, "$.referenceWafers")).isEqualTo(3);
+		List<Map<String, Object>> points = JsonPath.read(own, pressure + ".points[*]");
+		double sd = first(own, pressure + ".bandSd");
+		double start = points.subList(0, 3).stream().mapToDouble((point) -> number(point.get("value"))).average().orElseThrow();
+		assertThat(first(own, pressure + ".bandMean")).isCloseTo(start, withinPercentage(1e-9));
+		assertThat(sd).isEqualTo(first(global, pressure + ".bandSd"));
+		assertThat(number(points.get(0).get("z"))).isCloseTo((number(points.get(0).get("value")) - start) / sd, within(1e-9));
+		// the pressure rises 0.014 over the lot, many spreads, so the lot leaves its own start as well
+		assertThat(JsonPath.<List<String>>read(own, pressure + ".state")).containsExactly("OUT_OF_BAND");
+		assertThat(JsonPath.<List<String>>read(global, pressure + ".state")).containsExactly("OUT_OF_BAND");
+	}
+
+	@Test
+	void anUnknownLotPhaseOrReferenceIsAClientError() {
 		assertThat(mvc.get().uri("/api/lots/{id}/drift", 32_000)).hasStatus(HttpStatus.NOT_FOUND);
 		assertThat(mvc.get().uri("/api/lots/{id}/drift?phase=ARGON", lotId)).hasStatus(HttpStatus.BAD_REQUEST);
+		assertThat(mvc.get().uri("/api/lots/{id}/drift?reference=TOOL", lotId)).hasStatus(HttpStatus.BAD_REQUEST);
 	}
 
 	private static double first(String json, String path) {

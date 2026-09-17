@@ -326,11 +326,17 @@ export const driftChannelSchema = z.object({
 })
 export type DriftChannel = z.infer<typeof driftChannelSchema>
 
+/** What centers each channel's drift band: the good runs of every lot, or this lot's own first wafers. */
+export const driftReferenceSchema = z.enum(['GLOBAL', 'LOT'])
+export type DriftReference = z.infer<typeof driftReferenceSchema>
+
 export const lotDriftSchema = z.object({
   lot: lotSchema,
   phase: phaseSchema,
   baseline: baselineSchema.nullable(),
   rule: driftRuleSchema,
+  reference: driftReferenceSchema,
+  referenceWafers: count,
   channels: z.array(driftChannelSchema),
 })
 export type LotDrift = z.infer<typeof lotDriftSchema>

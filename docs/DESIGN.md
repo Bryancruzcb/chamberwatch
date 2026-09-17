@@ -257,7 +257,7 @@ Both sketches agreed on no Spring Batch, a transaction per wafer as the unit of 
 
 ## Open questions and risks
 
-- Should drift use the global good-run band, or each lot's own first wafers? Conditioning shifts lot levels, so some lots may start outside the global band.
+- Answered: should drift use the global good-run band, or each lot's own first wafers? Measured on the public data, no lot's first three wafers sit outside the global band on any channel, the largest offset being 2.3 standard deviations, and no channel of any lot is out of band as early as wafer 4. So the global band stays the default, and `reference=LOT` centers the band on the lot's own start for the other question, whether a lot has moved from where it began. [DATA.md](DATA.md#which-reference-the-drift-detector-uses) has both verdict tables.
 - Would the first 2 wafers of each lot, closer to the clean, make a tighter reference than the first 3? Wafers 2 to 4 did no better than 1 to 3 on held-out alarms, and 1 to 2 has not been measured.
 - The public data has no labeled faults, so the thresholds rest on held-out good wafers from only 10 lots. More lots would show more spread between lots and could move them.
 - On the public data the limit flags mark a change in the platen match network in four lots, yet those wafers etch no shallower than wafers at the same position in other lots. A flag says the tool changed, not that the wafer is bad.

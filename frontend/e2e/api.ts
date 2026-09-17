@@ -52,7 +52,7 @@ function answer(request: Request, url: URL, log: ApiLog): { status: number; body
   if (lot !== undefined) {
     const name = `drift-${lot}.json`
     return existsSync(join(FIXTURES, name))
-      ? found(inPhase(read(name), url.searchParams.get('phase') ?? 'SF6'))
+      ? found(asAskedDrift(read(name), url.searchParams.get('phase') ?? 'SF6', url.searchParams.get('reference') ?? 'GLOBAL'))
       : missing(`no lot ${lot}`)
   }
   const measured = /^\/api\/runs\/(\d+)\/measurements$/.exec(path)?.[1]
@@ -110,9 +110,9 @@ function asAsked(trace: unknown, channel: string, params: URLSearchParams): unkn
   return { ...trace, channel, fromCycle: from === null ? null : Number(from), toCycle: to === null ? null : Number(to) }
 }
 
-/** The captured lot drift, labeled with the phase the page asked for. */
-function inPhase(drift: unknown, phase: string): unknown {
-  return isObject(drift) ? { ...drift, phase } : drift
+/** The captured lot drift, labeled with the phase and the reference the page asked for, as the API echoes them. */
+function asAskedDrift(drift: unknown, phase: string, reference: string): unknown {
+  return isObject(drift) ? { ...drift, phase, reference } : drift
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

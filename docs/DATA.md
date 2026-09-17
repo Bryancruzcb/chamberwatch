@@ -186,3 +186,18 @@ So the match capacitors did something in lots 6 to 9 that the first wafers never
 | PlatenRFPeakToPeak | lots 3, 6 and 9 | lot 7 |
 | PlatenRFReflectedPower | lots 4, 6 and 10 | |
 | SourceRFLoadPower | lot 6 | lot 7 |
+
+### Which reference the drift detector uses
+
+The band above is centered on the good runs of every lot. Conditioning could have shifted a lot's level so far that its first wafers already sit outside that band, and the drift detector would call the lot out of band from wafer 4 without any trend. Measured on the current public baseline, phase SF6, that never happens: the mean of each lot's first three wafers is within 3 standard deviations of the good-run mean on every one of the 26 channels with a band, the largest offset being 2.3 (HeliumBPFlow, then Heater2Temp at 2.1), and no channel of any lot is out of band as early as wafer 4. So the global band stays the default.
+
+`GET /api/lots/{lotId}/drift?reference=LOT` centers each channel's band on the mean of the lot's own first three wafers instead, keeping the good runs' spread. It answers a different question, whether the lot has moved from where it started, and on the public data the two references differ on three channels. As of each lot's last wafer:
+
+| Channel | Global band: out, projected to leave | Lot's own start: out, projected to leave |
+|---|---|---|
+| PlatenRFTuningCapacitor | all 10 lots | all 10 lots |
+| PlatenRFPeakToPeak | lots 3, 6 and 9, lot 7 | lot 6, lot 7 |
+| PlatenRFReflectedPower | lots 4, 6 and 10 | lots 1, 2, 4, 8 and 10 |
+| SourceRFLoadPower | lot 6, lot 7 | lots 5 and 6, lot 7 |
+
+The tuning capacitor's rise is drift under either reference. PlatenRFPeakToPeak in lots 3 and 9 started high and did not move much, so it leaves the global band and not its own; PlatenRFReflectedPower in lots 1, 2 and 8 started inside the global band and moved, so it leaves its own start and not the global band. The other 22 channels are inside both bands in every lot.
