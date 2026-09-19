@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/target
+**/dist
+frontend/test-results
+frontend/playwright-report
+data
+results
+docs/images
+HANDOFF.md

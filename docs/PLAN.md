@@ -125,7 +125,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.6 relabel 202 | #25 | done: a relabel answers 202 in 99 ms on the public data and its refresh is done 12.3 s later, one refresh at a time on its own thread; the run page polls it |
 | 2.7 depth beside the flag | #23 | done: the run detail carries the measured depth and its loss per measurement set, and run 55's page shows 43.69 µm, 0.31 µm shallower than its lot's first three wafers |
 | 2.8 precise limits | #24 | done: DATA.md gives the held-out alarm rates their exact intervals (2 of 30 is 0.8 to 22 %, by lot 2.5 to 56 %) and says what the Readme does and does not say about the gas lines |
-| 3.1 one deployable | | |
+| 3.1 one deployable | #26, #27 | done: one image serves the whole app, read-only, and fills an empty database from Zenodo on its first start; from empty volumes it loads in 68 to 74 s and peaks at 352 MiB of the app's 640 MB cap and 203 MiB of PostgreSQL's 256 MB |
 | 3.2 one box | | |
 | 4 predicted depth | | |
 | 5 emission spectra | | |

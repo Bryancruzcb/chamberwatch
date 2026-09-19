@@ -40,6 +40,10 @@ public class IngestService {
 
 	static final String EIGHTY_NINE_POINT_CSV = "Si_Oxide_etch_89_points.csv";
 
+	/** The files an ingest reads, every one verified against the MD5 list before any is read. */
+	static final List<String> PUBLIC_FILES = List.of(AlignCommand.PROCESS_DATA, AlignCommand.DICTIONARY, LOT_STATUS,
+			NINE_POINT_CSV, EIGHTY_NINE_POINT_CSV);
+
 	/** Measurement rows do not depend on the aligner, so their ledger rows carry version 0. */
 	private static final int NO_ALIGNER = 0;
 
@@ -55,9 +59,19 @@ public class IngestService {
 		this.health = health;
 	}
 
+	/**
+	 * Whether the ledger holds the telemetry and both measurement files of the MD5 list as loaded, so an ingest
+	 * would read nothing. It needs the list, not the files.
+	 */
+	public boolean alreadyIngested(Path md5List) {
+		Map<String, String> md5s = DataFiles.readList(md5List);
+		return runs.ledger(md5s.get(AlignCommand.PROCESS_DATA), Aligner.VERSION) == RunStore.LedgerStatus.COMPLETE
+				&& runs.ledger(md5s.get(NINE_POINT_CSV), NO_ALIGNER) == RunStore.LedgerStatus.COMPLETE
+				&& runs.ledger(md5s.get(EIGHTY_NINE_POINT_CSV), NO_ALIGNER) == RunStore.LedgerStatus.COMPLETE;
+	}
+
 	public IngestReport ingestPublic(Path dataDir, Path md5List) {
-		Map<String, DataFiles.VerifiedFile> files = DataFiles.verify(dataDir, md5List, List.of(AlignCommand.PROCESS_DATA,
-				AlignCommand.DICTIONARY, LOT_STATUS, NINE_POINT_CSV, EIGHTY_NINE_POINT_CSV));
+		Map<String, DataFiles.VerifiedFile> files = DataFiles.verify(dataDir, md5List, PUBLIC_FILES);
 		for (LotRecord lot : LotSheet.read(files.get(LOT_STATUS))) {
 			runs.upsertLot(lot);
 		}

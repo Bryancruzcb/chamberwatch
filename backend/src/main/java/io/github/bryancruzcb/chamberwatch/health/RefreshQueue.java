@@ -3,9 +3,12 @@ package io.github.bryancruzcb.chamberwatch.health;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 import io.github.bryancruzcb.chamberwatch.detect.Label;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
@@ -26,6 +29,10 @@ import org.springframework.stereotype.Service;
  * behind it, which reads the newer label; the compare-and-set on the current baseline settles the rest. A refresh
  * lost to a crash or a restart is redone by the next relabel, ingest or simulate-lot, because a refresh converges
  * from any state.
+ *
+ * <p>The same thread runs the bootstrap's loads ({@link #runInTurn}), so in the server process one thread at a time
+ * writes baselines and assessments: a relabel's refresh never reads a roster that a load is still filling, and
+ * never finishes after the load's own refresh with an older view of the runs.
  */
 @Service
 public class RefreshQueue implements DisposableBean {
@@ -89,6 +96,35 @@ public class RefreshQueue implements DisposableBean {
 	 */
 	public Optional<Status> relabel(RunId run, Label label) {
 		return runs.relabel(run, label).map(this::submit);
+	}
+
+	/**
+	 * Runs work on the refresh thread, after the refreshes queued before it and before those queued after, and
+	 * waits for it. Must not be called from work already on that thread, which would wait for itself.
+	 *
+	 * @return what the work returned
+	 * @throws RuntimeException what the work threw, or an {@link IllegalStateException} when the wait was
+	 *                          interrupted, in which case the work is cancelled
+	 */
+	public <T> T runInTurn(Supplier<T> work) {
+		Future<T> result = worker.submit(work::get);
+		try {
+			return result.get();
+		}
+		catch (ExecutionException ex) {
+			if (ex.getCause() instanceof RuntimeException runtime) {
+				throw runtime;
+			}
+			if (ex.getCause() instanceof Error error) {
+				throw error;
+			}
+			throw new IllegalStateException(ex.getCause());
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			result.cancel(true);
+			throw new IllegalStateException("interrupted while waiting for work on the refresh thread", ex);
+		}
 	}
 
 	/** @return the refresh, or empty when no refresh had that id since the app started, or too many came after it */

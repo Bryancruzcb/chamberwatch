@@ -49,7 +49,8 @@ public final class DataFiles {
 		return verified;
 	}
 
-	private static Map<String, String> readList(Path md5List) {
+	/** @return the listed MD5 by file name, lower case */
+	static Map<String, String> readList(Path md5List) {
 		Map<String, String> sums = new HashMap<>();
 		try {
 			for (String line : Files.readAllLines(md5List)) {
@@ -70,7 +71,7 @@ public final class DataFiles {
 		return sums;
 	}
 
-	private static String md5Of(Path file) {
+	static String md5Of(Path file) {
 		try (InputStream in = Files.newInputStream(file)) {
 			MessageDigest digest = MessageDigest.getInstance("MD5");
 			byte[] buffer = new byte[64 * 1024];

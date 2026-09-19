@@ -1,6 +1,7 @@
 package io.github.bryancruzcb.chamberwatch.health;
 
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -96,6 +98,33 @@ class RefreshQueueTest {
 		assertThat(failed.state()).isEqualTo(State.FAILED);
 		assertThat(failed.error()).contains("java.lang.OutOfMemoryError: Java heap space");
 		assertThat(next.state()).isEqualTo(State.DONE);
+	}
+
+	@Test
+	void workRunInTurnWaitsForTheRefreshAheadOfItAndHandsBackItsResult() throws Exception {
+		CountDownLatch release = new CountDownLatch(1);
+		when(runs.relabel(RUN, Label.GOOD)).thenReturn(Optional.of(Source.PUBLIC));
+		when(health.refresh(Source.PUBLIC)).thenAnswer((call) -> {
+			release.await();
+			return FITTED;
+		});
+		RefreshQueue.Status ahead = queue.relabel(RUN, Label.GOOD).orElseThrow();
+		CompletableFuture<String> inTurn = CompletableFuture.supplyAsync(() -> queue.runInTurn(() -> {
+			assertThat(queue.status(ahead.id()).orElseThrow().state()).isEqualTo(State.DONE);
+			return "loaded";
+		}));
+
+		Thread.sleep(200);
+		assertThat(inTurn).isNotDone();
+		release.countDown();
+		assertThat(inTurn.get(5, TimeUnit.SECONDS)).isEqualTo("loaded");
+	}
+
+	@Test
+	void workRunInTurnThrowsWhatItThrew() {
+		assertThatIllegalArgumentException().isThrownBy(() -> queue.runInTurn(() -> {
+			throw new IllegalArgumentException("bad data");
+		})).withMessage("bad data");
 	}
 
 	@Test
