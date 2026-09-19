@@ -2,6 +2,7 @@ package io.github.bryancruzcb.chamberwatch.api;
 
 import java.net.URI;
 
+import io.github.bryancruzcb.chamberwatch.ChamberwatchProperties;
 import io.github.bryancruzcb.chamberwatch.health.RefreshQueue;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
@@ -33,9 +34,12 @@ class RunsController {
 
 	private final RefreshQueue refreshes;
 
-	RunsController(ReadQueries queries, RefreshQueue refreshes) {
+	private final ChamberwatchProperties properties;
+
+	RunsController(ReadQueries queries, RefreshQueue refreshes, ChamberwatchProperties properties) {
 		this.queries = queries;
 		this.refreshes = refreshes;
+		this.properties = properties;
 	}
 
 	/**
@@ -81,11 +85,14 @@ class RunsController {
 	/**
 	 * Records the label and answers 202 at once with the refresh it queued, which brings the good runs, the
 	 * baseline and every assessment of the run's source in line with the label. The Location header is the
-	 * refresh, which says when that is done.
+	 * refresh, which says when that is done. A read-only ChamberWatch answers 403 and changes nothing.
 	 */
 	@PutMapping("/{runId}/label")
 	@ResponseStatus(HttpStatus.ACCEPTED)
 	ResponseEntity<RefreshReport> label(@PathVariable("runId") int runId, @RequestBody LabelChange change) {
+		if (properties.readOnly()) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "this ChamberWatch is read-only, so labels cannot be changed here");
+		}
 		if (change == null || change.label() == null) {
 			throw badRequest("a label change needs a label: AUTO, GOOD or BAD");
 		}

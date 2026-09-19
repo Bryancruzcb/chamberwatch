@@ -10,6 +10,7 @@ import {
   type Label,
   type PhaseEvidence,
   refreshSchema,
+  settingsSchema,
   type RelabelResult,
   runDetailSchema,
   type RunDetail,
@@ -77,6 +78,9 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
   const [params] = useSearchParams()
   const selected = run.channels.find((channel) => channel.channel === params.get('channel')) ?? run.channels[0]
   const { assessment, baseline } = run
+  const [settings] = useResource('/api/settings', settingsSchema)
+  // until the settings arrive the buttons wait; if they never do, the server still refuses a read-only relabel
+  const readOnly = settings.kind === 'ready' ? settings.data.readOnly : settings.kind === 'loading'
   // the 89-point set comes first when the wafer is in both
   const measured = run.measuredDepth[0]
   return (
@@ -133,7 +137,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
             <h2 id="channels-title">Channels by rank</h2>
             <ChannelsTable channels={run.channels} selected={selected} k={baseline?.k ?? null} />
           </section>
-          <RelabelPanel runId={run.id} label={run.label} onRelabeled={onRelabeled} />
+          <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={onRelabeled} />
           <section className="panel" aria-labelledby="alignment-title">
             <h2 id="alignment-title">Alignment</h2>
             <AlignmentFacts alignment={run.alignment} />
@@ -341,7 +345,12 @@ function ExcursionsTable({ excursions }: { excursions: readonly Excursion[] }) {
   )
 }
 
-function RelabelPanel({ runId, label, onRelabeled }: { runId: number; label: Label; onRelabeled: () => void }) {
+function RelabelPanel({ runId, label, readOnly, onRelabeled }: {
+  runId: number
+  label: Label
+  readOnly: boolean
+  onRelabeled: () => void
+}) {
   const [state, setState] = useState<Relabel>({ kind: 'idle' })
   const mounted = useRef(false)
   useEffect(() => {
@@ -398,19 +407,23 @@ function RelabelPanel({ runId, label, onRelabeled }: { runId: number; label: Lab
       <p className="note">
         Good runs teach the baseline. This run is labeled {formatLabel(label)}, so it {LABEL_MEANINGS[label]}
       </p>
-      <div className="segmented" role="group" aria-label="Label">
-        {LABEL_ORDER.map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={option === label}
-            disabled={state.kind === 'saving'}
-            onClick={() => void relabel(option)}
-          >
-            {formatLabel(option)}
-          </button>
-        ))}
-      </div>
+      {readOnly
+        ? <p className="note">Labels cannot be changed on this ChamberWatch, a read-only demo.</p>
+        : (
+          <div className="segmented" role="group" aria-label="Label">
+            {LABEL_ORDER.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={option === label}
+                disabled={state.kind === 'saving'}
+                onClick={() => void relabel(option)}
+              >
+                {formatLabel(option)}
+              </button>
+            ))}
+          </div>
+        )}
       <RelabelStatus state={state} />
     </section>
   )

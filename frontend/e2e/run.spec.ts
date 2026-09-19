@@ -71,6 +71,14 @@ test('says the label is saved when the refit fails, and shows the run again', as
   await expect.poll(() => api.requests.filter((path) => path === '/api/runs/55')).toHaveLength(2)
 })
 
+test('shows the label without the buttons on a read-only server', async ({ page }) => {
+  await serveApi(page, { readOnly: true })
+  await page.goto('/runs/55')
+
+  await expect(page.getByRole('region', { name: 'Label' })).toContainText('Labels cannot be changed on this ChamberWatch')
+  await expect(page.getByRole('group', { name: 'Label' })).toHaveCount(0)
+})
+
 test('says when a run does not exist', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/9999')
