@@ -1,0 +1,5 @@
+# HTTPS for the box's sslip.io name, with the certificate Caddy gets on its own, then everything to the app.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8080
+}
