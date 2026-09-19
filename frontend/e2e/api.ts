@@ -74,6 +74,14 @@ function answer(request: Request, url: URL, log: ApiLog): { status: number; body
       ? found(asAskedDrift(read(name), url.searchParams.get('phase') ?? 'SF6', url.searchParams.get('reference') ?? 'GLOBAL'))
       : missing(`no lot ${lot}`)
   }
+  if (path === '/api/reports/depth-model') {
+    return found(read('depth-model.json'))
+  }
+  const depth = /^\/api\/runs\/(\d+)\/depth$/.exec(path)?.[1]
+  if (depth !== undefined) {
+    const name = `depth-${depth}.json`
+    return existsSync(join(FIXTURES, name)) ? found(read(name)) : missing(`no depth for run ${depth}`)
+  }
   const measured = /^\/api\/runs\/(\d+)\/measurements$/.exec(path)?.[1]
   if (measured !== undefined) {
     const set = url.searchParams.get('set') ?? 'EIGHTY_NINE_POINT'

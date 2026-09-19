@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   describeDepthLoss,
   describeFault,
+  describeResidual,
   formatConditioning,
   formatDate,
+  formatDepthFeature,
+  formatDepthMethod,
   formatFaultKind,
   formatMicrons,
   formatScore,
@@ -57,6 +60,15 @@ describe('format', () => {
       .toBe('0.02 µm deeper than wafers 1 to 3 of its lot, 9-point set')
     expect(describeDepthLoss({ ...depth, lossUm: null }))
       .toBe("89-point set, none of its lot's first 3 wafers was measured")
+  })
+
+  it('names the depth model\'s features and methods, and says how a prediction missed', () => {
+    expect(formatDepthFeature('ForeLinePressure/C4F8/spread')).toBe('Foreline pressure, C4F8 spread')
+    expect(formatDepthFeature('NotAFeature')).toBe('NotAFeature')
+    expect(formatDepthMethod('FIRST_WAFERS')).toBe("The lot's first wafers")
+    expect(describeResidual(-0.0627)).toBe('Predicted 0.06 µm shallower than measured')
+    expect(describeResidual(0.2)).toBe('Predicted 0.20 µm deeper than measured')
+    expect(describeResidual(null)).toBe('Not measured in this set')
   })
 
   it('marks a missing value', () => {

@@ -73,6 +73,8 @@ await capture(`measurements-${flagged}-nine.json`, `/api/runs/${flagged}/measure
 for (const id of [publicLot, simulatedLot]) {
   await capture(`drift-${id}.json`, `/api/lots/${id}/drift`)
 }
+await capture('depth-model.json', '/api/reports/depth-model')
+await capture(`depth-${flagged}.json`, `/api/runs/${flagged}/depth?set=EIGHTY_NINE_POINT`)
 
 for (const name of readdirSync(FIXTURES)) {
   if (name.endsWith('.json') && !written.has(name)) {

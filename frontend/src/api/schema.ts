@@ -290,6 +290,40 @@ export const traceSchema = z.object({
 })
 export type Trace = z.infer<typeof traceSchema>
 
+const depthErrorsSchema = z.object({ wafers: count, rmseUm: z.number(), maeUm: z.number() })
+
+export const depthMethodSchema = z.enum(['TELEMETRY', 'POSITION', 'FIRST_WAFERS'])
+export type DepthMethod = z.infer<typeof depthMethodSchema>
+
+/**
+ * How well the telemetry predicts measured depth when every lot is predicted without itself, next to two baselines.
+ * `all` is null for the first-wafers baseline, which can only score the wafers after the first ones.
+ */
+export const depthModelSchema = z.object({
+  set: measurementSetSchema,
+  wafers: count,
+  lots: count,
+  features: count,
+  lambda: z.number().positive(),
+  methods: z.array(z.object({ method: depthMethodSchema, all: depthErrorsSchema.nullable(), late: depthErrorsSchema })),
+  strongest: z.array(z.object({ feature: z.string(), perSdUm: z.number() })),
+  byPosition: z.array(z.object({ position: count, wafers: count, meanMeasuredUm: z.number(), meanPredictedUm: z.number() })),
+})
+export type DepthModel = z.infer<typeof depthModelSchema>
+
+/** One public wafer's depth predicted by a model fitted without its lot; `measuredUm` is null when it was not measured. */
+export const runDepthSchema = z.object({
+  runId: id,
+  set: measurementSetSchema,
+  lotNo: count,
+  predictedUm: z.number(),
+  measuredUm: z.number().nullable(),
+  residualUm: z.number().nullable(),
+  lambda: z.number().positive(),
+  lotRmseUm: z.number().nullable(),
+})
+export type RunDepth = z.infer<typeof runDepthSchema>
+
 /** What the server allows. A read-only one, a public demo, refuses relabels. */
 export const settingsSchema = z.object({ readOnly: z.boolean() })
 

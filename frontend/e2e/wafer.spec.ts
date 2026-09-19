@@ -24,3 +24,13 @@ test('reaches the wafer from its run page', async ({ page }) => {
   await expect(page).toHaveURL(/\/runs\/55\/wafer$/)
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Measured depth')
 })
+
+test('puts the depth the telemetry predicts next to the measured depth', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55/wafer')
+  const panel = page.getByRole('region', { name: 'Predicted from the telemetry' })
+
+  await expect(stat(page, 'Predicted depth')).toHaveText('43.64 µm')
+  await expect(panel).toContainText('Predicted 0.05 µm shallower than measured')
+  await expect(stat(page, 'Lot 6 error')).toHaveText('0.15 µm')
+})
