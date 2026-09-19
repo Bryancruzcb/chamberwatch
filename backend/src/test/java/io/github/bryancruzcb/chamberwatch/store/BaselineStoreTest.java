@@ -60,6 +60,8 @@ class BaselineStoreTest {
 		}
 		assertThat(reloaded.report().lastCycle()).isEqualTo(lot.faulted().report().lastCycle());
 		assertThat(loaded.goodRuns()).isEqualTo(fitted.goodRuns());
+		assertThat(loaded.band(PRESSURE).orElseThrow().maxHold()).isEqualTo(fitted.band(PRESSURE).orElseThrow().maxHold())
+			.isPositive();
 		assertThat(ref.goodRuns()).isEqualTo(3);
 	}
 
@@ -126,7 +128,7 @@ class BaselineStoreTest {
 	private AlignedRun store(LotRef lot, EtchRuns.Builder builder, Map<RunKey, RunId> ids) {
 		RawRun raw = builder.build().run();
 		AlignmentResult result = Aligner.STANDARD.align(raw);
-		ids.put(raw.key(), runs.insertIfAbsent(raw, result, lot).orElseThrow());
+		ids.put(raw.key(), runs.insertIfAbsent(raw, result, lot, Optional.empty()).orElseThrow());
 		return result.orElseThrow();
 	}
 

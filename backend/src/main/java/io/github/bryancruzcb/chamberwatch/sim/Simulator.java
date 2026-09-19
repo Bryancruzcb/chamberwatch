@@ -143,6 +143,9 @@ public final class Simulator {
 		float[] values = new float[times.length * channelCount];
 		List<Timeline.Span> spans = timeline.spans();
 		int spanIndex = 0;
+		boolean stuck = fault.map((f) -> f.kind() == FaultKind.SENSOR_STUCK).orElse(false);
+		float lastRecorded = Float.NaN;
+		float held = Float.NaN;
 		for (int sample = 0; sample < times.length; sample++) {
 			double time = times[sample];
 			while (spanIndex + 1 < spans.size() && time >= spans.get(spanIndex + 1).startS()) {
@@ -165,7 +168,18 @@ public final class Simulator {
 				if (c == faultChannel) {
 					value = applyFault(fault.get(), value, time);
 				}
-				values[sample * channelCount + c] = round(template, value);
+				float recorded = round(template, value);
+				if (c == faultChannel && stuck && time >= fault.get().startS() && time < fault.get().endS()) {
+					// the sensor stopped updating: every sample repeats the last value it recorded before the fault
+					if (Float.isNaN(held)) {
+						held = Float.isNaN(lastRecorded) ? recorded : lastRecorded;
+					}
+					recorded = held;
+				}
+				values[sample * channelCount + c] = recorded;
+				if (c == faultChannel) {
+					lastRecorded = recorded;
+				}
 			}
 		}
 		if (timeline.powerDipSample() >= 0) {
@@ -210,7 +224,7 @@ public final class Simulator {
 		double startS = timeline.etchStartS() + plan.startS();
 		double endS = switch (plan.kind()) {
 			case GAS_FLOW_STUCK_LOW, REFLECTED_POWER_RISE -> timeline.etchEndS();
-			case PRESSURE_SPIKE, SENSOR_DROPOUT -> Math.min(timeline.etchEndS(), startS + plan.durationS());
+			case PRESSURE_SPIKE, SENSOR_DROPOUT, SENSOR_STUCK -> Math.min(timeline.etchEndS(), startS + plan.durationS());
 		};
 		if (!(startS < timeline.etchEndS())) {
 			throw new IllegalArgumentException(plan.kind() + " starts after the etch has ended");
@@ -229,6 +243,8 @@ public final class Simulator {
 			// the plan's duration is the ramp, and the full rise holds after it
 			case REFLECTED_POWER_RISE -> value + magnitude * Math.min(1, (time - fault.startS()) / fault.plan().durationS());
 			case SENSOR_DROPOUT -> 0;
+			// the reading is replaced after rounding, with the last value the channel recorded, in run()
+			case SENSOR_STUCK -> value;
 		};
 	}
 

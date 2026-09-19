@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import io.github.bryancruzcb.chamberwatch.health.HealthService;
@@ -90,7 +91,7 @@ public class IngestService {
 					.orElseThrow(() -> new IllegalStateException(LOT_STATUS + " has no lot for " + key.value()));
 				RawRun raw = source.read(key);
 				AlignmentResult result = Aligner.STANDARD.align(raw);
-				if (runs.insertIfAbsent(raw, result, lot).isEmpty()) {
+				if (runs.insertIfAbsent(raw, result, lot, Optional.empty()).isEmpty()) {
 					present++;
 					continue;
 				}

@@ -36,19 +36,20 @@ export type Lot = z.infer<typeof lotSchema>
 export const baselineSchema = z.object({ id, goodRuns: count, k: z.number(), n: count, runZ: z.number() })
 export type Baseline = z.infer<typeof baselineSchema>
 
-/** How a run scored under the current baseline. */
+/** How a run scored under the current baseline. `stuckFlags` counts holds that passed the stuck rule. */
 export const scoreSchema = z.object({
   limitFlags: count,
   deviationFlags: count,
+  stuckFlags: count,
   persistentZ: z.number(),
   firstChannel: z.string().nullable(),
   firstTimeS: seconds.nullable(),
 })
 export type Score = z.infer<typeof scoreSchema>
 
-/** Whether either detector flagged the run. */
+/** Whether any detector flagged the run. */
 export function isFlagged(score: Score | null): boolean {
-  return score !== null && score.limitFlags + score.deviationFlags > 0
+  return score !== null && score.limitFlags + score.deviationFlags + score.stuckFlags > 0
 }
 
 const runRowWire = z.object({
@@ -63,6 +64,7 @@ const runRowWire = z.object({
   scored: z.boolean(),
   limitFlags: count.nullable(),
   deviationFlags: count.nullable(),
+  stuckFlags: count.nullable(),
   persistentZ: z.number().nullable(),
   firstChannel: z.string().nullable(),
   firstTimeS: seconds.nullable(),
@@ -70,15 +72,15 @@ const runRowWire = z.object({
 
 /** One row of the runs table. `score` is null for a run not scored under the current baseline. */
 export const runRowSchema = runRowWire.transform((row, ctx) => {
-  const { scored, limitFlags, deviationFlags, persistentZ, firstChannel, firstTimeS, ...run } = row
+  const { scored, limitFlags, deviationFlags, stuckFlags, persistentZ, firstChannel, firstTimeS, ...run } = row
   if (!scored) {
     return { ...run, score: null }
   }
-  if (limitFlags === null || deviationFlags === null || persistentZ === null) {
+  if (limitFlags === null || deviationFlags === null || stuckFlags === null || persistentZ === null) {
     ctx.addIssue({ code: 'custom', message: `${run.key} is scored but carries no flag counts` })
     return z.NEVER
   }
-  return { ...run, score: { limitFlags, deviationFlags, persistentZ, firstChannel, firstTimeS } }
+  return { ...run, score: { limitFlags, deviationFlags, stuckFlags, persistentZ, firstChannel, firstTimeS } }
 })
 export type RunRow = z.infer<typeof runRowSchema>
 
@@ -162,18 +164,38 @@ export const phaseEvidenceSchema = z.object({
 })
 export type PhaseEvidence = z.infer<typeof phaseEvidenceSchema>
 
+/** A hold that passed the stuck rule: one value reported for longer than any good run held one on the channel. */
+export const holdSchema = z.object({
+  channel: z.string(),
+  startSlot: count,
+  confirmSlot: count,
+  endSlot: count,
+  cycle: count,
+  phase: phaseSchema,
+  offset: count,
+  startTimeS: seconds.nullable(),
+  confirmTimeS: seconds.nullable(),
+  endTimeS: seconds.nullable(),
+  samples: count,
+  value: z.number(),
+})
+export type Hold = z.infer<typeof holdSchema>
+
+/** `longestHold` is the channel's longest run of one value in samples, whether or not it passed the rule. */
 export const channelSchema = z.object({
   channel: z.string(),
   rank: count,
   persistentZ: z.number(),
   deviation: z.boolean(),
   maxAbsSummaryZ: z.number(),
+  longestHold: count,
   phases: z.array(phaseEvidenceSchema),
   excursions: z.array(excursionSchema),
+  holds: z.array(holdSchema),
 })
 export type Channel = z.infer<typeof channelSchema>
 
-export const faultKindSchema = z.enum(['GAS_FLOW_STUCK_LOW', 'PRESSURE_SPIKE', 'REFLECTED_POWER_RISE', 'SENSOR_DROPOUT'])
+export const faultKindSchema = z.enum(['GAS_FLOW_STUCK_LOW', 'PRESSURE_SPIKE', 'REFLECTED_POWER_RISE', 'SENSOR_DROPOUT', 'SENSOR_STUCK'])
 export type FaultKind = z.infer<typeof faultKindSchema>
 
 /**

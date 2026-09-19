@@ -104,6 +104,35 @@ class SimulatorTest {
 	}
 
 	@Test
+	void aStuckSensorRepeatsItsLastReadingInsideItsWindowAndNowhereElse() {
+		Simulator simulator = Simulator.seeded(5, TEMPLATE);
+		ChannelName channel = ChannelName.of("HeliumBPPressure");
+		SimulatedRun clean = simulator.run(RunSpec.clean(2, 4));
+		SimulatedRun faulted = simulator.run(RunSpec.faulted(2, 4, FaultPlan.sensorStuck(channel, 200, 4.0)));
+		InjectedFault fault = faulted.fault().orElseThrow();
+		int index = clean.raw().channels().indexOf(channel);
+
+		float held = Float.NaN;
+		int inside = 0;
+		for (int sample = 0; sample < clean.raw().sampleCount(); sample++) {
+			double time = clean.raw().time(sample);
+			float before = clean.raw().value(index, sample);
+			float after = faulted.raw().value(index, sample);
+			if (time >= fault.startS() && time < fault.endS()) {
+				if (inside == 0) {
+					held = clean.raw().value(index, sample - 1);
+				}
+				assertThat(after).isEqualTo(held);
+				inside++;
+			}
+			else {
+				assertThat(after).isEqualTo(before);
+			}
+		}
+		assertThat(inside).isEqualTo(20);
+	}
+
+	@Test
 	void trainingRunsAreTheFirstThreeWafersOfEachLot() {
 		assertThat(Simulator.seeded(3, TEMPLATE).cleanTrainingRuns(6).map(SimulatedRun::key).map(RunKey::value))
 			.containsExactly("SIM-s3-L1-W01", "SIM-s3-L1-W02", "SIM-s3-L1-W03", "SIM-s3-L2-W01", "SIM-s3-L2-W02",

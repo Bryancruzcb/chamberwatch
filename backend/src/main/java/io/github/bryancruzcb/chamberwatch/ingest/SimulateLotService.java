@@ -24,6 +24,7 @@ import io.github.bryancruzcb.chamberwatch.store.LotRef;
 import io.github.bryancruzcb.chamberwatch.store.ReadQueries;
 import io.github.bryancruzcb.chamberwatch.store.RunId;
 import io.github.bryancruzcb.chamberwatch.store.RunStore;
+import io.github.bryancruzcb.chamberwatch.store.StoredFault;
 
 import org.springframework.stereotype.Service;
 
@@ -57,7 +58,7 @@ public class SimulateLotService {
 
 	/**
 	 * @param lotNo        the demo lot, above the training lots
-	 * @param lotSize      wafers in the demo lot: the first {@code goodRunsPerLot} clean, then four faulted ones
+	 * @param lotSize      wafers in the demo lot: the first {@code goodRunsPerLot} clean, then at least one per fault kind
 	 * @param trainingLots lots 1 to this many hold the clean wafers the baseline learns from
 	 * @throws IllegalArgumentException when the lot number or size cannot work
 	 * @throws IllegalStateException    when a lot to write already holds runs from another seed
@@ -102,26 +103,30 @@ public class SimulateLotService {
 			.stream()
 			.collect(Collectors.toMap(ReadQueries.RunRow::id, (row) -> row));
 		List<SimulateLotReport.Wafer> wafers = stored.stream()
-			.map((s) -> new SimulateLotReport.Wafer(s.run().key(), s.alignment(), s.run().fault(), verdicts.get(s.id().value())))
+			.map((s) -> new SimulateLotReport.Wafer(s.key(), verdicts.get(s.id().value()).alignment(), s.fault(),
+					verdicts.get(s.id().value())))
 			.toList();
 		return new SimulateLotReport(seed, lotNo, trainingLots, cleanWafers, training, lot, wafers, refresh);
 	}
 
-	private record Stored(SimulatedRun run, String alignment, RunId id, boolean stored) {
+	/** @param fault the truth stored beside the run, which for a run stored earlier may differ from today's plan */
+	private record Stored(RunKey key, Optional<StoredFault> fault, RunId id, boolean stored) {
 	}
 
-	/** Stores the run unless its key is stored, and writes its fault row either way, since that write is idempotent. */
+	/**
+	 * Stores the run with its fault unless its key is stored already, in which case the run and the fault
+	 * beside it stay exactly as they are: the truth belongs to the samples in the database, not to the plan
+	 * the simulator draws today.
+	 */
 	private Stored store(SimulatedRun simulated, LotRef lot) {
 		AlignmentResult result = Aligner.STANDARD.align(simulated.raw());
-		Optional<RunId> inserted = runs.insertIfAbsent(simulated.raw(), result, lot);
-		RunId id = inserted.orElseGet(() -> runs.id(simulated.key())
-			.orElseThrow(() -> new IllegalStateException(simulated.key().value() + " was neither stored nor found")));
-		simulated.fault().ifPresent((fault) -> runs.insertInjectedFault(id, fault));
-		String alignment = switch (result) {
-			case AlignmentResult.Aligned aligned -> aligned.run().report().status().name();
-			case AlignmentResult.Failed ignored -> "FAILED";
-		};
-		return new Stored(simulated, alignment, id, inserted.isPresent());
+		Optional<RunId> inserted = runs.insertIfAbsent(simulated.raw(), result, lot, simulated.fault());
+		if (inserted.isPresent()) {
+			return new Stored(simulated.key(), simulated.fault().map(StoredFault::of), inserted.get(), true);
+		}
+		RunId id = runs.id(simulated.key())
+			.orElseThrow(() -> new IllegalStateException(simulated.key().value() + " was neither stored nor found"));
+		return new Stored(simulated.key(), runs.injectedFault(id), id, false);
 	}
 
 	/** The synthetic lot, created when missing, refused when its stored runs came from another seed. */

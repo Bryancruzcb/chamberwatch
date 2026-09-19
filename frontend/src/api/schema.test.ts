@@ -9,18 +9,20 @@ const row = {
 describe('runRowSchema', () => {
   it('folds the flag counts of a scored run into its score', () => {
     const parsed = runRowSchema.parse({
-      ...row, scored: true, limitFlags: 25, deviationFlags: 0, persistentZ: 18.81, firstChannel: 'PlatenRFLoadCapacitor',
-      firstTimeS: 407.2,
+      ...row, scored: true, limitFlags: 25, deviationFlags: 0, stuckFlags: 0, persistentZ: 18.81,
+      firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 407.2,
     })
 
     expect(parsed.score).toEqual({
-      limitFlags: 25, deviationFlags: 0, persistentZ: 18.81, firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 407.2,
+      limitFlags: 25, deviationFlags: 0, stuckFlags: 0, persistentZ: 18.81, firstChannel: 'PlatenRFLoadCapacitor',
+      firstTimeS: 407.2,
     })
   })
 
   it('gives a run not yet scored no score', () => {
     const parsed = runRowSchema.parse({
-      ...row, scored: false, limitFlags: null, deviationFlags: null, persistentZ: null, firstChannel: null, firstTimeS: null,
+      ...row, scored: false, limitFlags: null, deviationFlags: null, stuckFlags: null, persistentZ: null, firstChannel: null,
+      firstTimeS: null,
     })
 
     expect(parsed.score).toBeNull()
@@ -28,7 +30,8 @@ describe('runRowSchema', () => {
 
   it('refuses a scored run without flag counts', () => {
     const parsed = runRowSchema.safeParse({
-      ...row, scored: true, limitFlags: null, deviationFlags: null, persistentZ: null, firstChannel: null, firstTimeS: null,
+      ...row, scored: true, limitFlags: null, deviationFlags: null, stuckFlags: null, persistentZ: null, firstChannel: null,
+      firstTimeS: null,
     })
 
     expect(parsed.success).toBe(false)

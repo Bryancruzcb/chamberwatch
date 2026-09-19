@@ -74,7 +74,7 @@ class ApiTest {
 				builder.pressureOffsetFrom(60, 0.1f);
 			}
 			RawRun raw = builder.build().run();
-			runIds.put(position, runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot).orElseThrow().value());
+			runIds.put(position, runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot, Optional.empty()).orElseThrow().value());
 		}
 		measurements.insert(new RunId(runIds.get(1)), MeasurementSet.NINE_POINT,
 				List.of(new MeasurementRecord("2031-01-06_01", 1, Optional.of("B6"), 0, 19, 1.0, 0.4, true, 41.0, 0.6, 40.4),
@@ -102,6 +102,10 @@ class ApiTest {
 			.extractingPath("$.runs[?(@.positionInLot == 5)].firstChannel")
 			.asArray()
 			.containsExactly("Pressure");
+		assertThat(mvc.get().uri("/api/runs?source=PUBLIC&lot={lot}", lotId)).bodyJson()
+			.extractingPath("$.runs[?(@.positionInLot == 5)].stuckFlags")
+			.asArray()
+			.containsExactly(0);
 	}
 
 	@Test
@@ -116,6 +120,9 @@ class ApiTest {
 			.asNumber()
 			.satisfies((time) -> assertThat(time.doubleValue()).isPositive());
 		body.extractingPath("$.channels[0].phases[0].meanZ").asNumber().isNotNull();
+		body.extractingPath("$.assessment.stuckFlags").isEqualTo(0);
+		body.extractingPath("$.channels[0].holds").asArray().isEmpty();
+		body.extractingPath("$.channels[0].longestHold").asNumber().satisfies((n) -> assertThat(n.intValue()).isPositive());
 	}
 
 	@Test

@@ -24,9 +24,9 @@ class FaultPlansTest {
 	}
 
 	@Test
-	void aLotWithoutRoomForFourFaultsIsRejected() {
-		assertThatIllegalArgumentException().isThrownBy(() -> FaultPlans.forLot(7, 901, 6, 3));
-		assertThat(FaultPlans.forLot(7, 901, 7, 3).keySet()).containsExactly(4, 5, 6, 7);
+	void aLotWithoutRoomForOneFaultOfEachKindIsRejected() {
+		assertThatIllegalArgumentException().isThrownBy(() -> FaultPlans.forLot(7, 901, 7, 3));
+		assertThat(FaultPlans.forLot(7, 901, 8, 3).keySet()).containsExactly(4, 5, 6, 7, 8);
 	}
 
 }

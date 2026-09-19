@@ -63,7 +63,7 @@ class HealthServiceTest {
 
 	private void store(LotRef lot, EtchRuns.Builder builder) {
 		RawRun raw = builder.build().run();
-		runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot).orElseThrow();
+		runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot, Optional.empty()).orElseThrow();
 	}
 
 	private long unassessedUnderCurrentBaseline() {

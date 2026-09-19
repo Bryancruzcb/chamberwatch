@@ -37,8 +37,8 @@ class RunStoreTest {
 		AlignmentResult result = Aligner.STANDARD.align(raw);
 		AlignedRun run = result.orElseThrow();
 
-		Optional<RunId> first = runs.insertIfAbsent(raw, result, lot);
-		Optional<RunId> second = runs.insertIfAbsent(raw, result, lot);
+		Optional<RunId> first = runs.insertIfAbsent(raw, result, lot, Optional.empty());
+		Optional<RunId> second = runs.insertIfAbsent(raw, result, lot, Optional.empty());
 
 		assertThat(first).isPresent();
 		assertThat(second).isEmpty();
@@ -64,7 +64,7 @@ class RunStoreTest {
 		LotRef lot = runs.upsertLot(new LotRecord(Source.SYNTHETIC, 902, Optional.empty(), Optional.empty()));
 		EtchRuns.Generated generated = EtchRuns.etch().key(RunKey.simulated(7, 902, 1)).build();
 		AlignmentResult result = Aligner.STANDARD.align(generated.run());
-		int runId = runs.insertIfAbsent(generated.run(), result, lot).orElseThrow().value();
+		int runId = runs.insertIfAbsent(generated.run(), result, lot, Optional.empty()).orElseThrow().value();
 
 		Double onset = jdbc.sql("""
 				select s.t_s from sample s

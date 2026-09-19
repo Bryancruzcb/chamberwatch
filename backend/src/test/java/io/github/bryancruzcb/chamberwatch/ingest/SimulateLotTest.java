@@ -5,7 +5,7 @@ import java.util.Optional;
 
 import io.github.bryancruzcb.chamberwatch.TestcontainersConfiguration;
 import io.github.bryancruzcb.chamberwatch.sim.FaultKind;
-import io.github.bryancruzcb.chamberwatch.sim.InjectedFault;
+import io.github.bryancruzcb.chamberwatch.store.StoredFault;
 import io.github.bryancruzcb.chamberwatch.store.ReadQueries;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.within;
 
 /**
- * Two training lots and a seven-wafer demo lot, so the test stores 13 runs instead of the command's 40.
+ * Two training lots and an eight-wafer demo lot, so the test stores 14 runs instead of the command's 40.
  * Other tests store synthetic runs in the same database under other lot numbers.
  */
 @SpringBootTest
@@ -49,35 +49,35 @@ class SimulateLotTest {
 
 	@BeforeAll
 	void simulateTheLot() {
-		first = service.simulate(SEED, LOT, 7, 2);
+		first = service.simulate(SEED, LOT, 8, 2);
 		rowsAfterFirst = derivedRows();
 	}
 
 	@Test
 	void storesTheTrainingLotsAndTheFaultedLotAndScoresThemAll() {
 		assertThat(first.training()).isEqualTo(new SimulateLotReport.Load(6, 0));
-		assertThat(first.lot()).isEqualTo(new SimulateLotReport.Load(7, 0));
-		assertThat(first.wafers()).hasSize(7).allMatch((wafer) -> !wafer.alignment().equals("FAILED"));
+		assertThat(first.lot()).isEqualTo(new SimulateLotReport.Load(8, 0));
+		assertThat(first.wafers()).hasSize(8).allMatch((wafer) -> !wafer.alignment().equals("FAILED"));
 		assertThat(first.hasProblems()).isFalse();
 		assertThat(first.wafers().subList(0, 3)).allMatch((wafer) -> wafer.fault().isEmpty());
-		assertThat(first.wafers().stream().flatMap((wafer) -> wafer.fault().stream()).map(InjectedFault::kind))
+		assertThat(first.wafers().stream().flatMap((wafer) -> wafer.fault().stream()).map(StoredFault::kind))
 			.containsExactlyInAnyOrder(FaultKind.values());
 		assertThat(first.refresh().fitted()).isTrue();
 		// the demo lot's first wafers join the good runs, as every lot's do
 		assertThat(goodRunsOfTheseLots(first.refresh().baseline().orElseThrow().id())).isEqualTo(9);
 		assertThat(first.wafers()).allMatch((wafer) -> wafer.verdict() != null && wafer.verdict().scored());
-		assertThat(faultRows()).isEqualTo(4);
+		assertThat(faultRows()).isEqualTo(5);
 		assertThat(first.describe()).contains("training: 6 runs stored, 0 already present (lots 1 to 2, wafers 1 to 3)")
-			.contains("lot 911: 7 wafers stored, 0 already present")
-			.contains("of 4 injected faults ranked first on their channel");
+			.contains("lot 911: 8 wafers stored, 0 already present")
+			.contains("of 5 injected faults ranked first on their channel");
 	}
 
 	@Test
 	void aRerunFindsEverythingAndWritesNothing() {
-		SimulateLotReport second = service.simulate(SEED, LOT, 7, 2);
+		SimulateLotReport second = service.simulate(SEED, LOT, 8, 2);
 
 		assertThat(second.training()).isEqualTo(new SimulateLotReport.Load(0, 6));
-		assertThat(second.lot()).isEqualTo(new SimulateLotReport.Load(0, 7));
+		assertThat(second.lot()).isEqualTo(new SimulateLotReport.Load(0, 8));
 		assertThat(second.refresh().fitted()).isFalse();
 		assertThat(second.refresh().scored()).isZero();
 		assertThat(second.wafers()).usingRecursiveComparison().isEqualTo(first.wafers());
@@ -88,7 +88,7 @@ class SimulateLotTest {
 	void theStuckFlowAndTheDropoutAreCaughtFirstAndTheRunPageCarriesTheTruth() {
 		for (FaultKind kind : List.of(FaultKind.GAS_FLOW_STUCK_LOW, FaultKind.SENSOR_DROPOUT)) {
 			SimulateLotReport.Wafer wafer = wafer(kind);
-			InjectedFault fault = wafer.fault().orElseThrow();
+			StoredFault fault = wafer.fault().orElseThrow();
 			assertThat(wafer.verdict().limitFlags()).as(kind.name()).isPositive();
 			assertThat(wafer.caughtFirst()).as(kind + " ranked first").isTrue();
 			ReadQueries.RunDetail detail = queries.run(wafer.verdict().id()).orElseThrow();
@@ -97,7 +97,7 @@ class SimulateLotTest {
 			assertThat(shown.channel()).isEqualTo(fault.channel().value());
 			assertThat(shown.startS()).isCloseTo(fault.startS(), within(1e-3));
 			assertThat(shown.endS()).isCloseTo(fault.endS(), within(1e-3));
-			assertThat(shown.magnitude()).isEqualTo(fault.plan().magnitude());
+			assertThat(shown.magnitude()).isEqualTo(fault.magnitude());
 			assertThat(detail.channels().get(0).channel()).isEqualTo(fault.channel().value());
 		}
 		ReadQueries.InjectedFault stuck = queries.run(wafer(FaultKind.GAS_FLOW_STUCK_LOW).verdict().id())
@@ -107,16 +107,16 @@ class SimulateLotTest {
 		ReadQueries.InjectedFault dropout = queries.run(wafer(FaultKind.SENSOR_DROPOUT).verdict().id())
 			.orElseThrow()
 			.injectedFault();
-		assertThat(dropout.durationS()).isCloseTo(wafer(FaultKind.SENSOR_DROPOUT).fault().orElseThrow().plan().durationS(),
+		assertThat(dropout.durationS()).isCloseTo(wafer(FaultKind.SENSOR_DROPOUT).fault().orElseThrow().durationS().orElseThrow(),
 				within(1e-3));
 		assertThat(queries.run(first.wafers().get(0).verdict().id()).orElseThrow().injectedFault()).isNull();
 	}
 
 	@Test
 	void aLotFromAnotherSeedIsRefusedAndABadLotIsRejected() {
-		assertThatIllegalStateException().isThrownBy(() -> service.simulate(SEED + 1, LOT, 7, 2))
+		assertThatIllegalStateException().isThrownBy(() -> service.simulate(SEED + 1, LOT, 8, 2))
 			.withMessageContaining("seed 11");
-		assertThatIllegalArgumentException().isThrownBy(() -> service.simulate(SEED, 2, 7, 2));
+		assertThatIllegalArgumentException().isThrownBy(() -> service.simulate(SEED, 2, 8, 2));
 		assertThatIllegalArgumentException().isThrownBy(() -> service.simulate(SEED, 912, 6, 2));
 		assertThat(derivedRows()).isEqualTo(rowsAfterFirst);
 	}
@@ -124,7 +124,7 @@ class SimulateLotTest {
 	private SimulateLotReport.Wafer wafer(FaultKind kind) {
 		return first.wafers()
 			.stream()
-			.filter((wafer) -> wafer.fault().map(InjectedFault::kind).equals(Optional.of(kind)))
+			.filter((wafer) -> wafer.fault().map(StoredFault::kind).equals(Optional.of(kind)))
 			.findFirst()
 			.orElseThrow();
 	}

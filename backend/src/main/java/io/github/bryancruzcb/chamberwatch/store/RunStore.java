@@ -32,6 +32,7 @@ import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
 import io.github.bryancruzcb.chamberwatch.recipe.SlotAssignment;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
+import io.github.bryancruzcb.chamberwatch.sim.FaultKind;
 import io.github.bryancruzcb.chamberwatch.sim.FaultPlan;
 import io.github.bryancruzcb.chamberwatch.sim.InjectedFault;
 
@@ -130,12 +131,15 @@ public class RunStore {
 	}
 
 	/**
-	 * Stores a run with every recorded sample and, when it aligned, its phase summaries, in one transaction.
+	 * Stores a run with every recorded sample, when it aligned its phase summaries, and for a synthetic run the
+	 * fault the simulator injected, all in one transaction, so the samples and the truth about them can never
+	 * disagree.
 	 *
 	 * @return the new id, or empty when the run key was already stored, in which case nothing was written
 	 */
-	public Optional<RunId> insertIfAbsent(RawRun raw, AlignmentResult result, LotRef lot) {
+	public Optional<RunId> insertIfAbsent(RawRun raw, AlignmentResult result, LotRef lot, Optional<InjectedFault> fault) {
 		Map<ChannelName, Short> ids = channelIds(raw.channels());
+		fault.ifPresent((f) -> channelIds.computeIfAbsent(f.channel(), this::channelId));
 		return Objects.requireNonNull(transactions.execute((status) -> {
 			Optional<Integer> id = insertRunRow(raw, result, lot);
 			if (id.isEmpty()) {
@@ -148,25 +152,37 @@ public class RunStore {
 				}
 				case AlignmentResult.Failed failed -> copySamples(id.get(), raw, ids, null);
 			}
+			fault.ifPresent((f) -> insertFault(id.get(), f));
 			return Optional.of(new RunId(id.get()));
 		}));
 	}
 
-	/**
-	 * Records the fault the simulator injected into a stored run, so a run page can put what was injected next
-	 * to what was caught. Writing it again for the same run changes nothing, so a rerun that finds the run
-	 * stored can still complete a fault row a crash left out.
-	 */
-	public void insertInjectedFault(RunId run, InjectedFault fault) {
-		short channelId = channelIds.computeIfAbsent(fault.channel(), this::channelId);
+	/** The fault stored beside a synthetic run, empty for a public run and a clean synthetic one. */
+	public Optional<StoredFault> injectedFault(RunId run) {
+		return jdbc.sql("""
+				select f.kind, c.name, f.start_s, f.end_s, f.duration_s, f.magnitude
+				from injected_fault f
+				join channel c on c.id = f.channel_id
+				where f.run_id = :run""")
+			.param("run", run.value())
+			.query((rs, row) -> {
+				float duration = rs.getFloat("duration_s");
+				boolean toTheEnd = rs.wasNull();
+				return new StoredFault(FaultKind.valueOf(rs.getString("kind")), ChannelName.of(rs.getString("name")),
+						rs.getFloat("start_s"), rs.getFloat("end_s"), toTheEnd ? Optional.empty() : Optional.of((double) duration),
+						rs.getDouble("magnitude"));
+			})
+			.optional();
+	}
+
+	private void insertFault(int runId, InjectedFault fault) {
 		FaultPlan plan = fault.plan();
 		jdbc.sql("""
 				insert into injected_fault (run_id, kind, channel_id, start_s, end_s, duration_s, magnitude)
-				values (:run, :kind, :channel, :start, :end, :duration, :magnitude)
-				on conflict (run_id) do nothing""")
-			.param("run", run.value())
+				values (:run, :kind, :channel, :start, :end, :duration, :magnitude)""")
+			.param("run", runId)
 			.param("kind", fault.kind().name())
-			.param("channel", channelId)
+			.param("channel", channelIds.get(fault.channel()))
 			.param("start", (float) fault.startS())
 			.param("end", (float) fault.endS())
 			.param("duration", Double.isFinite(plan.durationS()) ? (float) plan.durationS() : null, Types.REAL)

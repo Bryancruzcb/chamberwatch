@@ -119,7 +119,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 |---|---|---|
 | 2.1 drift reference | #17 | done: no lot starts outside the global band, so GLOBAL stays the default and `reference=LOT` is an option |
 | 2.2 good runs per lot | #18 | done: wafers 1 to 2 alarm no less held out and flag 49 of 96 wafers, so three stays |
-| 2.3 stuck-value detector | | |
+| 2.3 stuck-value detector | #19 | done: rule learned from good runs, 0 of 30 held-out alarms at factor 2, simulated recall 0.96 |
 | 2.4 knock-on effects | | |
 | 2.5 drift profile | | |
 | 2.6 relabel 202 | | |

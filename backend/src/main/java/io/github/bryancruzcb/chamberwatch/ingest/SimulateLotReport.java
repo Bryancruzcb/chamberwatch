@@ -8,12 +8,12 @@ import java.util.stream.Stream;
 
 import io.github.bryancruzcb.chamberwatch.health.Refresh;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
-import io.github.bryancruzcb.chamberwatch.sim.InjectedFault;
 import io.github.bryancruzcb.chamberwatch.store.ReadQueries;
+import io.github.bryancruzcb.chamberwatch.store.StoredFault;
 
 /**
  * What one simulate-lot did, and what the detectors made of the lot afterwards: one line per wafer with
- * the fault that went in next to the channel the detectors named first.
+ * the fault that is stored beside it next to the channel the detectors named first.
  *
  * @param cleanWafers the first wafers of every lot, which carry no fault and are the good runs
  */
@@ -24,8 +24,11 @@ public record SimulateLotReport(long seed, int lotNo, int trainingLots, int clea
 		wafers = List.copyOf(wafers);
 	}
 
-	/** @param verdict the runs-table row after the refresh, null when the run could not be scored */
-	public record Wafer(RunKey key, String alignment, Optional<InjectedFault> fault, ReadQueries.RunRow verdict) {
+	/**
+	 * @param fault   the fault stored beside the run, which is what its samples carry
+	 * @param verdict the runs-table row after the refresh, null when the run could not be scored
+	 */
+	public record Wafer(RunKey key, String alignment, Optional<StoredFault> fault, ReadQueries.RunRow verdict) {
 
 		/** True when the detectors flagged the run and ranked the injected fault's channel first. */
 		public boolean caughtFirst() {
@@ -43,10 +46,10 @@ public record SimulateLotReport(long seed, int lotNo, int trainingLots, int clea
 				came = "not flagged";
 			}
 			else {
-				came = String.format(Locale.ROOT, "flagged, %s first%s, %d limit and %d deviation flags",
+				came = String.format(Locale.ROOT, "flagged, %s first%s, %d limit, %d deviation and %d stuck flags",
 						verdict.firstChannel(),
 						(verdict.firstTimeS() != null) ? String.format(Locale.ROOT, " at %.1f s", verdict.firstTimeS()) : "",
-						verdict.limitFlags(), verdict.deviationFlags());
+						verdict.limitFlags(), verdict.deviationFlags(), verdict.stuckFlags());
 			}
 			return String.format(Locale.ROOT, "  %s %s: %s -> %s", key.value(), alignment, went, came);
 		}
@@ -82,17 +85,20 @@ public record SimulateLotReport(long seed, int lotNo, int trainingLots, int clea
 			.collect(Collectors.joining(System.lineSeparator()));
 	}
 
-	static String describe(InjectedFault fault) {
+	static String describe(StoredFault fault) {
 		double from = fault.startS();
+		double duration = fault.durationS().orElse(fault.endS() - fault.startS());
 		return switch (fault.kind()) {
 			case GAS_FLOW_STUCK_LOW -> String.format(Locale.ROOT, "%s stuck at %.0f %% from %.1f s", fault.channel(),
-					fault.plan().magnitude() * 100, from);
+					fault.magnitude() * 100, from);
 			case PRESSURE_SPIKE -> String.format(Locale.ROOT, "%s up %.1f %% for %.1f s from %.1f s", fault.channel(),
-					fault.plan().magnitude() * 100, fault.plan().durationS(), from);
+					fault.magnitude() * 100, duration, from);
 			case REFLECTED_POWER_RISE -> String.format(Locale.ROOT, "%s up %.0f W over %.0f s from %.1f s", fault.channel(),
-					fault.plan().magnitude(), fault.plan().durationS(), from);
-			case SENSOR_DROPOUT -> String.format(Locale.ROOT, "%s reads 0 for %.1f s from %.1f s", fault.channel(),
-					fault.plan().durationS(), from);
+					fault.magnitude(), duration, from);
+			case SENSOR_DROPOUT -> String.format(Locale.ROOT, "%s reads 0 for %.1f s from %.1f s", fault.channel(), duration,
+					from);
+			case SENSOR_STUCK -> String.format(Locale.ROOT, "%s repeats its last reading for %.1f s from %.1f s",
+					fault.channel(), duration, from);
 		};
 	}
 
