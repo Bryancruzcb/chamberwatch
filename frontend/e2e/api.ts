@@ -38,13 +38,14 @@ export interface ApiLog {
  * trace for every other channel, run 55's measurements, the drift of lots 6 and 901 and the drift report of either
  * source. Every other run and lot is missing, like run 9999.
  */
-export async function serveApi(page: Page): Promise<ApiLog> {
+export async function serveApi(page: Page, options: { readOnly?: boolean } = {}): Promise<ApiLog> {
   const log: ApiLog = { requests: [], relabels: [] }
+  const settings = { readOnly: options.readOnly ?? false }
   await page.route('**/api/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     log.requests.push(url.pathname + url.search)
-    const { status, body } = answer(request, url, log)
+    const { status, body } = url.pathname === '/api/settings' ? found(settings) : answer(request, url, log)
     await route.fulfill({
       status,
       contentType: status < 400 ? 'application/json' : 'application/problem+json',

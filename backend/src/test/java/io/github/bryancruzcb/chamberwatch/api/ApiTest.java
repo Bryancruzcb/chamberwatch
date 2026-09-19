@@ -176,6 +176,18 @@ class ApiTest {
 	}
 
 	@Test
+	void theWebAppsOwnPagesAnswerWithTheAppAndTheSettingsAllowRelabels() {
+		assertThat(mvc.get().uri("/runs/{id}", runIds.get(5))).hasStatusOk().hasForwardedUrl("/index.html");
+		assertThat(mvc.get().uri("/runs/{id}/wafer", runIds.get(5))).hasForwardedUrl("/index.html");
+		assertThat(mvc.get().uri("/lots")).hasForwardedUrl("/index.html");
+		assertThat(mvc.get().uri("/lots/{id}", lotId)).hasForwardedUrl("/index.html");
+		assertThat(mvc.get().uri("/api/runs/{id}", 987_654)).hasStatus(HttpStatus.NOT_FOUND).hasForwardedUrl(null);
+		assertThat(mvc.get().uri("/api/settings")).hasStatusOk().bodyJson().extractingPath("$.readOnly").isEqualTo(false);
+		assertThat(mvc.get().uri("/actuator/health")).hasStatusOk();
+		assertThat(mvc.get().uri("/actuator/env")).hasStatus(HttpStatus.NOT_FOUND);
+	}
+
+	@Test
 	void measurementsComeBackWithTheirDepth() {
 		var body = assertThat(mvc.get().uri("/api/runs/{id}/measurements?set=NINE_POINT", runIds.get(1)))
 			.hasStatusOk()
@@ -249,7 +261,7 @@ class ApiTest {
 			.asMap()
 			.containsKeys("/api/lots", "/api/lots/{lotId}/drift", "/api/runs", "/api/runs/{runId}",
 					"/api/runs/{runId}/channels/{channel}/trace", "/api/runs/{runId}/measurements",
-					"/api/runs/{runId}/label", "/api/refreshes/{refreshId}", "/api/reports/drift-vs-depth");
+					"/api/runs/{runId}/label", "/api/refreshes/{refreshId}", "/api/settings", "/api/reports/drift-vs-depth");
 		assertThat(mvc.get().uri("/v3/api-docs")).bodyJson()
 			.extractingPath("$.paths['/api/runs/{runId}/label'].put.responses")
 			.asMap()

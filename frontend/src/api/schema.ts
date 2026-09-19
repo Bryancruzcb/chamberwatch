@@ -290,6 +290,9 @@ export const traceSchema = z.object({
 })
 export type Trace = z.infer<typeof traceSchema>
 
+/** What the server allows. A read-only one, a public demo, refuses relabels. */
+export const settingsSchema = z.object({ readOnly: z.boolean() })
+
 export const relabelResultSchema = z.object({
   baselineId: id.nullable(),
   goodRuns: count.nullable(),
