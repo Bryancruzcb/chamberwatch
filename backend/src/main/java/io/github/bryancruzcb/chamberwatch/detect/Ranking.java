@@ -9,7 +9,7 @@ import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 /**
  * The "look here first" order. Channels that left their band or stopped updating come first, earliest
  * departure first, because a later departure is often an effect of an earlier one: a stuck SF6 flow first,
- * chamber pressure after. The rest follow by their largest run-level |z|.
+ * the foreline pressure after. The rest follow by their largest run-level |z|.
  */
 final class Ranking {
 

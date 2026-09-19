@@ -14,9 +14,9 @@ On 96 public wafers it did not find scrap. It found the tool changing through th
 
 ![The lots page: flags start at lot 6; drift score and depth loss climb together with wafer position](docs/images/lots.png)
 
-The public set has no labeled faults, so a seeded simulator plants five known failures in 1,000 synthetic runs. Detectors catch a stuck gas flow and a sensor dropout every time, a frozen sensor 24 times in 25, and some of the short pressure spikes and slow reflected-power rises. They name the right channel when they catch it. About 14% of clean synthetic runs still get flagged. A stored simulated lot shows the same thing in the app, with the planted fault next to what the detectors called.
+The public set has no labeled faults, so a seeded simulator plants five known failures in 1,000 synthetic runs. Detectors catch a stuck gas flow and a sensor dropout every time, a frozen sensor 24 times in 25, and some of the short pressure spikes and slow reflected-power rises. They name the right channel when they catch it. A stuck flow also drags the simulated foreline pressure down, by the 0.21 per sccm the public wafers show, and the flow still ranks above the pressure it moved in all 23 runs where both are flagged. About 14% of clean synthetic runs still get flagged. A stored simulated lot shows the same thing in the app, with the planted fault next to what the detectors called.
 
-![A simulated run: gas 5 flow drops to 36% at 187.9 s, and the detectors name that channel 1.4 s later](docs/images/simulated-run.png)
+![A simulated run: gas 5 flow drops to 36% at 187.9 s, the detectors name that channel 1.4 s later, and the foreline pressure it dragged down ranks second](docs/images/simulated-run.png)
 
 The numbers live in [results/metrics.json](results/metrics.json). How the simulator and the score are built is in [docs/EVALUATION.md](docs/EVALUATION.md).
 
@@ -83,7 +83,7 @@ npm run e2e     # build, then drive the built app in Chromium against captured A
 
 If the backend runs on another port: `CHAMBERWATCH_API=http://localhost:18080 npm run dev`.
 
-The screenshots above come from the built app and the captured API responses: `npm run build && SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts`.
+The screenshots above come from the built app and the captured API responses: `npm run build && SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts`. The responses come from the real API: with the public wafers ingested and `simulate-lot --seed=7 --lot=901` stored, `node e2e/capture-fixtures.mjs http://localhost:8080` writes every file in `e2e/fixtures` again.
 
 ## License
 

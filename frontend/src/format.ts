@@ -156,13 +156,13 @@ export function formatFaultKind(kind: FaultKind): string {
   return FAULT_KIND_NAMES[kind]
 }
 
-/** What the simulator did to the channel, for example "Gas 5 flow delivers 36% of its flow from 187.9 s to the end of the etch." */
+/** What the simulator did, for example "Gas 5 flow delivers 36% of its flow from 187.9 s to the end of the etch, and ..." */
 export function describeFault(fault: InjectedFault): string {
   const from = formatSeconds(fault.startS)
   const channel = formatChannelName(fault.channel)
   switch (fault.kind) {
     case 'GAS_FLOW_STUCK_LOW':
-      return `${channel} delivers ${percent.format(fault.magnitude)} of its flow from ${from} to the end of the etch.`
+      return `${channel} delivers ${percent.format(fault.magnitude)} of its flow from ${from} to the end of the etch, and the foreline pressure falls with the missing flow.`
     case 'PRESSURE_SPIKE':
       return `${channel} rises ${percent.format(fault.magnitude)} for ${formatSeconds(fault.durationS)} from ${from}.`
     case 'REFLECTED_POWER_RISE':
