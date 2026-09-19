@@ -1,0 +1,30 @@
+#cloud-config
+# Rendered by templatefile() in ec2.tf, which fills in domain, git_ref and swap_gb.
+# The Ubuntu AMI already runs the SSM agent, so nothing here installs it.
+# Progress and timings land in /var/log/cloud-init-output.log.
+
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+
+write_files:
+  # compose reads the box's name from here, for Caddy's certificate
+  - path: /etc/chamberwatch.env
+    owner: root:root
+    permissions: "0644"
+    content: |
+      DOMAIN=${domain}
+
+runcmd:
+  # swap first, so the image build and the first load have room on a 1 GB instance
+  - fallocate -l ${swap_gb}G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  - git clone --branch ${git_ref} https://github.com/Bryancruzcb/chamberwatch.git /opt/chamberwatch
+  - echo "chamberwatch build start $(date -u +%FT%TZ)"
+  - cd /opt/chamberwatch && docker compose -f compose.yaml -f deploy/compose.box.yaml --env-file /etc/chamberwatch.env up --detach --build
+  - echo "chamberwatch up $(date -u +%FT%TZ)"

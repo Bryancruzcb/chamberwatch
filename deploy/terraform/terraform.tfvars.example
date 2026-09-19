@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars, which git ignores, and fill in the account.
+account_id = "123456789012"
+
+# t4g.micro to start; t4g.small if the runbook's measurements say 1 GB is too tight.
+instance_type = "t4g.micro"

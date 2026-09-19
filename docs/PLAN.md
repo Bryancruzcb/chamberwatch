@@ -83,6 +83,8 @@ Done when: `docker compose up` on a clean machine serves the whole app with the 
 
 Terraform in `deploy/` for one instance in us-west-2 (t4g.small, Ubuntu 24.04 on arm64, a security group open on 80 and 443, an Elastic IP), with user data that installs Docker, clones this repository, builds the image on the box and starts PostgreSQL, the app and Caddy. Caddy serves HTTPS on a sslip.io name made from the address, so no domain is needed. A `deploy/update.sh` pulls and rebuilds. `docs/DEPLOY.md` is the runbook: apply, first boot, update, destroy, and what it costs.
 
+As built: the instance type is a variable that defaults to t4g.micro, the choice made on 2026-09-18 after the costs above, with a 2 GB swap file; the runbook says what to measure before moving to t4g.small.
+
 Done when: the README links the running demo and the runbook has been followed once from scratch.
 
 ## Phase 4: predicted depth
@@ -126,7 +128,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.7 depth beside the flag | #23 | done: the run detail carries the measured depth and its loss per measurement set, and run 55's page shows 43.69 µm, 0.31 µm shallower than its lot's first three wafers |
 | 2.8 precise limits | #24 | done: DATA.md gives the held-out alarm rates their exact intervals (2 of 30 is 0.8 to 22 %, by lot 2.5 to 56 %) and says what the Readme does and does not say about the gas lines |
 | 3.1 one deployable | #26, #27 | done: one image serves the whole app, read-only, and fills an empty database from Zenodo on its first start; from empty volumes it loads in 68 to 74 s and peaks at 352 MiB of the app's 640 MB cap and 203 MiB of PostgreSQL's 256 MB |
-| 3.2 one box | | |
+| 3.2 one box | #28 | written, not applied: Terraform in `deploy/terraform`, Caddy for HTTPS on sslip.io, `docs/DEPLOY.md` with the measured costs (about $11.40 a month on the micro); done when the runbook has been followed once and the README links the demo |
 | 4 predicted depth | | |
 | 5 emission spectra | | |
 | 6 chamber simulator | | |

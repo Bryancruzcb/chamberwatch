@@ -1,0 +1,26 @@
+# The box's additions to compose.yaml: Caddy in front of the app, with HTTPS for the box's sslip.io name.
+#
+#   docker compose -f compose.yaml -f deploy/compose.box.yaml --env-file /etc/chamberwatch.env up --detach --build
+#
+# Paths here are relative to the first file's folder, the repository root.
+services:
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN, the box's sslip.io name, in the env file}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  # the certificate and its account key; losing them costs a new certificate
+  caddy_data:
+  caddy_config:
