@@ -1,12 +1,12 @@
 import { Link, useParams, useSearchParams } from 'react-router'
-import { type Measurements, type MeasurementSet, measurementsSchema, runDetailSchema } from '../api/schema'
+import { type Measurements, type MeasurementSet, measurementsSchema, runDepthSchema, runDetailSchema } from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { WaferMap } from '../charts/WaferMap'
 import { Loaded } from '../components/Loaded'
 import { Segmented } from '../components/Segmented'
 import { Stat } from '../components/Stat'
-import { formatMicrons } from '../format'
+import { describeResidual, formatMicrons } from '../format'
 import { NotFound } from './NotFound'
 
 const SETS = [['EIGHTY_NINE_POINT', '89-point'], ['NINE_POINT', '9-point']] as const
@@ -51,7 +51,36 @@ function WaferView({ runId }: { runId: number }) {
         onChange={(next) => setParams(next === 'EIGHTY_NINE_POINT' ? {} : { set: next }, { replace: true, preventScrollReset: true })}
       />
       <Loaded resource={measurements}>{(data) => <MeasurementsView measurements={data} />}</Loaded>
+      <Loaded resource={run}>{(detail) => (detail.source === 'PUBLIC' ? <PredictedDepth runId={runId} set={set} /> : null)}</Loaded>
     </>
+  )
+}
+
+/** What the wafer's telemetry says its depth should be, from a model that never saw its lot. Public wafers only. */
+function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) {
+  const [depth] = useResource(`/api/runs/${runId}/depth?set=${set}`, runDepthSchema)
+  return (
+    <section className="panel" aria-labelledby="predicted-title">
+      <h2 id="predicted-title">Predicted from the telemetry</h2>
+      <p className="note">
+        A ridge regression on every channel's phase means and spreads predicts the wafer's mean depth. The model that
+        predicts this wafer was fitted on the other lots only, so it never saw this lot's depths.{' '}
+        <Link to="/lots">The lots page</Link> compares it with two simpler guesses.
+      </p>
+      <Loaded resource={depth}>
+        {(data) => (
+          <dl className="stats">
+            <Stat label="Predicted depth" value={formatMicrons(data.predictedUm)} detail={describeResidual(data.residualUm)} />
+            <Stat label="Measured depth" value={formatMicrons(data.measuredUm)} detail="Mean over the measured sites" />
+            <Stat
+              label={`Lot ${data.lotNo} error`}
+              value={formatMicrons(data.lotRmseUm)}
+              detail="Root mean square over the lot's measured wafers, all predicted without the lot"
+            />
+          </dl>
+        )}
+      </Loaded>
+    </section>
   )
 }
 

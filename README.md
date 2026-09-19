@@ -20,6 +20,8 @@ The public set has no labeled faults, so a seeded simulator plants five known fa
 
 The numbers live in [results/metrics.json](results/metrics.json). How the simulator and the score are built is in [docs/EVALUATION.md](docs/EVALUATION.md).
 
+The telemetry also says something about the etch depth itself. A ridge regression on the phase means and spreads, fitted without the lot it predicts, gets a wafer's mean 89-point depth to 0.162 µm, where a line on wafer position gets 0.221 µm and the lot's own first wafers get 0.708 µm. The lots page shows the comparison and a wafer's page puts the prediction beside the measurement. [docs/DEPTH.md](docs/DEPTH.md) has the method, the features that carry it, and what it is not.
+
 ## How it works
 
 The tool records 31 channels five times a second. Nothing in the record says which recipe step a sample belongs to, and the etch starts at a different moment in every file.

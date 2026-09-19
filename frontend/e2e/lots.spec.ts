@@ -51,3 +51,19 @@ test('switches to the simulated lots, which drift but have no measured depth', a
   await expect(page.locator('.breadcrumb').getByRole('link', { name: 'Lots' })).toHaveAttribute('href', '/lots?source=SYNTHETIC')
   await expect(page.getByRole('link', { name: 'Show them in the runs table' })).toHaveAttribute('href', /^\/\?lot=\d+&source=SYNTHETIC$/)
 })
+
+test('compares the depth predicted from the telemetry with two simpler guesses', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots')
+  const panel = page.getByRole('region', { name: 'Depth predicted from the telemetry' })
+  const table = panel.getByRole('table', { name: 'Error of each way to guess a wafer\'s depth' })
+
+  await expect(table.getByRole('row', { name: /Telemetry model/ })).toContainText('0.16 µm')
+  await expect(table.getByRole('row', { name: /Position in the lot/ })).toContainText('0.22 µm')
+  await expect(table.getByRole('row', { name: /first wafers/ })).toContainText('0.71 µm')
+  await expect(panel).toContainText('Foreline pressure, C4F8 spread')
+
+  await page.goto('/lots?source=SYNTHETIC')
+  await expect(page.getByRole('heading', { level: 2, name: 'Drift and depth by wafer position' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Depth predicted from the telemetry' })).toHaveCount(0)
+})

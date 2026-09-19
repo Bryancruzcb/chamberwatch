@@ -1,5 +1,5 @@
 import type {
-  ConditioningSurface, DriftState, FaultKind, InjectedFault, Label, MeasuredDepth, MeasurementSet, Source,
+  ConditioningSurface, DepthMethod, DriftState, FaultKind, InjectedFault, Label, MeasuredDepth, MeasurementSet, Source,
 } from './api/schema'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
@@ -25,6 +25,12 @@ const DRIFT_STATE_NAMES = {
 } as const satisfies Record<DriftState, string>
 
 const SOURCE_NAMES = { PUBLIC: 'Public', SYNTHETIC: 'Simulated' } as const satisfies Record<Source, string>
+
+const DEPTH_METHOD_NAMES = {
+  TELEMETRY: 'Telemetry model',
+  POSITION: 'Position in the lot',
+  FIRST_WAFERS: 'The lot\'s first wafers',
+} as const satisfies Record<DepthMethod, string>
 
 const FAULT_KIND_NAMES = {
   GAS_FLOW_STUCK_LOW: 'Gas flow stuck low',
@@ -149,6 +155,24 @@ export function describeDepthLoss(depth: MeasuredDepth): string {
   }
   const direction = depth.lossUm >= 0 ? 'shallower' : 'deeper'
   return `${twoDecimals.format(Math.abs(depth.lossUm))} µm ${direction} than wafers 1 to ${depth.referenceWafers} of its lot, ${set}`
+}
+
+export function formatDepthMethod(method: DepthMethod): string {
+  return DEPTH_METHOD_NAMES[method]
+}
+
+/** A depth feature, `ForeLinePressure/C4F8/spread`, as "Foreline pressure, C4F8 spread". */
+export function formatDepthFeature(feature: string): string {
+  const [channel = feature, phase, statistic] = feature.split('/')
+  return phase === undefined || statistic === undefined ? feature : `${formatChannelName(channel)}, ${phase} ${statistic}`
+}
+
+/** How a prediction missed, for example "0.06 µm shallower than measured"; predicted minus measured is the residual. */
+export function describeResidual(residualUm: number | null): string {
+  if (residualUm === null) {
+    return 'Not measured in this set'
+  }
+  return `Predicted ${twoDecimals.format(Math.abs(residualUm))} µm ${residualUm < 0 ? 'shallower' : 'deeper'} than measured`
 }
 
 export function formatMicrons(value: number | null): string {

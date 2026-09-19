@@ -15,8 +15,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.TreeMap;
 
+import io.github.bryancruzcb.chamberwatch.depth.DepthData;
 import io.github.bryancruzcb.chamberwatch.detect.DetectorConfig;
 import io.github.bryancruzcb.chamberwatch.detect.DriftProjection;
 import io.github.bryancruzcb.chamberwatch.detect.DriftReference;
@@ -24,7 +27,9 @@ import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
 import io.github.bryancruzcb.chamberwatch.detect.Label;
 import io.github.bryancruzcb.chamberwatch.detect.LotFit;
 import io.github.bryancruzcb.chamberwatch.detect.SummaryBand;
+import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 import io.github.bryancruzcb.chamberwatch.recipe.Phase;
+import io.github.bryancruzcb.chamberwatch.recipe.PhaseSummary;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipePosition;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
@@ -465,6 +470,47 @@ public class ReadQueries {
 	}
 
 	/** @return empty when no run has that id; a run without measurements of that set has no values */
+	/**
+	 * Every run of the source that has phase summaries, with them and its mean depth in the set, for the depth
+	 * model. A run that failed alignment has no summaries and is left out.
+	 */
+	public List<DepthData.Wafer> depthWafers(Source source, MeasurementSet set) {
+		record Header(int lotNo, int position) {
+		}
+		Map<Integer, Header> headers = new TreeMap<>();
+		Map<Integer, List<PhaseSummary>> summaries = new HashMap<>();
+		jdbc.sql("""
+				select r.id, l.lot_no, r.position_in_lot, c.name, p.phase, p.n, p.mean, p.sd, p.min, p.max
+				from run_phase_summary p
+				join run r on r.id = p.run_id
+				join lot l on l.id = r.lot_id
+				join channel c on c.id = p.channel_id
+				where l.source = :source""")
+			.param("source", source.name())
+			.query((RowCallbackHandler) (rs) -> {
+				int runId = rs.getInt("id");
+				headers.putIfAbsent(runId, new Header(rs.getInt("lot_no"), rs.getInt("position_in_lot")));
+				summaries.computeIfAbsent(runId, (id) -> new ArrayList<>())
+					.add(new PhaseSummary(ChannelName.of(rs.getString("name")), Phase.valueOf(rs.getString("phase")),
+							rs.getInt("n"), rs.getDouble("mean"), rs.getDouble("sd"), rs.getFloat("min"), rs.getFloat("max")));
+			});
+		Map<Integer, Double> depths = new HashMap<>();
+		jdbc.sql("""
+				select m.run_id, avg(m.depth_um) as depth
+				from measurement m
+				join run r on r.id = m.run_id
+				join lot l on l.id = r.lot_id
+				where l.source = :source and m.measurement_set = :set
+				group by m.run_id""")
+			.param("source", source.name())
+			.param("set", set.name())
+			.query((RowCallbackHandler) (rs) -> depths.put(rs.getInt("run_id"), rs.getDouble("depth")));
+		List<DepthData.Wafer> wafers = new ArrayList<>();
+		headers.forEach((runId, header) -> wafers.add(new DepthData.Wafer(runId, header.lotNo(), header.position(),
+				summaries.get(runId), depths.containsKey(runId) ? OptionalDouble.of(depths.get(runId)) : OptionalDouble.empty())));
+		return wafers;
+	}
+
 	public Optional<Measurements> measurements(int runId, MeasurementSet set) {
 		boolean exists = jdbc.sql("select exists (select 1 from run where id = :run)")
 			.param("run", runId)

@@ -211,6 +211,14 @@ a.key {
   max-width: 70ch;
 }
 
+/* The depth model's strongest features: a short numbered list under its note. */
+ol.features {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
 .resource,
 .stack {
   display: grid;

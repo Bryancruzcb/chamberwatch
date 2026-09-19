@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  depthModelSchema,
   driftVsDepthSchema,
   isFlagged,
   lotDriftSchema,
   lotsSchema,
   measurementsSchema,
+  runDepthSchema,
   runDetailSchema,
   runsPageSchema,
   traceSchema,
@@ -39,6 +41,8 @@ describe('captured API responses', () => {
     ['measurements-55-nine.json', measurementsSchema],
     ['drift-6.json', lotDriftSchema],
     ['drift-21.json', lotDriftSchema],
+    ['depth-model.json', depthModelSchema],
+    ['depth-55.json', runDepthSchema],
     ['drift-vs-depth.json', driftVsDepthSchema],
   ] as const)('%s parses', (name, schema) => {
     const parsed = schema.safeParse(fixture(name))
@@ -92,6 +96,21 @@ describe('captured API responses', () => {
     expect(run.channels[0]?.holds).toHaveLength(1)
     expect(run.channels[0]?.longestHold).toBe(34)
     expect(runDetailSchema.parse(fixture('run-55.json')).assessment?.stuckFlags).toBe(0)
+  })
+
+  it('predict the flagged public wafer within 0.05 µm, and beat both simpler guesses by the 89-point set', () => {
+    const model = depthModelSchema.parse(fixture('depth-model.json'))
+    const depth = runDepthSchema.parse(fixture('depth-55.json'))
+
+    expect(model.wafers).toBe(88)
+    expect(model.lots).toBe(10)
+    expect(model.methods.map((method) => method.method)).toEqual(['TELEMETRY', 'POSITION', 'FIRST_WAFERS'])
+    expect(model.methods[0]?.all?.rmseUm).toBeCloseTo(0.162, 3)
+    expect(model.methods[1]?.all?.rmseUm).toBeCloseTo(0.221, 3)
+    expect(model.methods[2]?.all).toBeNull()
+    expect(model.methods[2]?.late.rmseUm).toBeCloseTo(0.708, 3)
+    expect(depth.predictedUm).toBeCloseTo(43.641, 3)
+    expect(depth.residualUm).toBeCloseTo(-0.050, 3)
   })
 
   it('put the tuning capacitor first in lot 6, out of the band, with no fit at the first wafer', () => {

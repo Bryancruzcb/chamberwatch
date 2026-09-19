@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { type DriftVsDepth, driftVsDepthSchema, type Lot, lotsSchema, type MeasurementSet, type Source } from '../api/schema'
+import {
+  type DepthModel, depthModelSchema, type DriftVsDepth, driftVsDepthSchema, type Lot, lotsSchema, type MeasurementSet, type Source,
+} from '../api/schema'
 import { readSource, withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { PositionChart, type PositionPoint, type PositionSeries } from '../charts/PositionChart'
 import { Loaded } from '../components/Loaded'
 import { SourceSwitch } from '../components/SourceSwitch'
-import { formatConditioning, formatDate, formatMicrons, MISSING } from '../format'
+import { formatConditioning, formatDate, formatDepthFeature, formatDepthMethod, formatMicrons, MISSING } from '../format'
 
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const threeDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
 const SUBTITLES = {
   PUBLIC: 'The public lots, each started after a chamber clean, and how wafers change with their position in a lot.',
@@ -35,7 +38,83 @@ export function LotsPage() {
       </div>
       <Loaded resource={lots}>{(data) => <LotsTable lots={data.filter((lot) => lot.source === source)} source={source} />}</Loaded>
       <Loaded resource={report}>{(data) => <DriftReport report={data} />}</Loaded>
+      {source === 'PUBLIC' && <DepthModelPanel />}
     </>
+  )
+}
+
+/** Depth predicted from the telemetry against measured depth, and how the model compares with two baselines. */
+function DepthModelPanel() {
+  const [model] = useResource('/api/reports/depth-model', depthModelSchema)
+  return <Loaded resource={model}>{(data) => <DepthModelReport model={data} />}</Loaded>
+}
+
+function DepthModelReport({ model }: { model: DepthModel }) {
+  const positions = Math.max(0, ...model.byPosition.map((position) => position.position))
+  const series: PositionSeries[] = [
+    {
+      id: 'measured',
+      name: 'Measured',
+      slot: 1,
+      connect: true,
+      points: model.byPosition.map((position) => ({ position: position.position, value: position.meanMeasuredUm })),
+    },
+    {
+      id: 'predicted',
+      name: 'Predicted',
+      slot: 2,
+      connect: true,
+      points: model.byPosition.map((position) => ({ position: position.position, value: position.meanPredictedUm })),
+    },
+  ]
+  return (
+    <section className="panel" aria-labelledby="depth-model-title">
+      <h2 id="depth-model-title">Depth predicted from the telemetry</h2>
+      <p className="note">
+        {`A ridge regression on ${model.features} phase means and spreads predicts each wafer's mean ${model.set === 'NINE_POINT' ? '9' : '89'}-point
+        depth. Every lot is predicted by a model fitted on the other lots only, with its penalty chosen the same way inside
+        them, so no lot takes part in its own prediction. ${model.wafers} measured wafers in ${model.lots} lots.`}
+      </p>
+      <PositionChart
+        title="Mean depth, µm"
+        label="Measured and predicted mean depth by wafer position"
+        positions={positions}
+        series={series}
+        formatValue={(value) => twoDecimals.format(value)}
+      />
+      <div className="table-wrap">
+        <table>
+          <caption>Error of each way to guess a wafer's depth</caption>
+          <thead>
+            <tr>
+              <th scope="col">Guess</th>
+              <th scope="col" className="num">Every measured wafer</th>
+              <th scope="col" className="num">Wafers after the first three</th>
+            </tr>
+          </thead>
+          <tbody>
+            {model.methods.map((method) => (
+              <tr key={method.method}>
+                <th scope="row">{formatDepthMethod(method.method)}</th>
+                <td className="num">{method.all === null ? MISSING : formatMicrons(method.all.rmseUm)}</td>
+                <td className="num">{formatMicrons(method.late.rmseUm)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="note">
+        Root mean square error. The first wafers' guess needs those wafers' own depth, so it only scores the ones after
+        them. The features that weigh most in the model fitted on every lot, per standard deviation:
+      </p>
+      <ol className="features">
+        {model.strongest.slice(0, 5).map((coefficient) => (
+          <li key={coefficient.feature}>
+            {`${formatDepthFeature(coefficient.feature)}: ${coefficient.perSdUm < 0 ? '−' : '+'}${threeDecimals.format(Math.abs(coefficient.perSdUm))} µm`}
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 

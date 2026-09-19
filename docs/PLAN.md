@@ -129,6 +129,6 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.8 precise limits | #24 | done: DATA.md gives the held-out alarm rates their exact intervals (2 of 30 is 0.8 to 22 %, by lot 2.5 to 56 %) and says what the Readme does and does not say about the gas lines |
 | 3.1 one deployable | #26, #27 | done: one image serves the whole app, read-only, and fills an empty database from Zenodo on its first start; from empty volumes it loads in 68 to 74 s and peaks at 352 MiB of the app's 640 MB cap and 203 MiB of PostgreSQL's 256 MB |
 | 3.2 one box | #28 | written, not applied: Terraform in `deploy/terraform`, Caddy for HTTPS on sslip.io, `docs/DEPLOY.md` with the measured costs (about $11.40 a month on the micro); done when the runbook has been followed once and the README links the demo |
-| 4 predicted depth | | |
+| 4 predicted depth | #30 | done: leave-one-lot-out ridge on the phase summaries predicts the 89-point depth to 0.162 µm, against 0.221 µm for a line on wafer position and 0.708 µm for the lot's first wafers; [DEPTH.md](DEPTH.md) reports it, including the rounding bug whose first run said 0.135 |
 | 5 emission spectra | | |
 | 6 chamber simulator | | |
