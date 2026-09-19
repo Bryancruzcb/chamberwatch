@@ -38,13 +38,13 @@ describe('format', () => {
     expect(describeFault(stuck)).toBe(
       'Gas 5 flow delivers 36% of its flow from 187.9 s to the end of the etch, and the foreline pressure falls with the missing flow.',
     )
-    expect(describeFault(dropout)).toBe('HeliumBPPressure reads 0 for 9.7 s from 618.3 s.')
+    expect(describeFault(dropout)).toBe('Helium backside pressure reads 0 for 9.7 s from 618.3 s.')
     expect(describeFault({ kind: 'PRESSURE_SPIKE', channel: 'Pressure', startS: 135.3, endS: 136.8, durationS: 1.5, magnitude: 0.08 }))
-      .toBe('Pressure rises 8% for 1.5 s from 135.3 s.')
+      .toBe('Chamber pressure rises 8% for 1.5 s from 135.3 s.')
     expect(describeFault({ kind: 'REFLECTED_POWER_RISE', channel: 'SourceRFReflectedPower', startS: 299.2, endS: 716.5, durationS: 11.2, magnitude: 28.4 }))
-      .toBe('SourceRFReflectedPower climbs 28.4 W over 11.2 s from 299.2 s, then holds.')
+      .toBe('Source RF reflected power climbs 28.4 W over 11.2 s from 299.2 s, then holds.')
     expect(describeFault({ kind: 'SENSOR_STUCK', channel: 'HeliumBPPressure', startS: 499.0046, endS: 505.6034, durationS: 6.5988, magnitude: 0 }))
-      .toBe('HeliumBPPressure repeats its last reading for 6.6 s from 499.0 s.')
+      .toBe('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')
     expect(formatFaultKind('SENSOR_STUCK')).toBe('Sensor stuck')
   })
 
