@@ -1,4 +1,6 @@
-import type { ConditioningSurface, DriftState, FaultKind, InjectedFault, Label, MeasurementSet, Source } from './api/schema'
+import type {
+  ConditioningSurface, DriftState, FaultKind, InjectedFault, Label, MeasuredDepth, MeasurementSet, Source,
+} from './api/schema'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
 const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 })
@@ -139,6 +141,16 @@ export function formatSeconds(value: number | null): string {
 }
 
 /** A depth or a thickness, in micrometres to two decimals. */
+/** A wafer's depth against its lot's first wafers, for example "0.45 µm shallower than wafers 1 to 3 of its lot, 89-point set". */
+export function describeDepthLoss(depth: MeasuredDepth): string {
+  const set = `${MEASUREMENT_SET_NAMES[depth.set]} set`
+  if (depth.lossUm === null) {
+    return `${set}, none of its lot's first ${depth.referenceWafers} wafers was measured`
+  }
+  const direction = depth.lossUm >= 0 ? 'shallower' : 'deeper'
+  return `${twoDecimals.format(Math.abs(depth.lossUm))} µm ${direction} than wafers 1 to ${depth.referenceWafers} of its lot, ${set}`
+}
+
 export function formatMicrons(value: number | null): string {
   return value === null ? MISSING : `${twoDecimals.format(value)} µm`
 }

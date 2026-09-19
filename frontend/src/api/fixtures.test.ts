@@ -68,6 +68,18 @@ describe('captured API responses', () => {
     expect(run.channels[1]?.channel).toBe('ForeLinePressure')
     expect(run.channels[1]?.excursions.length).toBeGreaterThan(0)
     expect(runDetailSchema.parse(fixture('run-55.json')).injectedFault).toBeNull()
+    expect(run.measuredDepth).toEqual([])
+  })
+
+  it('carry the measured depth of the flagged public wafer, 0.31 µm shallower than its lot began', () => {
+    const [deep, nine] = runDetailSchema.parse(fixture('run-55.json')).measuredDepth
+
+    expect(deep?.set).toBe('EIGHTY_NINE_POINT')
+    expect(deep?.points).toBe(89)
+    expect(deep?.meanDepthUm).toBeCloseTo(43.691, 3)
+    expect(deep?.lossUm).toBeCloseTo(0.313, 3)
+    expect(nine?.set).toBe('NINE_POINT')
+    expect(nine?.lossUm).toBeCloseTo(0.288, 3)
   })
 
   it('carry the stuck sensor of wafer 10 of lot 901 as a hold the rule caught', () => {

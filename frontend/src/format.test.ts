@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  describeDepthLoss,
   describeFault,
   formatConditioning,
   formatDate,
@@ -46,6 +47,16 @@ describe('format', () => {
     expect(describeFault({ kind: 'SENSOR_STUCK', channel: 'HeliumBPPressure', startS: 499.0046, endS: 505.6034, durationS: 6.5988, magnitude: 0 }))
       .toBe('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')
     expect(formatFaultKind('SENSOR_STUCK')).toBe('Sensor stuck')
+  })
+
+  it('says how the depth of a wafer compares with the first wafers of its lot', () => {
+    const depth = { set: 'EIGHTY_NINE_POINT', points: 89, meanDepthUm: 43.6913, lossUm: 0.31345, referenceWafers: 3 } as const
+
+    expect(describeDepthLoss(depth)).toBe('0.31 µm shallower than wafers 1 to 3 of its lot, 89-point set')
+    expect(describeDepthLoss({ ...depth, set: 'NINE_POINT', lossUm: -0.0154 }))
+      .toBe('0.02 µm deeper than wafers 1 to 3 of its lot, 9-point set')
+    expect(describeDepthLoss({ ...depth, lossUm: null }))
+      .toBe("89-point set, none of its lot's first 3 wafers was measured")
   })
 
   it('marks a missing value', () => {

@@ -299,6 +299,11 @@ select {
   margin: 0;
 }
 
+/* The run page has up to six stats, one of them a channel name: three to a row keeps the name on one line. */
+.stats.wide {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
 .stat {
   display: grid;
   align-content: start;
