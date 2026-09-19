@@ -7,6 +7,24 @@ const FIXTURES = join(import.meta.dirname, 'fixtures')
 /** What the real API answered when a flagged public wafer was labeled GOOD. */
 const RELABEL_RESULT = { baselineId: 2, goodRuns: 31, fitted: true, scored: 96, flagged: 14, current: true }
 
+/**
+ * The refresh a relabel starts: running when the PUT answers and the first time it is asked about, then done. A relabel
+ * to BAD gets a refresh that fails, the way a refit that runs out of memory on a small host does.
+ */
+const REFRESH_ID = 7
+const FAILING_REFRESH_ID = 8
+const OUT_OF_MEMORY = 'java.lang.OutOfMemoryError: Java heap space'
+
+function refresh(id: number, state: 'RUNNING' | 'DONE' | 'FAILED'): unknown {
+  return {
+    id,
+    source: 'PUBLIC',
+    state,
+    result: state === 'DONE' ? RELABEL_RESULT : null,
+    error: state === 'FAILED' ? OUT_OF_MEMORY : null,
+  }
+}
+
 export interface ApiLog {
   /** Every API path the page asked for, with its query, in order. */
   readonly requests: string[]
@@ -75,8 +93,17 @@ function answer(request: Request, url: URL, log: ApiLog): { status: number; body
     return found(asAsked(read(name), decodeURIComponent(traced[2] ?? ''), url.searchParams))
   }
   if (/^\/api\/runs\/\d+\/label$/.test(path) && request.method() === 'PUT') {
-    log.relabels.push(request.postDataJSON())
-    return found(RELABEL_RESULT)
+    const change: unknown = request.postDataJSON()
+    log.relabels.push(change)
+    const failing = isObject(change) && change.label === 'BAD'
+    return { status: 202, body: refresh(failing ? FAILING_REFRESH_ID : REFRESH_ID, 'RUNNING') }
+  }
+  if (path === `/api/refreshes/${REFRESH_ID}`) {
+    // the log already holds this request, so the first poll counts one
+    return found(refresh(REFRESH_ID, log.requests.filter((asked) => asked === path).length > 1 ? 'DONE' : 'RUNNING'))
+  }
+  if (path === `/api/refreshes/${FAILING_REFRESH_ID}`) {
+    return found(refresh(FAILING_REFRESH_ID, 'FAILED'))
   }
   return missing(`no fixture for ${request.method()} ${path}`)
 }

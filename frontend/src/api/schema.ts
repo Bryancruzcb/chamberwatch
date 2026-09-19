@@ -300,6 +300,31 @@ export const relabelResultSchema = z.object({
 })
 export type RelabelResult = z.infer<typeof relabelResultSchema>
 
+/**
+ * A refresh that a relabel started, folded into what the page does next: wait, show what the refit did, or say why
+ * it failed. `result` comes with `DONE` and `error` with `FAILED`.
+ */
+export const refreshSchema = z.object({
+  id,
+  source: sourceSchema,
+  state: z.enum(['RUNNING', 'DONE', 'FAILED']),
+  result: relabelResultSchema.nullable(),
+  error: z.string().nullable(),
+}).transform((refresh, ctx) => {
+  if (refresh.state === 'RUNNING') {
+    return { kind: 'running', id: refresh.id } as const
+  }
+  if (refresh.state === 'DONE' && refresh.result !== null) {
+    return { kind: 'done', id: refresh.id, result: refresh.result } as const
+  }
+  if (refresh.state === 'FAILED' && refresh.error !== null) {
+    return { kind: 'failed', id: refresh.id, message: refresh.error } as const
+  }
+  ctx.addIssue({ code: 'custom', message: `refresh ${refresh.id} is ${refresh.state} without its ${refresh.state === 'DONE' ? 'result' : 'error'}` })
+  return z.NEVER
+})
+export type Refresh = z.infer<typeof refreshSchema>
+
 /** An RFC 9457 problem detail, read loosely because it only feeds an error message. */
 export const problemSchema = z.object({ title: z.string().optional(), detail: z.string().optional() })
 

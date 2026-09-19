@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { putJson } from '../api/client'
+import { getJson, putJson } from '../api/client'
 import {
   type Alignment,
   type Channel,
@@ -9,7 +9,7 @@ import {
   type InjectedFault,
   type Label,
   type PhaseEvidence,
-  relabelResultSchema,
+  refreshSchema,
   type RelabelResult,
   runDetailSchema,
   type RunDetail,
@@ -49,6 +49,10 @@ type View = Cycles | { kind: 'record' }
 
 /** The default view, since the detectors only score the etch. */
 const ETCH: Cycles = { kind: 'cycles', from: 1, to: CYCLES }
+
+/** How often the page asks whether a refit is done, and how many times it asks before it stops: ten minutes. */
+const POLL_MS = 500
+const MAX_POLLS = 1200
 
 type Relabel =
   | { kind: 'idle' }
@@ -137,7 +141,8 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
         </div>
         {selected === undefined
           ? <section className="panel"><p className="status-line">No channel of this run was scored.</p></section>
-          : <ChannelPanel runId={run.id} channel={selected} />}
+          // a relabel's refit moves the band, so a new baseline mounts the chart afresh and fetches its trace again
+          : <ChannelPanel key={run.baseline?.id ?? 0} runId={run.id} channel={selected} />}
       </div>
     </>
   )
@@ -338,16 +343,52 @@ function ExcursionsTable({ excursions }: { excursions: readonly Excursion[] }) {
 
 function RelabelPanel({ runId, label, onRelabeled }: { runId: number; label: Label; onRelabeled: () => void }) {
   const [state, setState] = useState<Relabel>({ kind: 'idle' })
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
+  // The API saves the label and answers at once; the refit runs on the server, and the page asks until it is done.
+  // Once the label is saved the run is reloaded however the refit ends, so the page shows the label that was saved.
   async function relabel(next: Label) {
     setState({ kind: 'saving', label: next })
+    let saved = false
     try {
-      const result = await putJson(`/api/runs/${runId}/label`, { label: next }, relabelResultSchema)
-      setState({ kind: 'done', result })
-      onRelabeled()
+      let refresh = await putJson(`/api/runs/${runId}/label`, { label: next }, refreshSchema)
+      saved = true
+      for (let polls = 0; refresh.kind === 'running'; polls++) {
+        if (polls === MAX_POLLS) {
+          throw new Error('it was still running after ten minutes')
+        }
+        await delay(POLL_MS)
+        if (!mounted.current) {
+          return
+        }
+        refresh = await getJson(`/api/refreshes/${refresh.id}`, refreshSchema)
+      }
+      if (!mounted.current) {
+        return
+      }
+      setState(refresh.kind === 'failed'
+        ? { kind: 'failed', message: `The label is saved, but the refit failed: ${refresh.message}. The next relabel refits again.` }
+        : { kind: 'done', result: refresh.result })
     }
     catch (error) {
-      setState({ kind: 'failed', message: error instanceof Error ? error.message : String(error) })
+      if (mounted.current) {
+        const reason = error instanceof Error ? error.message : String(error)
+        setState({
+          kind: 'failed',
+          message: saved ? `The label is saved, but the page lost track of the refit: ${reason}. Reload later to see the baseline follow it.` : reason,
+        })
+      }
+    }
+    finally {
+      if (saved && mounted.current) {
+        onRelabeled()
+      }
     }
   }
 
@@ -373,6 +414,12 @@ function RelabelPanel({ runId, label, onRelabeled }: { runId: number; label: Lab
       <RelabelStatus state={state} />
     </section>
   )
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 function RelabelStatus({ state }: { state: Relabel }) {

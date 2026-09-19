@@ -7,8 +7,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 
+import com.jayway.jsonpath.JsonPath;
 import io.github.bryancruzcb.chamberwatch.TestcontainersConfiguration;
 import io.github.bryancruzcb.chamberwatch.health.HealthService;
+import io.github.bryancruzcb.chamberwatch.health.Refresh;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
 import io.github.bryancruzcb.chamberwatch.recipe.EtchRuns;
 import io.github.bryancruzcb.chamberwatch.recipe.RawRun;
@@ -32,6 +34,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
@@ -184,15 +187,37 @@ class ApiTest {
 	}
 
 	@Test
-	void relabelingRefreshesTheBaselineBeforeItAnswers() {
-		assertThat(mvc.put()
-			.uri("/api/runs/{id}/label", runIds.get(4))
-			.contentType(MediaType.APPLICATION_JSON)
-			.content("{\"label\": \"GOOD\"}")).hasStatusOk().bodyJson().extractingPath("$.current").isEqualTo(true);
+	void aRelabelAnswersAtOnceAndItsRefreshSaysWhenTheBaselineFollows() throws Exception {
+		String refresh = relabel(runIds.get(4), "GOOD");
 
-		var body = assertThat(mvc.get().uri("/api/runs/{id}", runIds.get(4))).hasStatusOk().bodyJson();
-		body.extractingPath("$.label").isEqualTo("GOOD");
-		body.extractingPath("$.good").isEqualTo(true);
+		assertThat(refresh).matches("/api/refreshes/[0-9]+");
+		var done = assertThat(finished(refresh)).hasStatusOk().bodyJson();
+		done.extractingPath("$.state").isEqualTo("DONE");
+		done.extractingPath("$.source").isEqualTo("PUBLIC");
+		done.extractingPath("$.result.fitted").isEqualTo(true);
+		done.extractingPath("$.result.current").isEqualTo(true);
+		var run = assertThat(mvc.get().uri("/api/runs/{id}", runIds.get(4))).hasStatusOk().bodyJson();
+		run.extractingPath("$.label").isEqualTo("GOOD");
+		run.extractingPath("$.good").isEqualTo(true);
+	}
+
+	@Test
+	void twoRelabelsInARowLeaveTheBaselineTheLastLabelsCallFor() throws Exception {
+		String first = relabel(runIds.get(3), "BAD");
+		String second = relabel(runIds.get(3), "AUTO");
+
+		assertThat(second).isNotEqualTo(first);
+		assertThat(finished(first)).bodyJson().extractingPath("$.state").isEqualTo("DONE");
+		var last = assertThat(finished(second)).bodyJson();
+		last.extractingPath("$.state").isEqualTo("DONE");
+		last.extractingPath("$.result.current").isEqualTo(true);
+		assertThat(mvc.get().uri("/api/runs/{id}", runIds.get(3))).bodyJson().extractingPath("$.label").isEqualTo("AUTO");
+		// the queue already followed both labels, so a refresh now finds everything in place
+		Refresh again = health.refresh(Source.PUBLIC);
+		assertThat(again.fitted()).isFalse();
+		assertThat(again.scored()).isZero();
+		assertThat(again.current()).isTrue();
+		last.extractingPath("$.result.baselineId").isEqualTo(again.baseline().orElseThrow().id());
 	}
 
 	@Test
@@ -209,6 +234,11 @@ class ApiTest {
 			.uri("/api/runs/{id}/label", runIds.get(1))
 			.contentType(MediaType.APPLICATION_JSON)
 			.content("{\"label\": \"MAYBE\"}")).hasStatus(HttpStatus.BAD_REQUEST);
+		assertThat(mvc.put()
+			.uri("/api/runs/{id}/label", 987_654)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"label\": \"GOOD\"}")).hasStatus(HttpStatus.NOT_FOUND);
+		assertThat(mvc.get().uri("/api/refreshes/{id}", 987_654)).hasStatus(HttpStatus.NOT_FOUND);
 	}
 
 	@Test
@@ -219,7 +249,34 @@ class ApiTest {
 			.asMap()
 			.containsKeys("/api/lots", "/api/lots/{lotId}/drift", "/api/runs", "/api/runs/{runId}",
 					"/api/runs/{runId}/channels/{channel}/trace", "/api/runs/{runId}/measurements",
-					"/api/runs/{runId}/label", "/api/reports/drift-vs-depth");
+					"/api/runs/{runId}/label", "/api/refreshes/{refreshId}", "/api/reports/drift-vs-depth");
+		assertThat(mvc.get().uri("/v3/api-docs")).bodyJson()
+			.extractingPath("$.paths['/api/runs/{runId}/label'].put.responses")
+			.asMap()
+			.containsKey("202");
+	}
+
+	/** Relabels a run and returns where its refresh can be followed. */
+	private String relabel(int runId, String label) {
+		MvcTestResult result = mvc.put()
+			.uri("/api/runs/{id}/label", runId)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"label\": \"" + label + "\"}")
+			.exchange();
+		assertThat(result).hasStatus(HttpStatus.ACCEPTED).bodyJson().extractingPath("$.state").isEqualTo("RUNNING");
+		return result.getResponse().getHeader("Location");
+	}
+
+	/** Follows a refresh until it ends, as the run page does. */
+	private MvcTestResult finished(String refresh) throws Exception {
+		for (int attempt = 0; attempt < 600; attempt++) {
+			MvcTestResult result = mvc.get().uri(refresh).exchange();
+			if (!"RUNNING".equals(JsonPath.read(result.getResponse().getContentAsString(), "$.state"))) {
+				return result;
+			}
+			Thread.sleep(50);
+		}
+		throw new AssertionError(refresh + " was still running after 30 s");
 	}
 
 }

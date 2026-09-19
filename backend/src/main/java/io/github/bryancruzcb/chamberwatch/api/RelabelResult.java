@@ -4,7 +4,7 @@ import io.github.bryancruzcb.chamberwatch.health.Refresh;
 import io.github.bryancruzcb.chamberwatch.store.BaselineRef;
 
 /**
- * What a relabel did to its source's baseline.
+ * What the refresh a relabel started did to its source's baseline.
  *
  * @param baselineId the baseline current afterwards, null when the source has no good runs left
  * @param fitted     whether the new label changed the good runs, so a new baseline was fitted
