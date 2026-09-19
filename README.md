@@ -45,7 +45,15 @@ This is a per-slot baseline plus three rules, not a trained model. [docs/DESIGN.
 
 ## Running it locally
 
-You need JDK 21, Node 22.12 or newer, and Docker.
+The quickest way needs only Docker. From the repository root:
+
+```bash
+docker compose up --build      # then open http://localhost:8080
+```
+
+That builds one image, the web app inside the jar, and starts it next to PostgreSQL. On the first start the app downloads the public files from Zenodo, about 10 MB, checks them against [docs/zenodo17122442.md5](docs/zenodo17122442.md5), loads them and stores the simulated demo lot, while it already serves the web app. A restart with the data in place writes nothing. It runs read-only, like the hosted demo; `CHAMBERWATCH_READ_ONLY=false docker compose up` allows relabels, and `CHAMBERWATCH_PORT=18080` picks another port.
+
+To work on the code you need JDK 21, Node 22.12 or newer, and Docker.
 
 ```bash
 cd backend

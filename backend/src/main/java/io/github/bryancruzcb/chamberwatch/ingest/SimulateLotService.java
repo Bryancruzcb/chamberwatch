@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
 
@@ -54,6 +55,28 @@ public class SimulateLotService {
 		this.health = health;
 		this.queries = queries;
 		this.config = config;
+	}
+
+	/** Whether every run {@link #simulate} would store with these arguments is stored, so a rerun would write nothing. */
+	public boolean alreadyStored(long seed, int lotNo, int lotSize, int trainingLots) {
+		Set<String> stored = runs.roster(Source.SYNTHETIC)
+			.runs()
+			.stream()
+			.map((run) -> run.key().value())
+			.collect(Collectors.toSet());
+		for (int lot = 1; lot <= trainingLots; lot++) {
+			for (int position = 1; position <= config.goodRunsPerLot(); position++) {
+				if (!stored.contains(RunKey.simulated(seed, lot, position).value())) {
+					return false;
+				}
+			}
+		}
+		for (int position = 1; position <= lotSize; position++) {
+			if (!stored.contains(RunKey.simulated(seed, lotNo, position).value())) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

@@ -47,3 +47,23 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Build, then drive the built app
         run: npm run e2e
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # the bootstrap would fetch from Zenodo, so here the image starts on an empty database without it
+      - name: Build the image and start it next to Postgres
+        run: CHAMBERWATCH_BOOTSTRAP=false docker compose up --build --detach
+      - name: Check it serves the web app, the API and its health, and refuses a relabel
+        run: |
+          for i in $(seq 1 60); do curl -sf http://localhost:8080/actuator/health && break; sleep 2; done
+          curl -sf http://localhost:8080/runs/55 | grep -q 'id="root"'
+          curl -sf http://localhost:8080/api/settings | grep -q '"readOnly":true'
+          curl -sf http://localhost:8080/api/lots
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' \
+            -d '{"label":"GOOD"}' http://localhost:8080/api/runs/1/label)
+          test "$status" = 403
+      - name: Show the app's log
+        if: always()
+        run: docker compose logs app

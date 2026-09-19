@@ -47,8 +47,11 @@ class SimulateLotTest {
 
 	private long rowsAfterFirst;
 
+	private boolean storedBeforeFirst;
+
 	@BeforeAll
 	void simulateTheLot() {
+		storedBeforeFirst = service.alreadyStored(SEED, LOT, 8, 2);
 		first = service.simulate(SEED, LOT, 8, 2);
 		rowsAfterFirst = derivedRows();
 	}
@@ -70,6 +73,15 @@ class SimulateLotTest {
 		assertThat(first.describe()).contains("training: 6 runs stored, 0 already present (lots 1 to 2, wafers 1 to 3)")
 			.contains("lot 911: 8 wafers stored, 0 already present")
 			.contains("of 5 injected faults ranked first on their channel");
+	}
+
+	@Test
+	void knowsWhenEveryRunItWouldStoreIsStored() {
+		assertThat(storedBeforeFirst).isFalse();
+		assertThat(service.alreadyStored(SEED, LOT, 8, 2)).isTrue();
+		assertThat(service.alreadyStored(SEED, LOT, 9, 2)).isFalse();
+		assertThat(service.alreadyStored(SEED, LOT, 8, 3)).isFalse();
+		assertThat(service.alreadyStored(SEED + 1, LOT, 8, 2)).isFalse();
 	}
 
 	@Test

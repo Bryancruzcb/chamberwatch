@@ -1,0 +1,51 @@
+# The whole demo on one machine: PostgreSQL and ChamberWatch. On its first start the app fills the empty database
+# from Zenodo (about 10 MB of files, then the ingest and the simulated demo lot, a few minutes) while it already
+# serves the web app, so the tables fill in as it goes. A restart with the data in place writes nothing.
+#
+#   docker compose up --build            then open http://localhost:8080
+#
+# The demo is read-only; CHAMBERWATCH_READ_ONLY=false in the environment allows relabels. CHAMBERWATCH_PORT picks
+# another host port when 8080 is taken.
+name: chamberwatch
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: chamberwatch
+      POSTGRES_USER: chamberwatch
+      POSTGRES_PASSWORD: chamberwatch
+    # a small shared cache, so the demo fits a small machine next to the app
+    command: ["postgres", "-c", "shared_buffers=64MB"]
+    # what a 1 GB machine can give it; the first-start load peaked at 195 to 203 MiB of this
+    mem_limit: 256m
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "chamberwatch", "-d", "chamberwatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    build: .
+    image: chamberwatch:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/chamberwatch
+      CHAMBERWATCH_BOOTSTRAP: ${CHAMBERWATCH_BOOTSTRAP:-true}
+      CHAMBERWATCH_READ_ONLY: ${CHAMBERWATCH_READ_ONLY:-true}
+    volumes:
+      - zenodo:/app/data/public/zenodo17122442
+    ports:
+      - "${CHAMBERWATCH_PORT:-8080}:8080"
+    # the heap is three quarters of this; the first-start load peaked at 337 to 352 MiB
+    mem_limit: 640m
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  zenodo:
