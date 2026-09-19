@@ -124,7 +124,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.5 drift profile | #22 | done: the simulator draws a lot's drift as a share of the public profile by position; late clean wafers raise run-level alarms in 2.1 % against the public 0 of 66, and clean flags fell from 13.9 to 8.0 % |
 | 2.6 relabel 202 | | |
 | 2.7 depth beside the flag | #23 | done: the run detail carries the measured depth and its loss per measurement set, and run 55's page shows 43.69 µm, 0.31 µm shallower than its lot's first three wafers |
-| 2.8 precise limits | | |
+| 2.8 precise limits | #24 | done: DATA.md gives the held-out alarm rates their exact intervals (2 of 30 is 0.8 to 22 %, by lot 2.5 to 56 %) and says what the Readme does and does not say about the gas lines |
 | 3.1 one deployable | | |
 | 3.2 one box | | |
 | 4 predicted depth | | |
