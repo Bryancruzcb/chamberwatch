@@ -9,7 +9,6 @@ import io.github.bryancruzcb.chamberwatch.detect.Baseline;
 import io.github.bryancruzcb.chamberwatch.detect.DetectorConfig;
 import io.github.bryancruzcb.chamberwatch.detect.GoodRuns;
 import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
-import io.github.bryancruzcb.chamberwatch.detect.Label;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignedRun;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
@@ -83,16 +82,6 @@ public class HealthService {
 		int pruned = baselines.prune(source, GENERATIONS_KEPT);
 		return new Refresh(source, Optional.of(baseline), stored.isEmpty(), scored, baselines.flaggedRuns(baseline),
 				current, pruned);
-	}
-
-	/**
-	 * Records an engineer's label and refreshes the run's source before returning, so the good runs, the
-	 * baseline and every assessment already follow the new label.
-	 *
-	 * @return empty when no run has that id
-	 */
-	public Optional<Refresh> relabel(RunId run, Label label) {
-		return runs.relabel(run, label).map(this::refresh);
 	}
 
 }

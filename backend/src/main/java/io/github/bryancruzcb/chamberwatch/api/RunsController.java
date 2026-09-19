@@ -1,6 +1,8 @@
 package io.github.bryancruzcb.chamberwatch.api;
 
-import io.github.bryancruzcb.chamberwatch.health.HealthService;
+import java.net.URI;
+
+import io.github.bryancruzcb.chamberwatch.health.RefreshQueue;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
 import io.github.bryancruzcb.chamberwatch.store.MeasurementSet;
@@ -8,12 +10,14 @@ import io.github.bryancruzcb.chamberwatch.store.ReadQueries;
 import io.github.bryancruzcb.chamberwatch.store.RunId;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,11 +31,11 @@ class RunsController {
 
 	private final ReadQueries queries;
 
-	private final HealthService health;
+	private final RefreshQueue refreshes;
 
-	RunsController(ReadQueries queries, HealthService health) {
+	RunsController(ReadQueries queries, RefreshQueue refreshes) {
 		this.queries = queries;
-		this.health = health;
+		this.refreshes = refreshes;
 	}
 
 	/**
@@ -74,15 +78,22 @@ class RunsController {
 		return queries.measurements(runId, set).orElseThrow(() -> notFound("no run " + runId));
 	}
 
-	/** Answers once the good runs, the baseline and every assessment of the run's source follow the new label. */
+	/**
+	 * Records the label and answers 202 at once with the refresh it queued, which brings the good runs, the
+	 * baseline and every assessment of the run's source in line with the label. The Location header is the
+	 * refresh, which says when that is done.
+	 */
 	@PutMapping("/{runId}/label")
-	RelabelResult label(@PathVariable("runId") int runId, @RequestBody LabelChange change) {
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	ResponseEntity<RefreshReport> label(@PathVariable("runId") int runId, @RequestBody LabelChange change) {
 		if (change == null || change.label() == null) {
 			throw badRequest("a label change needs a label: AUTO, GOOD or BAD");
 		}
-		return health.relabel(new RunId(runId), change.label())
-			.map(RelabelResult::of)
+		RefreshQueue.Status queued = refreshes.relabel(new RunId(runId), change.label())
 			.orElseThrow(() -> notFound("no run " + runId));
+		return ResponseEntity.accepted()
+			.location(URI.create("/api/refreshes/" + queued.id()))
+			.body(RefreshReport.of(queued));
 	}
 
 	private static boolean outside(Integer cycle, int cycles) {

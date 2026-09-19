@@ -56,6 +56,19 @@ test('relabels a run and says what the refit did', async ({ page }) => {
 
   await expect(page.getByRole('status').filter({ hasText: 'Baseline #2 fitted from 31 good runs' })).toBeVisible()
   expect(api.relabels).toEqual([{ label: 'GOOD' }])
+  // the PUT answered with the refit still running, so the page asked until it was done
+  expect(api.requests.filter((path) => path === '/api/refreshes/7')).toHaveLength(2)
+})
+
+test('says the label is saved when the refit fails, and shows the run again', async ({ page }) => {
+  const api = await serveApi(page)
+  await page.goto('/runs/55')
+  await page.getByRole('group', { name: 'Label' }).getByRole('button', { name: 'Bad' }).click()
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'The label is saved, but the refit failed: java.lang.OutOfMemoryError: Java heap space. The next relabel refits again.',
+  )
+  await expect.poll(() => api.requests.filter((path) => path === '/api/runs/55')).toHaveLength(2)
 })
 
 test('says when a run does not exist', async ({ page }) => {

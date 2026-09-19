@@ -1,10 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { alignmentSchema, runRowSchema, tracePointSchema } from './schema'
+import { alignmentSchema, refreshSchema, runRowSchema, tracePointSchema } from './schema'
 
 const row = {
   id: 55, key: 'Day_2024_08_01_Wafer_05', lotId: 6, lotNo: 6, positionInLot: 5, label: 'AUTO', alignment: 'ALIGNED',
   good: false,
 }
+
+describe('refreshSchema', () => {
+  const result = { baselineId: 2, goodRuns: 31, fitted: true, scored: 96, flagged: 14, current: true }
+
+  it('folds a refresh into what the page does next', () => {
+    expect(refreshSchema.parse({ id: 7, source: 'PUBLIC', state: 'RUNNING', result: null, error: null }))
+      .toEqual({ kind: 'running', id: 7 })
+    expect(refreshSchema.parse({ id: 7, source: 'PUBLIC', state: 'DONE', result, error: null }))
+      .toEqual({ kind: 'done', id: 7, result })
+    expect(refreshSchema.parse({ id: 7, source: 'PUBLIC', state: 'FAILED', result: null, error: 'out of memory' }))
+      .toEqual({ kind: 'failed', id: 7, message: 'out of memory' })
+  })
+
+  it('refuses a finished refresh without its result or its error', () => {
+    expect(refreshSchema.safeParse({ id: 7, source: 'PUBLIC', state: 'DONE', result: null, error: null }).success).toBe(false)
+    expect(refreshSchema.safeParse({ id: 7, source: 'PUBLIC', state: 'FAILED', result: null, error: null }).success).toBe(false)
+  })
+})
 
 describe('runRowSchema', () => {
   it('folds the flag counts of a scored run into its score', () => {
