@@ -13,6 +13,19 @@ test('shows why a flagged wafer was flagged', async ({ page }) => {
   await expect(page.locator('figure.chart svg [data-kind="excursion"]')).toHaveCount(21)
 })
 
+test('puts the measured depth of a flagged wafer next to its flags', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55')
+
+  await expect(stat(page, 'Measured depth')).toHaveText('43.69 µm')
+  await expect(page.locator('.stat').filter({ hasText: 'Measured depth' }))
+    .toContainText('0.31 µm shallower than wafers 1 to 3 of its lot, 89-point set')
+
+  await page.goto('/runs/133')
+  await expect(stat(page, 'Limit flags')).toHaveText('172')
+  await expect(stat(page, 'Measured depth')).toHaveCount(0)
+})
+
 test('reads one bucket at a time off the chart from the keyboard', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')

@@ -123,7 +123,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.4 knock-on effects | #21 | done: the public wafers show the chamber pressure held at setpoints and the foreline following the flow, 0.21 per sccm, so the knock-on moves the foreline; the stuck flow ranks above it in 23 of 23 |
 | 2.5 drift profile | #22 | done: the simulator draws a lot's drift as a share of the public profile by position; late clean wafers raise run-level alarms in 2.1 % against the public 0 of 66, and clean flags fell from 13.9 to 8.0 % |
 | 2.6 relabel 202 | | |
-| 2.7 depth beside the flag | | |
+| 2.7 depth beside the flag | #23 | done: the run detail carries the measured depth and its loss per measurement set, and run 55's page shows 43.69 µm, 0.31 µm shallower than its lot's first three wafers |
 | 2.8 precise limits | | |
 | 3.1 one deployable | | |
 | 3.2 one box | | |

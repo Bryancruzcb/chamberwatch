@@ -79,6 +79,8 @@ class ApiTest {
 		measurements.insert(new RunId(runIds.get(1)), MeasurementSet.NINE_POINT,
 				List.of(new MeasurementRecord("2031-01-06_01", 1, Optional.of("B6"), 0, 19, 1.0, 0.4, true, 41.0, 0.6, 40.4),
 						new MeasurementRecord("2031-01-06_01", 2, Optional.of("D4"), -19, 0, 1.0, 0.5, true, 40.5, 0.5, 40.0)));
+		measurements.insert(new RunId(runIds.get(5)), MeasurementSet.NINE_POINT,
+				List.of(new MeasurementRecord("2031-01-06_05", 1, Optional.of("B6"), 0, 19, 1.0, 0.5, true, 40.0, 0.5, 39.5)));
 		health.refresh(Source.PUBLIC);
 	}
 
@@ -150,6 +152,24 @@ class ApiTest {
 			.allSatisfy((cycle) -> assertThat((Integer) cycle).isBetween(60, 61));
 		body.extractingPath("$.points[0].bandMean").asNumber().isNotNull();
 		body.extractingPath("$.excursions").asArray().isNotEmpty();
+	}
+
+	@Test
+	void aRunPageCarriesTheMeasuredDepthAndItsLossAgainstTheLotsFirstWafers() {
+		var flagged = assertThat(mvc.get().uri("/api/runs/{id}", runIds.get(5))).hasStatusOk().bodyJson();
+		var unmeasured = assertThat(mvc.get().uri("/api/runs/{id}", runIds.get(2))).hasStatusOk().bodyJson();
+
+		flagged.extractingPath("$.measuredDepth[0].set").isEqualTo("NINE_POINT");
+		flagged.extractingPath("$.measuredDepth[0].points").isEqualTo(1);
+		flagged.extractingPath("$.measuredDepth[0].referenceWafers").isEqualTo(3);
+		flagged.extractingPath("$.measuredDepth[0].meanDepthUm")
+			.asNumber()
+			.satisfies((depth) -> assertThat(depth.doubleValue()).isCloseTo(39.5, within(1e-4)));
+		// wafer 1 is the only one of the first three that was measured: (40.6 + 40.0) / 2 - 39.5
+		flagged.extractingPath("$.measuredDepth[0].lossUm")
+			.asNumber()
+			.satisfies((loss) -> assertThat(loss.doubleValue()).isCloseTo(0.8, within(1e-4)));
+		unmeasured.extractingPath("$.measuredDepth").asArray().isEmpty();
 	}
 
 	@Test

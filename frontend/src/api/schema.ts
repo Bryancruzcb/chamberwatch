@@ -213,7 +213,26 @@ export const injectedFaultSchema = z.object({
 })
 export type InjectedFault = z.infer<typeof injectedFaultSchema>
 
-/** `injectedFault` is null for public runs and for clean synthetic ones. */
+export const measurementSetSchema = z.enum(['NINE_POINT', 'EIGHTY_NINE_POINT'])
+export type MeasurementSet = z.infer<typeof measurementSetSchema>
+
+/**
+ * The wafer's mean measured depth in one measurement set. `lossUm` is how much shallower that is than the mean of
+ * its lot's first `referenceWafers` wafers, and null when none of those was measured in the set.
+ */
+const measuredDepthSchema = z.object({
+  set: measurementSetSchema,
+  points: count,
+  meanDepthUm: z.number(),
+  lossUm: z.number().nullable(),
+  referenceWafers: count,
+})
+export type MeasuredDepth = z.infer<typeof measuredDepthSchema>
+
+/**
+ * `injectedFault` is null for public runs and for clean synthetic ones. `measuredDepth` has the 89-point set first
+ * and is empty for a wafer nobody measured.
+ */
 export const runDetailSchema = z.object({
   id,
   key: z.string(),
@@ -230,6 +249,7 @@ export const runDetailSchema = z.object({
   assessment: scoreSchema.nullable(),
   channels: z.array(channelSchema),
   injectedFault: injectedFaultSchema.nullable(),
+  measuredDepth: z.array(measuredDepthSchema),
 })
 export type RunDetail = z.infer<typeof runDetailSchema>
 
@@ -283,8 +303,6 @@ export type RelabelResult = z.infer<typeof relabelResultSchema>
 /** An RFC 9457 problem detail, read loosely because it only feeds an error message. */
 export const problemSchema = z.object({ title: z.string().optional(), detail: z.string().optional() })
 
-export const measurementSetSchema = z.enum(['NINE_POINT', 'EIGHTY_NINE_POINT'])
-export type MeasurementSet = z.infer<typeof measurementSetSchema>
 
 export const measurementPointSchema = z.object({
   pointNo: count,

@@ -127,13 +127,26 @@ public class ReadQueries {
 	}
 
 	/**
+	 * What was measured on the wafer afterwards, so a flag can be read next to the result.
+	 *
+	 * @param points          measured sites in the set
+	 * @param meanDepthUm     the wafer's mean etch depth over them
+	 * @param lossUm          how much shallower that is than the mean of the lot's first wafers, which count
+	 *                        themselves; null when none of them was measured in this set
+	 * @param referenceWafers the loss counts from the lot's first this many wafers
+	 */
+	public record MeasuredDepth(MeasurementSet set, int points, double meanDepthUm, Double lossUm, int referenceWafers) {
+	}
+
+	/**
 	 * The run page. {@code baseline}, {@code assessment} and the channels are empty until the run is scored
 	 * under the current baseline; channels come in rank order. {@code injectedFault} is null for public runs
-	 * and clean synthetic ones.
+	 * and clean synthetic ones. {@code measuredDepth} has one entry per measurement set the wafer is in, the
+	 * 89-point set first, and none for a wafer nobody measured.
 	 */
 	public record RunDetail(int id, String key, Source source, int lotId, int lotNo, LocalDate runDate,
 			int positionInLot, Label label, int sampleCount, Alignment alignment, BaselineSummary baseline, boolean good,
-			Assessment assessment, List<Channel> channels, InjectedFault injectedFault) {
+			Assessment assessment, List<Channel> channels, InjectedFault injectedFault, List<MeasuredDepth> measuredDepth) {
 	}
 
 	/**
@@ -332,13 +345,45 @@ public class ReadQueries {
 				join channel c on c.id = f.channel_id
 				where f.run_id = :run""")
 			.param("run", runId)
-			.query((rs, row) -> new InjectedFault(rs.getString("kind"), rs.getString("channel"), rs.getFloat("start_s"),
-					rs.getFloat("end_s"), real(rs, "duration_s"), rs.getDouble("magnitude")))
+			.query((rs, row) -> new InjectedFault(rs.getString("kind"), rs.getString("channel"), real(rs, "start_s"),
+					real(rs, "end_s"), real(rs, "duration_s"), rs.getDouble("magnitude")))
 			.optional()
 			.orElse(null);
 		return Optional.of(new RunDetail(runId, header.key(), header.source(), header.lotId(), header.lotNo(),
 				header.runDate(), header.position(), header.label(), header.sampleCount(), header.alignment(),
-				baseline.orElse(null), good, assessment.orElse(null), channels, injected));
+				baseline.orElse(null), good, assessment.orElse(null), channels, injected,
+				measuredDepth(runId, header.lotId())));
+	}
+
+	/** The wafer's mean depth per measurement set, with its loss against the lot's first wafers as the drift report counts it. */
+	private List<MeasuredDepth> measuredDepth(int runId, int lotId) {
+		int referenceWafers = config.goodRunsPerLot();
+		return jdbc.sql("""
+				with wafer as (
+				    select m.run_id, m.measurement_set, count(*) as points, avg(m.depth_um) as depth
+				    from measurement m
+				    join run r on r.id = m.run_id
+				    where r.lot_id = :lot
+				    group by m.run_id, m.measurement_set
+				),
+				reference as (
+				    select w.measurement_set, avg(w.depth) as depth
+				    from wafer w
+				    join run r on r.id = w.run_id
+				    where r.position_in_lot <= :referenceWafers
+				    group by w.measurement_set
+				)
+				select w.measurement_set, w.points, w.depth, ref.depth - w.depth as loss
+				from wafer w
+				left join reference ref on ref.measurement_set = w.measurement_set
+				where w.run_id = :run
+				order by w.measurement_set""")
+			.param("lot", lotId)
+			.param("run", runId)
+			.param("referenceWafers", referenceWafers)
+			.query((rs, row) -> new MeasuredDepth(MeasurementSet.valueOf(rs.getString("measurement_set")), rs.getInt("points"),
+					rs.getDouble("depth"), decimal(rs, "loss"), referenceWafers))
+			.list();
 	}
 
 	/**

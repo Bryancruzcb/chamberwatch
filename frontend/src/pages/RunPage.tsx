@@ -23,7 +23,9 @@ import { Loaded } from '../components/Loaded'
 import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
-import { describeFault, formatFaultKind, formatLabel, formatScore, formatSeconds, formatValue } from '../format'
+import {
+  describeDepthLoss, describeFault, formatFaultKind, formatLabel, formatMicrons, formatScore, formatSeconds, formatValue,
+} from '../format'
 import { NotFound } from './NotFound'
 
 /** Etch cycles on the recipe grid. */
@@ -71,6 +73,8 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
   const [params] = useSearchParams()
   const selected = run.channels.find((channel) => channel.channel === params.get('channel')) ?? run.channels[0]
   const { assessment, baseline } = run
+  // the 89-point set comes first when the wafer is in both
+  const measured = run.measuredDepth[0]
   return (
     <>
       <title>{`${run.key} · ChamberWatch`}</title>
@@ -92,7 +96,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
       {assessment === null
         ? <p className="status-line">This run has no score under the current baseline.</p>
         : (
-          <dl className="stats">
+          <dl className="stats wide">
             <Stat label="Limit flags" value={assessment.limitFlags} detail="Excursions held past the limit" />
             <Stat
               label="Run-level deviations"
@@ -111,6 +115,9 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
               compact
               detail={assessment.firstTimeS === null ? undefined : `First departure at ${formatSeconds(assessment.firstTimeS)}`}
             />
+            {measured !== undefined && (
+              <Stat label="Measured depth" value={formatMicrons(measured.meanDepthUm)} detail={describeDepthLoss(measured)} />
+            )}
           </dl>
         )}
       <div className="run-layout">
