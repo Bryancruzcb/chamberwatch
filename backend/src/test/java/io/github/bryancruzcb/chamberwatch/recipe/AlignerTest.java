@@ -1,5 +1,7 @@
 package io.github.bryancruzcb.chamberwatch.recipe;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -177,6 +179,34 @@ class AlignerTest {
 		assertThat(run.isScored(98)).isTrue();
 		assertThat(run.isScored(99)).isFalse();
 		assertThat(sf6Pressure.n()).isEqualTo(97 * 23);
+	}
+
+	@Test
+	void aChannelThatNeverMovesInAPhaseHasNoSpread() {
+		AlignedRun aligned = aligner.align(EtchRuns.etch().build().run()).orElseThrow();
+		int slots = aligned.grid().slotCount();
+		float[] values = new float[aligned.channels().size() * slots];
+		for (int channel = 0; channel < aligned.channels().size(); channel++) {
+			System.arraycopy(aligned.copyProfile(channel), 0, values, channel * slots, slots);
+		}
+		int pressure = aligned.channels().indexOf(EtchRuns.PRESSURE);
+		for (int slot = 0; slot < slots; slot++) {
+			if (aligned.hasSample(slot)) {
+				values[pressure * slots + slot] = 0.123f;
+			}
+		}
+		AlignedRun run = AlignedRun.adopt(aligned.key(), aligned.grid(), aligned.channels(), values,
+				aligned.copySlotTimes(), aligned.report());
+
+		List<PhaseSummary> flat = run.summaries()
+			.stream()
+			.filter((summary) -> summary.channel().equals(EtchRuns.PRESSURE))
+			.toList();
+
+		assertThat(flat).hasSize(2).allSatisfy((summary) -> {
+			assertThat(summary.sd()).isZero();
+			assertThat(summary.mean()).isEqualTo(0.123f, within(1e-12));
+		});
 	}
 
 }
