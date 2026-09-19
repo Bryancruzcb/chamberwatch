@@ -43,19 +43,28 @@ public record ChannelTemplate(ChannelName channel, OptionalDouble constant, doub
 	 *
 	 * @param profile   mean reading at each slot offset of the phase over steady cycles of good runs
 	 * @param trend     for cycles 1 to 100, how far the phase's mean sat from the run's mean
-	 * @param lotSd     spread of lot levels, taken at wafer 2
-	 * @param runSd     spread of runs around their lot's line
-	 * @param driftMean change per wafer position within a lot, averaged over lots
-	 * @param driftSd   spread of that change between lots
+	 * @param lotSd     spread of lot levels, a lot's level being where its first three wafers sit
+	 * @param runSd     spread of runs around their lot's level and drift
+	 * @param drift     for wafer positions 1 on, how far a lot's runs sat from the lot's level, averaged over lots
+	 * @param driftScaleSd spread between lots of how much of that profile a lot shows, around 1
 	 * @param wanderSd  spread of one cycle's mean around its run's mean, beyond what the fast noise explains
 	 * @param noiseSd   spread of single readings around their cycle's shape
 	 */
-	public record PhaseTemplate(List<Double> profile, List<Double> trend, double lotSd, double runSd, double driftMean,
-			double driftSd, double wanderSd, double noiseSd) {
+	public record PhaseTemplate(List<Double> profile, List<Double> trend, double lotSd, double runSd, List<Double> drift,
+			double driftScaleSd, double wanderSd, double noiseSd) {
 
 		public PhaseTemplate {
 			profile = List.copyOf(profile);
 			trend = List.copyOf(trend);
+			drift = List.copyOf(drift);
+			if (drift.isEmpty()) {
+				throw new IllegalArgumentException("a phase needs a drift profile of at least one wafer position");
+			}
+		}
+
+		/** The drift at a wafer position, held flat past the last position the public lots reach. */
+		public double driftAt(int position) {
+			return drift.get(Math.clamp(position, 1, drift.size()) - 1);
 		}
 
 		/** The profile at a fractional offset, interpolated between offsets and held flat past either end. */

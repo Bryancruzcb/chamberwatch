@@ -124,6 +124,10 @@ public final class Evaluation {
 
 		private int cleanLateFlagged;
 
+		private int cleanLateLimitFlagged;
+
+		private int cleanLateDeviationFlagged;
+
 		private int faulted;
 
 		private int faultedDegraded;
@@ -185,6 +189,8 @@ public final class Evaluation {
 				else {
 					cleanLate++;
 					cleanLateFlagged += flagged ? 1 : 0;
+					cleanLateLimitFlagged += (assessment.limitFlags() > 0) ? 1 : 0;
+					cleanLateDeviationFlagged += (assessment.deviationFlags() > 0) ? 1 : 0;
 				}
 				return;
 			}
@@ -238,6 +244,8 @@ public final class Evaluation {
 			values.put("clean.stuckFlaggedRate", rate(cleanStuckFlagged, clean));
 			values.put("clean.flaggedRateWafers1To3", rate(cleanEarlyFlagged, cleanEarly));
 			values.put("clean.flaggedRateWafers4Up", rate(cleanLateFlagged, cleanLate));
+			values.put("clean.limitFlaggedRateWafers4Up", rate(cleanLateLimitFlagged, cleanLate));
+			values.put("clean.deviationFlaggedRateWafers4Up", rate(cleanLateDeviationFlagged, cleanLate));
 			values.put("clean.degradedRate", rate(cleanDegraded, clean));
 			values.put("faulted.degradedRate", rate(faultedDegraded, faulted));
 			values.put("knockOn.forelineFlaggedRate", rate(knockOnFlagged, injected.get(FaultKind.GAS_FLOW_STUCK_LOW)));

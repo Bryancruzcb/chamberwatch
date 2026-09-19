@@ -41,7 +41,7 @@ class EvaluationRegressionTest {
 			return 0.5;
 		}
 		if (name.endsWith("Rate") || name.endsWith("recall") || name.endsWith("precision")
-				|| name.contains("flaggedRate")) {
+				|| name.contains("flaggedRate") || name.contains("FlaggedRate")) {
 			return 0.02;
 		}
 		return 0;

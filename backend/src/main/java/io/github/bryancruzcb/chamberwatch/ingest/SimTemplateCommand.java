@@ -80,7 +80,7 @@ public final class SimTemplateCommand {
 
 	static String summary(SimulationTemplate template) {
 		StringBuilder text = new StringBuilder(
-				"channel phase level lotSd runSd driftMean driftSd wanderSd noiseSd noiseRho wanderPhi resolution\n");
+				"channel phase level lotSd runSd driftAtLastWafer driftScaleSd wanderSd noiseSd noiseRho wanderPhi resolution\n");
 		for (ChannelTemplate channel : template.channels().values()) {
 			if (channel.constant().isPresent()) {
 				text.append(String.format(Locale.ROOT, "%s constant %.6g%n", channel.channel(), channel.constant().getAsDouble()));
@@ -90,8 +90,9 @@ public final class SimTemplateCommand {
 				ChannelTemplate.PhaseTemplate p = channel.phase(phase);
 				int to = (phase == Phase.SF6) ? 20 : 4;
 				text.append(String.format(Locale.ROOT, "%s %s %.5g %.3g %.3g %.3g %.3g %.3g %.3g %.2f %.2f %.3g%n",
-						channel.channel(), phase, p.level(1, to), p.lotSd(), p.runSd(), p.driftMean(), p.driftSd(),
-						p.wanderSd(), p.noiseSd(), channel.noiseRho(), channel.wanderPhi(), channel.resolution()));
+						channel.channel(), phase, p.level(1, to), p.lotSd(), p.runSd(), p.driftAt(p.drift().size()),
+						p.driftScaleSd(), p.wanderSd(), p.noiseSd(), channel.noiseRho(), channel.wanderPhi(),
+						channel.resolution()));
 			}
 		}
 		SimulationTemplate.Swings swings = template.swings();
