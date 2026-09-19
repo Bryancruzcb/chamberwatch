@@ -138,6 +138,19 @@ This is a first look, not a result. The correlations below are within lots: each
 
 Wafers etch shallower as a lot goes on. The chamber's drift shows up in the tool telemetry and lines up with the measured wafers, which is the signal the lot drift detector looks for.
 
+### What follows the gas flow
+
+Every record passes through four settled gas loads, and they show which pressure follows the flow. These are the samples whose total gas flow had moved less than 3 sccm over the last 2 s, 120,069 of them, in all 96 wafers:
+
+| Step | Total flow, sccm | ForeLinePressure | Pressure |
+|---|---:|---:|---:|
+| Idle | 9 | 23.1 | 0.0135 |
+| Gas1Flow alone | 208 | 70.3 | 0.0199 |
+| Stabilization, Gas1Flow 150 and Gas4Flow 300 | 456 | 91.9 | 0.0300 |
+| SF6 phases, Gas5Flow 600 | 607 | 148.5 | 0.0400 |
+
+The chamber pressure sits on round numbers, 0.020, 0.030 and 0.040, with a spread under 0.001, and the C4F8 phase heads for 0.050 at half the SF6 flow: the tool holds it at a setpoint per step, so it does not say how much gas arrived. The foreline pressure is not held. Between the idle tool and the SF6 phases it rises 0.21 per sccm (a line fitted to the samples of those two loads has slope 0.2099), and a line fitted to all 120,069 samples has slope 0.209 with r² 0.976. The factor depends on the gas: the stabilization step reads 91.9 where one factor for every gas would give 117. The C4F8 phase lasts 1.2 s and never settles, so its own factor cannot be read from these records. At the start of each SF6 phase the good-run foreline climbs from 86.0 through 104.6 and 140.7 to 155.3, so it shows 27 %, 79 % and all of a step in flow in the same sample, one sample later and two later. The simulator uses these numbers for the one knock-on it models ([EVALUATION.md](EVALUATION.md#the-faults)).
+
 ## What the detectors find
 
 `PublicDataDetectionTest` runs the detectors on all 96 wafers and pins the results in this section. Everything here uses the defaults: bands learned from wafers 1 to 3 of each lot, a limit rule of `k = 6` held for 5 samples, and a run-level threshold of 5.

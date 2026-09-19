@@ -35,6 +35,8 @@
   "fault.SENSOR_STUCK.precision": 1.0000,
   "fault.SENSOR_STUCK.recall": 0.9600,
   "faulted.degradedRate": 0.0960,
+  "knockOn.flowRankedAboveRate": 1.0000,
+  "knockOn.forelineFlaggedRate": 0.9200,
   "runs.alignmentFailures": 0.0000,
   "runs.clean": 875.0000,
   "runs.faulted": 125.0000

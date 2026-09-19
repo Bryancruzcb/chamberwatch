@@ -34,7 +34,7 @@ test('the lots page with drift and depth by wafer position', async ({ page }) =>
 
 test('a simulated run with its injected fault', async ({ page }) => {
   await serveApi(page)
-  await page.goto('/runs/253')
+  await page.goto('/runs/133')
 
   await expect(page.getByRole('region', { name: 'Injected fault' })).toBeVisible()
   await expect(page.locator('figure.chart svg')).toBeVisible()

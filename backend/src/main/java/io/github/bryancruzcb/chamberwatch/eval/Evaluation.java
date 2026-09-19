@@ -20,6 +20,7 @@ import io.github.bryancruzcb.chamberwatch.recipe.AlignedRun;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentResult;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentStatus;
+import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 import io.github.bryancruzcb.chamberwatch.sim.FaultKind;
 import io.github.bryancruzcb.chamberwatch.sim.FaultPlan;
 import io.github.bryancruzcb.chamberwatch.sim.InjectedFault;
@@ -35,6 +36,8 @@ import io.github.bryancruzcb.chamberwatch.sim.Simulator;
  *
  * <p>A fault counts as detected when its channel has an excursion confirmed after the fault starts and
  * starting no later than a cycle after it ends; the latency is from the fault's start to that confirmation.
+ * A stuck gas flow also moves the foreline pressure, so the evaluation counts how often that knock-on is
+ * flagged too and how often the flow is still ranked above it.
  */
 public final class Evaluation {
 
@@ -127,6 +130,10 @@ public final class Evaluation {
 
 		private int alignmentFailures;
 
+		private int knockOnFlagged;
+
+		private int causeAboveKnockOn;
+
 		private final Map<FaultKind, Integer> injected = counts();
 
 		private final Map<FaultKind, Integer> detected = counts();
@@ -186,6 +193,9 @@ public final class Evaluation {
 			if (signature.equals(Optional.of(kind))) {
 				increment(truePositives, kind);
 			}
+			if (kind == FaultKind.GAS_FLOW_STUCK_LOW) {
+				addKnockOn(assessment, fault.get());
+			}
 			OptionalDouble latency = latency(assessment, run, fault.get());
 			if (latency.isPresent()) {
 				increment(detected, kind);
@@ -193,6 +203,19 @@ public final class Evaluation {
 				if (assessment.firstChannel().equals(Optional.of(fault.get().channel()))) {
 					increment(rankedFirst, kind);
 				}
+			}
+		}
+
+		/** Whether the foreline left its band in a run with a stuck flow, and whether the flow still ranks above it. */
+		private void addKnockOn(RunAssessment assessment, InjectedFault fault) {
+			List<ChannelName> ranked = assessment.verdicts().stream().map(ChannelVerdict::channel).toList();
+			boolean flagged = assessment.verdicts()
+				.stream()
+				.anyMatch((verdict) -> verdict.channel().equals(Simulator.FORELINE_PRESSURE)
+						&& verdict.firstDeparture().isPresent());
+			if (flagged) {
+				knockOnFlagged++;
+				causeAboveKnockOn += (ranked.indexOf(fault.channel()) < ranked.indexOf(Simulator.FORELINE_PRESSURE)) ? 1 : 0;
 			}
 		}
 
@@ -217,6 +240,8 @@ public final class Evaluation {
 			values.put("clean.flaggedRateWafers4Up", rate(cleanLateFlagged, cleanLate));
 			values.put("clean.degradedRate", rate(cleanDegraded, clean));
 			values.put("faulted.degradedRate", rate(faultedDegraded, faulted));
+			values.put("knockOn.forelineFlaggedRate", rate(knockOnFlagged, injected.get(FaultKind.GAS_FLOW_STUCK_LOW)));
+			values.put("knockOn.flowRankedAboveRate", rate(causeAboveKnockOn, knockOnFlagged));
 			for (FaultKind kind : FaultKind.values()) {
 				String prefix = "fault." + kind.name() + ".";
 				values.put(prefix + "recall", rate(detected.get(kind), injected.get(kind)));
