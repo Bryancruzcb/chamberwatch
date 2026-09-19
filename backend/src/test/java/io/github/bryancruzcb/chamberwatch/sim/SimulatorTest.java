@@ -133,6 +133,52 @@ class SimulatorTest {
 	}
 
 	@Test
+	void aStuckFlowTakesTheForelineDownWithItAndLeavesEveryOtherChannelAlone() {
+		Simulator simulator = Simulator.seeded(5, TEMPLATE);
+		SimulatedRun clean = simulator.run(RunSpec.clean(2, 4));
+		SimulatedRun faulted = simulator
+			.run(RunSpec.faulted(2, 4, FaultPlan.gasFlowStuckLow(ChannelName.GAS5_FLOW, 200, 0.5)));
+		InjectedFault fault = faulted.fault().orElseThrow();
+		int flow = clean.raw().channels().indexOf(ChannelName.GAS5_FLOW);
+		int foreline = clean.raw().channels().indexOf(ChannelName.of("ForeLinePressure"));
+		float resolution = 0.31f;
+
+		int settled = 0;
+		int untouched = 0;
+		for (int sample = 2; sample < clean.raw().sampleCount(); sample++) {
+			for (int channel = 0; channel < clean.raw().channels().size(); channel++) {
+				if (channel != flow && channel != foreline) {
+					assertThat(faulted.raw().value(channel, sample)).isEqualTo(clean.raw().value(channel, sample));
+				}
+			}
+			float before = clean.raw().value(foreline, sample);
+			float after = faulted.raw().value(foreline, sample);
+			double missing = 0;
+			boolean steady = true;
+			for (int lag = 0; lag < 3; lag++) {
+				double lost = clean.raw().value(flow, sample - lag) - faulted.raw().value(flow, sample - lag);
+				missing += Simulator.FORELINE_RESPONSE[lag] * lost;
+				steady &= Math.abs(lost - 300) < 5;
+			}
+			boolean inside = clean.raw().time(sample) >= fault.startS() && clean.raw().time(sample) < fault.endS();
+			if (inside) {
+				assertThat((double) after).isCloseTo(before - Simulator.FORELINE_PER_SCCM * missing, within(2.0 * resolution));
+			}
+			if (!inside || missing == 0) {
+				assertThat(after).isEqualTo(before);
+				untouched++;
+			}
+			else if (steady) {
+				// half of 600 sccm missing for three samples: the foreline reads 63 lower
+				assertThat((double) before - after).isCloseTo(63.0, within(1.5));
+				settled++;
+			}
+		}
+		assertThat(settled).isGreaterThan(500);
+		assertThat(untouched).isGreaterThan(1000);
+	}
+
+	@Test
 	void trainingRunsAreTheFirstThreeWafersOfEachLot() {
 		assertThat(Simulator.seeded(3, TEMPLATE).cleanTrainingRuns(6).map(SimulatedRun::key).map(RunKey::value))
 			.containsExactly("SIM-s3-L1-W01", "SIM-s3-L1-W02", "SIM-s3-L1-W03", "SIM-s3-L2-W01", "SIM-s3-L2-W02",

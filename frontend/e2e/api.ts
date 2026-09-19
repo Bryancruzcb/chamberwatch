@@ -16,7 +16,7 @@ export interface ApiLog {
 
 /**
  * Answers the page's API calls with responses captured from the real API: the lot list, the runs table of either
- * source, public runs 55 and 11, synthetic run 253 with its injected fault and its own Gas5Flow trace, run 55's
+ * source, public runs 55 and 11, synthetic run 133 with its injected fault and its own Gas5Flow trace, run 55's
  * trace for every other channel, run 55's measurements, the drift of lots 6 and 901 and the drift report of either
  * source. Every other run and lot is missing, like run 9999.
  */

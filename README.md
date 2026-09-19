@@ -16,9 +16,9 @@ The tool records 31 channels five times a second, but nothing in the record says
 
 ![The lots page: the ten public lots with their conditioning and flagged runs, then the mean drift score and the depth loss by wafer position](docs/images/lots.png)
 
-The public data labels no faults, so the detectors are scored on simulated wafers with known ones. On 1,000 simulated runs with 125 faults of five kinds, recall is 1.00 for a gas flow stuck low and a sensor dropout, 0.96 for a sensor that repeats its last reading, and 0.76 and 0.72 for a pressure spike and a reflected power rise; precision is 1.00 for every kind, and 13.9 % of clean runs are flagged. A stored simulated lot shows the same thing in the app, with the injected fault next to what the detectors caught.
+The public data labels no faults, so the detectors are scored on simulated wafers with known ones. On 1,000 simulated runs with 125 faults of five kinds, recall is 1.00 for a gas flow stuck low and a sensor dropout, 0.96 for a sensor that repeats its last reading, and 0.76 and 0.72 for a pressure spike and a reflected power rise; precision is 1.00 for every kind, and 13.9 % of clean runs are flagged. A stuck flow also takes the simulated foreline pressure down with it, by the 0.21 per sccm the public wafers show, and the flow is still ranked above the pressure it moved in all 23 runs where both are flagged. A stored simulated lot shows the same thing in the app, with the injected fault next to what the detectors caught.
 
-![A simulated run's page: the injected fault panel says Gas5Flow delivers 36% of its flow from 187.9 s, and the detectors named Gas5Flow first 1.4 s later](docs/images/simulated-run.png)
+![A simulated run's page: the injected fault panel says Gas5Flow delivers 36% of its flow from 187.9 s, the detectors named Gas5Flow first 1.4 s later, and the foreline pressure that fell with the missing flow ranks second](docs/images/simulated-run.png)
 
 ## Data
 
@@ -76,7 +76,7 @@ npm run e2e     # build, then drive the built app in Chromium against API respon
 
 If the backend runs on another port, point the dev server at it with `CHAMBERWATCH_API=http://localhost:18080 npm run dev`.
 
-The screenshots above come from the built app and the captured API responses: `npm run build && SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts`.
+The screenshots above come from the built app and the captured API responses: `npm run build && SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts`. The responses themselves come from the real API: with the public wafers ingested and `simulate-lot --seed=7 --lot=901` stored, `node e2e/capture-fixtures.mjs http://localhost:8080` writes every file in `e2e/fixtures` again.
 
 ## License
 

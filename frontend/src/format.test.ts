@@ -35,7 +35,9 @@ describe('format', () => {
     const dropout = { kind: 'SENSOR_DROPOUT', channel: 'HeliumBPPressure', startS: 618.3042, endS: 628.0, durationS: 9.7, magnitude: 0 } as const
 
     expect(formatFaultKind('REFLECTED_POWER_RISE')).toBe('Reflected power rise')
-    expect(describeFault(stuck)).toBe('Gas5Flow delivers 36% of its flow from 187.9 s to the end of the etch.')
+    expect(describeFault(stuck)).toBe(
+      'Gas5Flow delivers 36% of its flow from 187.9 s to the end of the etch, and ForeLinePressure falls with the missing flow.',
+    )
     expect(describeFault(dropout)).toBe('HeliumBPPressure reads 0 for 9.7 s from 618.3 s.')
     expect(describeFault({ kind: 'PRESSURE_SPIKE', channel: 'Pressure', startS: 135.3, endS: 136.8, durationS: 1.5, magnitude: 0.08 }))
       .toBe('Pressure rises 8% for 1.5 s from 135.3 s.')

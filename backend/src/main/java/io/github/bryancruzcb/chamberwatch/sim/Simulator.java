@@ -20,14 +20,31 @@ import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
  * level drawn once per lot, a drift along wafer position drawn once per lot, a run level, slow wander from
  * cycle to cycle and fast noise from sample to sample, then clamped at 0 where the channel never went
  * negative and rounded to the channel's resolution. The marker channels switch cleanly between their phase
- * levels, as they do in every public wafer, so the aligner sees the same structure. Channels do not affect
- * each other: a stuck gas flow does not move the pressure.
+ * levels, as they do in every public wafer, so the aligner sees the same structure.
+ *
+ * <p>Channels do not affect each other, with one exception: a gas flow stuck low takes the foreline pressure
+ * down with it. The foreline is not controlled and follows the gas load, 0.21 per sccm between the idle tool
+ * and the etch on the public wafers, and it answers a step in flow over three samples, as it does at the start
+ * of every SF6 phase. The chamber pressure stays where it is, because the tool holds it at a setpoint: the
+ * public wafers sit at 0.020, 0.030 and 0.040 at flows of 208, 456 and 607 sccm.
  */
 public final class Simulator {
 
 	private static final ChannelName GAS1_FLOW = ChannelName.of("Gas1Flow");
 
 	private static final ChannelName PRESSURE = ChannelName.of("Pressure");
+
+	/** The one channel a fault on another channel moves: a stuck gas flow takes the foreline down with it. */
+	public static final ChannelName FORELINE_PRESSURE = ChannelName.of("ForeLinePressure");
+
+	/** Foreline pressure per sccm of gas load, from the idle tool and the settled etch of the public wafers. */
+	static final double FORELINE_PER_SCCM = 0.21;
+
+	/**
+	 * How much of a step in flow the foreline shows in the same sample, one sample later and two later: its rise
+	 * at the start of the SF6 phase in the good-run profile, from 86.0 through 104.6 and 140.7 to 155.3.
+	 */
+	static final double[] FORELINE_RESPONSE = { 0.27, 0.52, 0.21 };
 
 	/** Gas1Flow and Gas4Flow during the stabilization step before the etch. */
 	private static final double STABILIZE_GAS1_FLOW = 150;
@@ -61,6 +78,8 @@ public final class Simulator {
 
 	private final int power;
 
+	private final int foreline;
+
 	private final double pressureLevel;
 
 	private Simulator(long seed, SimulationTemplate template, SimulatorSettings settings) {
@@ -83,6 +102,7 @@ public final class Simulator {
 		this.gas4 = required(ChannelName.GAS4_FLOW);
 		this.gas5 = required(ChannelName.GAS5_FLOW);
 		this.power = required(ChannelName.SOURCE_RF_LOAD_POWER);
+		this.foreline = required(FORELINE_PRESSURE);
 		this.pressureLevel = coreLevel(template.channel(PRESSURE), Phase.SF6);
 	}
 
@@ -144,6 +164,8 @@ public final class Simulator {
 		List<Timeline.Span> spans = timeline.spans();
 		int spanIndex = 0;
 		boolean stuck = fault.map((f) -> f.kind() == FaultKind.SENSOR_STUCK).orElse(false);
+		boolean flowLow = fault.map((f) -> f.kind() == FaultKind.GAS_FLOW_STUCK_LOW).orElse(false);
+		double[] missingFlow = new double[FORELINE_RESPONSE.length];
 		float lastRecorded = Float.NaN;
 		float held = Float.NaN;
 		for (int sample = 0; sample < times.length; sample++) {
@@ -152,6 +174,9 @@ public final class Simulator {
 				spanIndex++;
 			}
 			Timeline.Span span = spans.get(spanIndex);
+			double forelineReading = Double.NaN;
+			System.arraycopy(missingFlow, 0, missingFlow, 1, missingFlow.length - 1);
+			missingFlow[0] = 0;
 			for (int c = 0; c < channelCount; c++) {
 				ChannelTemplate template = templates[c];
 				double value;
@@ -165,8 +190,13 @@ public final class Simulator {
 					}
 					value = reading(c, template, span, time, shifts[c], wander[c], swung[c], noise[c]);
 				}
+				if (c == foreline) {
+					forelineReading = value;
+				}
 				if (c == faultChannel) {
-					value = applyFault(fault.get(), value, time);
+					double delivered = applyFault(fault.get(), value, time);
+					missingFlow[0] = flowLow ? value - delivered : 0;
+					value = delivered;
 				}
 				float recorded = round(template, value);
 				if (c == faultChannel && stuck && time >= fault.get().startS() && time < fault.get().endS()) {
@@ -180,6 +210,15 @@ public final class Simulator {
 				if (c == faultChannel) {
 					lastRecorded = recorded;
 				}
+			}
+			if (flowLow && time >= fault.get().startS() && time < fault.get().endS()) {
+				// the knock-on: the foreline loses the gas load the stuck controller did not deliver
+				double missing = 0;
+				for (int lag = 0; lag < FORELINE_RESPONSE.length; lag++) {
+					missing += FORELINE_RESPONSE[lag] * missingFlow[lag];
+				}
+				values[sample * channelCount + foreline] = round(templates[foreline],
+						forelineReading - FORELINE_PER_SCCM * missing);
 			}
 		}
 		if (timeline.powerDipSample() >= 0) {

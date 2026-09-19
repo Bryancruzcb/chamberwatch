@@ -37,7 +37,7 @@ Done when: the public good wafers raise no stuck flags, the evaluation reports r
 
 ### 2.4 Knock-on effects in the simulator
 
-Simulated channels are independent, so ranking is never tested against a fault's own effects on other channels. Add one coupling with a stated model: a gas flow stuck low lowers the chamber pressure during that gas's phase in proportion to the missing flow, with the proportion chosen and documented, since the public data has no faults to measure it from. Then the evaluation says whether the stuck flow is still ranked first ahead of the pressure it moved. If ranking by earliest start no longer puts the cause first, that is the finding, and the ranking rule gets revisited.
+Simulated channels are independent, so ranking is never tested against a fault's own effects on other channels. Add one coupling with a stated model: a gas flow stuck low lowers the chamber pressure during that gas's phase in proportion to the missing flow, with the proportion chosen and documented, since the public data has no faults to measure it from. (As built: the public wafers turned out to hold the chamber pressure at a setpoint per step and to let the foreline pressure follow the gas load, so the coupling moves the foreline, by a factor measured on them.) Then the evaluation says whether the stuck flow is still ranked first ahead of the pressure it moved. If ranking by earliest start no longer puts the cause first, that is the finding, and the ranking rule gets revisited.
 
 Done when: the coupling is in the simulator and EVALUATION.md reports the first-channel rate with it.
 
@@ -120,7 +120,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.1 drift reference | #17 | done: no lot starts outside the global band, so GLOBAL stays the default and `reference=LOT` is an option |
 | 2.2 good runs per lot | #18 | done: wafers 1 to 2 alarm no less held out and flag 49 of 96 wafers, so three stays |
 | 2.3 stuck-value detector | #19 | done: rule learned from good runs, 0 of 30 held-out alarms at factor 2, simulated recall 0.96 |
-| 2.4 knock-on effects | | |
+| 2.4 knock-on effects | #20 | done: the public wafers show the chamber pressure held at setpoints and the foreline following the flow, 0.21 per sccm, so the knock-on moves the foreline; the stuck flow ranks above it in 23 of 23 |
 | 2.5 drift profile | | |
 | 2.6 relabel 202 | | |
 | 2.7 depth beside the flag | | |
