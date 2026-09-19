@@ -97,12 +97,17 @@ public final class AlignedRun {
 		return slotTimes.clone();
 	}
 
-	/** One summary per channel and phase over the scored cycles, ordered by channel, then phase. */
+	/**
+	 * One summary per channel and phase over the scored cycles, ordered by channel, then phase. The sums
+	 * are taken about the phase's first reading, so a phase whose readings never change has a spread of
+	 * exactly 0 and a steady one loses no precision to cancellation.
+	 */
 	public List<PhaseSummary> summaries() {
 		List<PhaseSummary> summaries = new ArrayList<>(channels.size() * 2);
 		for (int channel = 0; channel < channels.size(); channel++) {
 			for (Phase phase : Phase.values()) {
 				int n = 0;
+				double shift = Double.NaN;
 				double sum = 0;
 				double sumOfSquares = 0;
 				float min = Float.POSITIVE_INFINITY;
@@ -116,9 +121,13 @@ public final class AlignedRun {
 						if (Float.isNaN(x)) {
 							continue;
 						}
+						if (n == 0) {
+							shift = x;
+						}
 						n++;
-						sum += x;
-						sumOfSquares += (double) x * x;
+						double fromShift = x - shift;
+						sum += fromShift;
+						sumOfSquares += fromShift * fromShift;
 						min = Math.min(min, x);
 						max = Math.max(max, x);
 					}
@@ -126,9 +135,10 @@ public final class AlignedRun {
 				if (n == 0) {
 					continue;
 				}
-				double mean = sum / n;
-				double variance = (n < 2) ? 0 : Math.max(0, (sumOfSquares - n * mean * mean) / (n - 1));
-				summaries.add(new PhaseSummary(channels.name(channel), phase, n, mean, Math.sqrt(variance), min, max));
+				double meanOffset = sum / n;
+				double variance = (n < 2) ? 0 : Math.max(0, (sumOfSquares - n * meanOffset * meanOffset) / (n - 1));
+				summaries.add(new PhaseSummary(channels.name(channel), phase, n, shift + meanOffset, Math.sqrt(variance),
+						min, max));
 			}
 		}
 		return summaries;
