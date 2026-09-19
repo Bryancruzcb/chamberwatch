@@ -23,7 +23,7 @@ public record FaultPlan(FaultKind kind, ChannelName channel, double startS, doub
 		boolean validMagnitude = switch (kind) {
 			case GAS_FLOW_STUCK_LOW -> magnitude > 0 && magnitude < 1;
 			case PRESSURE_SPIKE, REFLECTED_POWER_RISE -> magnitude > 0 && Double.isFinite(magnitude);
-			case SENSOR_DROPOUT -> magnitude == 0;
+			case SENSOR_DROPOUT, SENSOR_STUCK -> magnitude == 0;
 		};
 		if (!validMagnitude) {
 			throw new IllegalArgumentException(kind + " cannot have magnitude " + magnitude);
@@ -47,6 +47,11 @@ public record FaultPlan(FaultKind kind, ChannelName channel, double startS, doub
 
 	public static FaultPlan sensorDropout(ChannelName channel, double startS, double durationS) {
 		return new FaultPlan(FaultKind.SENSOR_DROPOUT, channel, startS, durationS, 0);
+	}
+
+	/** The sensor repeats its last reading from {@code startS} for {@code durationS}. */
+	public static FaultPlan sensorStuck(ChannelName channel, double startS, double durationS) {
+		return new FaultPlan(FaultKind.SENSOR_STUCK, channel, startS, durationS, 0);
 	}
 
 }

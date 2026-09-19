@@ -8,11 +8,13 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.stream.DoubleStream;
 
 import io.github.bryancruzcb.chamberwatch.detect.Baseline;
 import io.github.bryancruzcb.chamberwatch.detect.ChannelVerdict;
 import io.github.bryancruzcb.chamberwatch.detect.Excursion;
 import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
+import io.github.bryancruzcb.chamberwatch.detect.Hold;
 import io.github.bryancruzcb.chamberwatch.detect.RunAssessment;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignedRun;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
@@ -65,7 +67,10 @@ public final class Evaluation {
 		return tally.metrics(config);
 	}
 
-	/** Seconds from the fault's start to the confirmation of the excursion that caught it, if one did. */
+	/**
+	 * Seconds from the fault's start to the earliest confirmation that caught it, if one did: of an excursion,
+	 * or for a stuck sensor of an excursion or a hold, whichever alarmed first.
+	 */
 	static OptionalDouble latency(RunAssessment assessment, AlignedRun run, InjectedFault fault) {
 		Optional<ChannelVerdict> verdict = assessment.verdicts()
 			.stream()
@@ -74,11 +79,22 @@ public final class Evaluation {
 		if (verdict.isEmpty()) {
 			return OptionalDouble.empty();
 		}
+		DoubleStream.Builder latencies = DoubleStream.builder();
 		for (Excursion excursion : verdict.get().excursions()) {
-			double confirmedS = run.timeAt(excursion.confirmSlot());
-			if (confirmedS >= fault.startS() - EARLY_S && run.timeAt(excursion.startSlot()) <= fault.endS() + LATE_S) {
-				return OptionalDouble.of(Math.max(0, confirmedS - fault.startS()));
+			latency(run, fault, excursion.startSlot(), excursion.confirmSlot()).ifPresent(latencies::add);
+		}
+		if (fault.kind() == FaultKind.SENSOR_STUCK) {
+			for (Hold hold : verdict.get().holds()) {
+				latency(run, fault, hold.startSlot(), hold.confirmSlot()).ifPresent(latencies::add);
 			}
+		}
+		return latencies.build().min();
+	}
+
+	private static OptionalDouble latency(AlignedRun run, InjectedFault fault, int startSlot, int confirmSlot) {
+		double confirmedS = run.timeAt(confirmSlot);
+		if (confirmedS >= fault.startS() - EARLY_S && run.timeAt(startSlot) <= fault.endS() + LATE_S) {
+			return OptionalDouble.of(Math.max(0, confirmedS - fault.startS()));
 		}
 		return OptionalDouble.empty();
 	}
@@ -92,6 +108,8 @@ public final class Evaluation {
 		private int cleanLimitFlagged;
 
 		private int cleanDeviationFlagged;
+
+		private int cleanStuckFlagged;
 
 		private int cleanDegraded;
 
@@ -151,6 +169,7 @@ public final class Evaluation {
 				cleanFlagged += flagged ? 1 : 0;
 				cleanLimitFlagged += (assessment.limitFlags() > 0) ? 1 : 0;
 				cleanDeviationFlagged += (assessment.deviationFlags() > 0) ? 1 : 0;
+				cleanStuckFlagged += (assessment.stuckFlags() > 0) ? 1 : 0;
 				cleanDegraded += degraded ? 1 : 0;
 				if (simulated.key().positionInLot() <= 3) {
 					cleanEarly++;
@@ -193,6 +212,7 @@ public final class Evaluation {
 			values.put("clean.flaggedRate", rate(cleanFlagged, clean));
 			values.put("clean.limitFlaggedRate", rate(cleanLimitFlagged, clean));
 			values.put("clean.deviationFlaggedRate", rate(cleanDeviationFlagged, clean));
+			values.put("clean.stuckFlaggedRate", rate(cleanStuckFlagged, clean));
 			values.put("clean.flaggedRateWafers1To3", rate(cleanEarlyFlagged, cleanEarly));
 			values.put("clean.flaggedRateWafers4Up", rate(cleanLateFlagged, cleanLate));
 			values.put("clean.degradedRate", rate(cleanDegraded, clean));

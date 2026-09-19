@@ -38,7 +38,7 @@ class MeasurementStoreTest {
 		LotRef lot = runs.upsertLot(new LotRecord(Source.PUBLIC, 1, Optional.of(LocalDate.of(2024, 7, 2)),
 				Optional.of(new LotRecord.Conditioning(3, LotRecord.Surface.CHUCK))));
 		RawRun raw = EtchRuns.etch().key(RunKey.ofPublicGroup("Day_2024_07_02_Wafer_01")).build().run();
-		runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot);
+		runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot, Optional.empty());
 		RunId run = runs.publicRunsByExperimentKey().get("2024-07-02_01");
 		List<MeasurementRecord> rows = List.of(
 				new MeasurementRecord("2024-07-02_01", 1, Optional.of("F10"), 0, -76000, 1.0034, 0.4474, true, 40.907, 0.556, 40.351),

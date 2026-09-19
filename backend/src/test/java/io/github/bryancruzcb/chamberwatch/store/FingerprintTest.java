@@ -26,10 +26,17 @@ class FingerprintTest {
 
 	@Test
 	void anythingThatChangesTheStoredRowsChangesTheFingerprint() {
-		DetectorConfig otherK = new DetectorConfig(defaults.band(), new DetectorConfig.LimitRule(5.0, 5), defaults.runZ(),
+		DetectorConfig otherK = new DetectorConfig(defaults.band(), new DetectorConfig.LimitRule(5.0, 5), defaults.runZ(), defaults.stuck(),
 				defaults.drift(), defaults.goodRunsPerLot());
 
+		DetectorConfig otherFactor = new DetectorConfig(defaults.band(), defaults.limit(), defaults.runZ(),
+				new DetectorConfig.StuckRule(3.0, 10), defaults.drift(), defaults.goodRunsPerLot());
+		DetectorConfig otherMinSamples = new DetectorConfig(defaults.band(), defaults.limit(), defaults.runZ(),
+				new DetectorConfig.StuckRule(2.0, 15), defaults.drift(), defaults.goodRunsPerLot());
+
 		assertThat(Fingerprint.of(Source.PUBLIC, GOOD, otherK, 1, 1)).isNotEqualTo(base);
+		assertThat(Fingerprint.of(Source.PUBLIC, GOOD, otherFactor, 1, 1)).isNotEqualTo(base);
+		assertThat(Fingerprint.of(Source.PUBLIC, GOOD, otherMinSamples, 1, 1)).isNotEqualTo(base);
 		assertThat(Fingerprint.of(Source.PUBLIC, GOOD.subList(0, 1), defaults, 1, 1)).isNotEqualTo(base);
 		assertThat(Fingerprint.of(Source.SYNTHETIC, GOOD, defaults, 1, 1)).isNotEqualTo(base);
 		assertThat(Fingerprint.of(Source.PUBLIC, GOOD, defaults, 2, 1)).isNotEqualTo(base);
@@ -38,7 +45,7 @@ class FingerprintTest {
 
 	@Test
 	void theDriftRuleAndTheGoodRunPolicyLeaveItAlone() {
-		DetectorConfig otherDrift = new DetectorConfig(defaults.band(), defaults.limit(), defaults.runZ(),
+		DetectorConfig otherDrift = new DetectorConfig(defaults.band(), defaults.limit(), defaults.runZ(), defaults.stuck(),
 				new DetectorConfig.DriftRule(2.0, 4, 2.5, 10), 2);
 
 		assertThat(Fingerprint.of(Source.PUBLIC, GOOD, otherDrift, 1, 1)).isEqualTo(base);

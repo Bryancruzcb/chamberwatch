@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -145,6 +146,74 @@ class PublicDataDetectionTest {
 		assertThat(assessments.get(RunKey.ofPublicGroup("Day_2024_07_09_Wafer_07")).verdict(ChannelName.of("Pressure"))
 			.persistentZ()).isBetween(4.0, 5.0);
 		assertThat(tuningDrift).hasSize(10).allSatisfy((lot, state) -> assertThat(state).isEqualTo(DriftProjection.State.OUT_OF_BAND));
+	}
+
+	@Test
+	void theStuckRuleLearnedFromGoodWafersRarelyFiresOnHeldOutOnes() throws IOException {
+		// per held-out good wafer and channel: the longest hold it showed, and the longest hold the other lots'
+		// good wafers showed, which is what the rule compares it with
+		record Pair(RunKey run, ChannelName channel, int held, int reference) {
+		}
+		List<Pair> pairs = new ArrayList<>();
+		SortedSet<RunKey> good = new TreeSet<>(runs.keySet().stream().filter((key) -> key.positionInLot() <= 3).toList());
+		for (List<RunKey> lot : byLot(good).values()) {
+			Baseline baseline = HealthModel.fit(good.stream().filter((key) -> !lot.contains(key)).map(runs::get), CONFIG);
+			for (RunKey key : lot) {
+				for (ChannelVerdict verdict : HealthModel.assess(runs.get(key), baseline).verdicts()) {
+					pairs.add(new Pair(key, verdict.channel(), verdict.longestHold(),
+							baseline.band(verdict.channel()).orElseThrow().maxHold()));
+				}
+			}
+		}
+		DetectorConfig.StuckRule rule = CONFIG.stuck();
+		SortedMap<RunKey, RunAssessment> everyWafer = scoredWith(CONFIG.goodRunsPerLot());
+		try (PrintStream out = report("public-stuck.txt")) {
+			out.println("held-out good wafers with a hold longer than the factor times the other lots' longest, and at least "
+					+ rule.minSamples() + " samples");
+			out.println("factor  wafers of 30  channel-wafers");
+			for (double factor : new double[] { 1.0, 1.25, 1.5, 2.0, 3.0 }) {
+				List<Pair> over = pairs.stream()
+					.filter((pair) -> pair.held() >= rule.minSamples() && pair.held() > factor * pair.reference())
+					.toList();
+				out.printf(Locale.ROOT, "%.2f  %d  %d  %s%n", factor, over.stream().map(Pair::run).distinct().count(),
+						over.size(), over.stream()
+							.map((pair) -> pair.run().value() + ":" + pair.channel() + "=" + pair.held() + "/" + pair.reference())
+							.collect(Collectors.joining(" ")));
+			}
+			out.println();
+			out.println("longest hold per channel over the 30 good wafers, in samples, and over all 96 wafers");
+			Baseline all = HealthModel.fit(good.stream().map(runs::get), CONFIG);
+			for (ChannelName channel : all.informativeChannels()) {
+				int everyMax = everyWafer.values()
+					.stream()
+					.mapToInt((assessment) -> assessment.verdict(channel).longestHold())
+					.max()
+					.orElse(0);
+				out.printf(Locale.ROOT, "%s good=%d all=%d%n", channel, all.band(channel).orElseThrow().maxHold(), everyMax);
+			}
+			out.println();
+			out.println("public wafers with a stuck flag at the defaults");
+			everyWafer.values()
+				.stream()
+				.filter((assessment) -> assessment.stuckFlags() > 0)
+				.forEach((assessment) -> out.println(describe(assessment, Set.of())));
+		}
+
+		long heldOutAlarms = pairs.stream()
+			.filter((pair) -> pair.held() >= rule.minSamples() && pair.held() > rule.factor() * pair.reference())
+			.map(Pair::run)
+			.distinct()
+			.count();
+		assertThat(heldOutAlarms).isZero();
+		// two late wafers of lot 6 hold the platen load capacitor for 22 and 12 samples where no good run holds it
+		// past 3: the match network stopped moving, on wafers the limit detector already flags on the same channel
+		Map<String, Integer> stuck = new TreeMap<>();
+		everyWafer.values().stream().filter((assessment) -> assessment.stuckFlags() > 0).forEach((assessment) -> {
+			assertThat(assessment.verdicts().stream().filter((v) -> !v.holds().isEmpty()).map(ChannelVerdict::channel))
+				.containsExactly(LOAD_CAPACITOR);
+			stuck.put(assessment.run().value(), assessment.verdict(LOAD_CAPACITOR).longestHold());
+		});
+		assertThat(stuck).containsExactly(Map.entry("Day_2024_08_01_Wafer_06", 22), Map.entry("Day_2024_08_01_Wafer_10", 12));
 	}
 
 	/** Every wafer scored against a baseline fitted on the first {@code perLot} wafers of each lot. */

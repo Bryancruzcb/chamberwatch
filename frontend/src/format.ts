@@ -29,6 +29,7 @@ const FAULT_KIND_NAMES = {
   PRESSURE_SPIKE: 'Pressure spike',
   REFLECTED_POWER_RISE: 'Reflected power rise',
   SENSOR_DROPOUT: 'Sensor dropout',
+  SENSOR_STUCK: 'Sensor stuck',
 } as const satisfies Record<FaultKind, string>
 
 const SURFACE_NAMES = {
@@ -102,6 +103,8 @@ export function describeFault(fault: InjectedFault): string {
       return `${fault.channel} climbs ${significant.format(fault.magnitude)} W over ${formatSeconds(fault.durationS)} from ${from}, then holds.`
     case 'SENSOR_DROPOUT':
       return `${fault.channel} reads 0 for ${formatSeconds(fault.durationS)} from ${from}.`
+    case 'SENSOR_STUCK':
+      return `${fault.channel} repeats its last reading for ${formatSeconds(fault.durationS)} from ${from}.`
     default: {
       const exhaustive: never = fault.kind
       return exhaustive

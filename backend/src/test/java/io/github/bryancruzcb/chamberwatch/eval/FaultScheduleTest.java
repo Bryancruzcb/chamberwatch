@@ -17,7 +17,7 @@ class FaultScheduleTest {
 
 		SortedMap<Integer, FaultPlan> plans = FaultSchedule.draw(config);
 
-		assertThat(plans).hasSize(100);
+		assertThat(plans).hasSize(config.faultsPerKind() * FaultKind.values().length);
 		assertThat(FaultSchedule.countByKind(plans)).containsOnlyKeys(FaultKind.values())
 			.allSatisfy((kind, count) -> assertThat(count).isEqualTo(25));
 		assertThat(plans.keySet()).allSatisfy((index) -> assertThat(index).isBetween(0, config.testRuns() - 1));

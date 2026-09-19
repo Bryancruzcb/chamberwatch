@@ -9,8 +9,8 @@ import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 /**
  * Draws faults of the sizes the evaluation and the demo lots use. Sizes span easy and hard cases, so recall
  * says something: a pressure jump of 1 to 10 %, a reflected power rise of 5 to 60 W, a gas stuck at 30 to
- * 95 % of its flow, a dropout of 1 to 20 s. The public data has no faults to measure these from, so the
- * ranges are chosen.
+ * 95 % of its flow, a dropout or a stuck reading of 1 to 20 s. The public data has no faults to measure these
+ * from, so the ranges are chosen.
  */
 public final class FaultPlans {
 
@@ -30,6 +30,7 @@ public final class FaultPlans {
 			case PRESSURE_SPIKE -> FaultPlan.pressureSpike(startS, between(random, 1.0, 6.0), between(random, 0.01, 0.10));
 			case REFLECTED_POWER_RISE -> FaultPlan.reflectedPowerRise(startS, between(random, 10, 60), between(random, 5, 60));
 			case SENSOR_DROPOUT -> FaultPlan.sensorDropout(channel, startS, between(random, 1.0, 20.0));
+			case SENSOR_STUCK -> FaultPlan.sensorStuck(channel, startS, between(random, 1.0, 20.0));
 		};
 	}
 
@@ -38,7 +39,7 @@ public final class FaultPlans {
 	 * starting in cycles 5 to 90, all drawn from the seed and the lot number alone.
 	 *
 	 * @return the fault for each faulted wafer, by position in lot
-	 * @throws IllegalArgumentException when the lot has fewer than four wafers after the clean ones
+	 * @throws IllegalArgumentException when the lot has fewer wafers after the clean ones than there are fault kinds
 	 */
 	public static SortedMap<Integer, FaultPlan> forLot(long seed, int lotNo, int lotSize, int cleanWafers) {
 		FaultKind[] kinds = FaultKind.values();

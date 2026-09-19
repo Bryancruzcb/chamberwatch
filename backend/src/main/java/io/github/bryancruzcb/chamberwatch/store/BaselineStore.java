@@ -18,6 +18,7 @@ import io.github.bryancruzcb.chamberwatch.detect.ChannelVerdict;
 import io.github.bryancruzcb.chamberwatch.detect.DetectorConfig;
 import io.github.bryancruzcb.chamberwatch.detect.Excursion;
 import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
+import io.github.bryancruzcb.chamberwatch.detect.Hold;
 import io.github.bryancruzcb.chamberwatch.detect.RunAssessment;
 import io.github.bryancruzcb.chamberwatch.detect.SummaryBand;
 import io.github.bryancruzcb.chamberwatch.detect.SummaryBands;
@@ -95,9 +96,10 @@ public class BaselineStore {
 			Optional<Integer> inserted = jdbc.sql("""
 					insert into baseline (source, fingerprint, aligner_version, detector_version, labels_seq,
 					                      pool_half_width, relative_sd_floor, min_observations, max_distinct_tracked,
-					                      limit_k, limit_n, run_z)
+					                      limit_k, limit_n, run_z, stuck_factor, stuck_min_samples)
 					values (:source, :fingerprint, :alignerVersion, :detectorVersion, :labelsSeq, :poolHalfWidth,
-					        :relativeSdFloor, :minObservations, :maxDistinctTracked, :k, :n, :runZ)
+					        :relativeSdFloor, :minObservations, :maxDistinctTracked, :k, :n, :runZ, :stuckFactor,
+					        :stuckMinSamples)
 					on conflict (fingerprint) do nothing
 					returning id""")
 				.param("source", source.name())
@@ -112,6 +114,8 @@ public class BaselineStore {
 				.param("k", config.limit().k())
 				.param("n", config.limit().n())
 				.param("runZ", config.runZ())
+				.param("stuckFactor", config.stuck().factor())
+				.param("stuckMinSamples", config.stuck().minSamples())
 				.query(Integer.class)
 				.optional();
 			if (inserted.isEmpty()) {
@@ -121,11 +125,12 @@ public class BaselineStore {
 			jdbcTemplate.batchUpdate("insert into baseline_good_run (baseline_id, run_id) values (?, ?)",
 					baseline.goodRuns().stream().map((key) -> new Object[] { id, storedId(runIds, key) }).toList());
 			jdbcTemplate.batchUpdate(
-					"insert into baseline_channel (baseline_id, channel_id, role, good_runs) values (?, ?, ?, ?)",
+					"insert into baseline_channel (baseline_id, channel_id, role, good_runs, max_hold) values (?, ?, ?, ?, ?)",
 					baseline.bands()
 						.values()
 						.stream()
-						.map((band) -> new Object[] { id, channelIds.get(band.channel()), band.role().name(), band.goodRuns() })
+						.map((band) -> new Object[] { id, channelIds.get(band.channel()), band.role().name(), band.goodRuns(),
+								band.maxHold() })
 						.toList());
 			copyBands(id, baseline, channelIds);
 			jdbcTemplate.batchUpdate("""
@@ -159,12 +164,13 @@ public class BaselineStore {
 			.query((rs, row) -> new RunKey(rs.getString("run_key"), Source.valueOf(rs.getString("source")),
 					rs.getInt("position_in_lot")))
 			.list();
-		record Role(ChannelName channel, ChannelRole role, int goodRuns) {
+		record Role(ChannelName channel, ChannelRole role, int goodRuns, int maxHold) {
 		}
-		List<Role> roles = jdbc.sql("select channel_id, role, good_runs from baseline_channel where baseline_id = :baseline")
+		List<Role> roles = jdbc
+			.sql("select channel_id, role, good_runs, max_hold from baseline_channel where baseline_id = :baseline")
 			.param("baseline", ref.id())
 			.query((rs, row) -> new Role(names.get(rs.getShort("channel_id")), ChannelRole.valueOf(rs.getString("role")),
-					rs.getInt("good_runs")))
+					rs.getInt("good_runs"), rs.getInt("max_hold")))
 			.list();
 		Map<ChannelName, float[]> means = new HashMap<>();
 		Map<ChannelName, float[]> sds = new HashMap<>();
@@ -183,7 +189,7 @@ public class BaselineStore {
 		}, ref.id());
 		Map<ChannelName, ChannelBand> bands = new HashMap<>();
 		for (Role role : roles) {
-			bands.put(role.channel(), ChannelBand.adopt(role.channel(), role.role(), role.goodRuns(),
+			bands.put(role.channel(), ChannelBand.adopt(role.channel(), role.role(), role.goodRuns(), role.maxHold(),
 					means.get(role.channel()), sds.get(role.channel())));
 		}
 		Map<SummaryBands.Key, SummaryBand> summaryBands = new HashMap<>();
@@ -224,22 +230,24 @@ public class BaselineStore {
 		Map<ChannelName, Short> channelIds = channelIds();
 		return Boolean.TRUE.equals(transactions.execute((status) -> {
 			Optional<ChannelVerdict> first = assessment.verdicts().stream().findFirst().filter(ChannelVerdict::flagged);
-			Optional<Excursion> excursion = assessment.firstExcursion();
+			Optional<ChannelVerdict.Departure> departure = assessment.firstDeparture();
 			Map<String, Object> params = new HashMap<>();
 			params.put("baseline", baseline.id());
 			params.put("run", runId.value());
 			params.put("limitFlags", assessment.limitFlags());
 			params.put("deviationFlags", assessment.deviationFlags());
+			params.put("stuckFlags", assessment.stuckFlags());
 			params.put("maxPersistentZ", assessment.maxPersistentZ());
 			params.put("firstChannel", first.map((verdict) -> channelIds.get(verdict.channel())).orElse(null));
-			params.put("startSlot", excursion.map(Excursion::startSlot).orElse(null));
-			params.put("confirmSlot", excursion.map(Excursion::confirmSlot).orElse(null));
-			params.put("timeS", excursion.map((e) -> (float) run.timeAt(e.startSlot())).orElse(null));
+			params.put("startSlot", departure.map(ChannelVerdict.Departure::startSlot).orElse(null));
+			params.put("confirmSlot", departure.map(ChannelVerdict.Departure::confirmSlot).orElse(null));
+			params.put("timeS", departure.map((d) -> (float) run.timeAt(d.startSlot())).orElse(null));
 			int inserted = jdbc.sql("""
-					insert into run_assessment (baseline_id, run_id, limit_flags, deviation_flags, max_persistent_z,
-					                            first_channel_id, first_start_slot, first_confirm_slot, first_time_s)
-					values (:baseline, :run, :limitFlags, :deviationFlags, :maxPersistentZ, :firstChannel, :startSlot,
-					        :confirmSlot, :timeS)
+					insert into run_assessment (baseline_id, run_id, limit_flags, deviation_flags, stuck_flags,
+					                            max_persistent_z, first_channel_id, first_start_slot, first_confirm_slot,
+					                            first_time_s)
+					values (:baseline, :run, :limitFlags, :deviationFlags, :stuckFlags, :maxPersistentZ, :firstChannel,
+					        :startSlot, :confirmSlot, :timeS)
 					on conflict do nothing""")
 				.params(params)
 				.update();
@@ -247,20 +255,27 @@ public class BaselineStore {
 				return false;
 			}
 			jdbcTemplate.batchUpdate("""
-					insert into channel_verdict (baseline_id, run_id, channel_id, rank, excursions, persistent_z, deviation,
-					                             max_abs_summary_z, sf6_mean_z, sf6_sd_z, c4f8_mean_z, c4f8_sd_z)
-					values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", assessment.verdicts()
+					insert into channel_verdict (baseline_id, run_id, channel_id, rank, excursions, persistent_z, holds,
+					                             longest_hold, deviation, max_abs_summary_z, sf6_mean_z, sf6_sd_z,
+					                             c4f8_mean_z, c4f8_sd_z)
+					values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", assessment.verdicts()
 				.stream()
 				.map((verdict) -> new Object[] { baseline.id(), runId.value(), channelIds.get(verdict.channel()),
-						verdict.rank(), verdict.excursions().size(), verdict.persistentZ(), verdict.deviation(),
-						verdict.maxAbsSummaryZ(), z(verdict, Phase.SF6, SummaryStat.MEAN), z(verdict, Phase.SF6, SummaryStat.SD),
+						verdict.rank(), verdict.excursions().size(), verdict.persistentZ(), verdict.holds().size(),
+						verdict.longestHold(), verdict.deviation(), verdict.maxAbsSummaryZ(),
+						z(verdict, Phase.SF6, SummaryStat.MEAN), z(verdict, Phase.SF6, SummaryStat.SD),
 						z(verdict, Phase.C4F8, SummaryStat.MEAN), z(verdict, Phase.C4F8, SummaryStat.SD) })
 				.toList());
 			List<Object[]> excursions = new ArrayList<>();
+			List<Object[]> holds = new ArrayList<>();
 			for (ChannelVerdict verdict : assessment.verdicts()) {
 				for (Excursion e : verdict.excursions()) {
 					excursions.add(new Object[] { baseline.id(), runId.value(), channelIds.get(verdict.channel()),
 							e.startSlot(), e.confirmSlot(), e.endSlot(), e.outSamples(), e.peakZ() });
+				}
+				for (Hold h : verdict.holds()) {
+					holds.add(new Object[] { baseline.id(), runId.value(), channelIds.get(verdict.channel()), h.startSlot(),
+							h.confirmSlot(), h.endSlot(), h.samples(), h.value() });
 				}
 			}
 			if (!excursions.isEmpty()) {
@@ -268,6 +283,11 @@ public class BaselineStore {
 						insert into excursion (baseline_id, run_id, channel_id, start_slot, confirm_slot, end_slot,
 						                       out_samples, peak_z)
 						values (?, ?, ?, ?, ?, ?, ?, ?)""", excursions);
+			}
+			if (!holds.isEmpty()) {
+				jdbcTemplate.batchUpdate("""
+						insert into hold (baseline_id, run_id, channel_id, start_slot, confirm_slot, end_slot, samples, value)
+						values (?, ?, ?, ?, ?, ?, ?, ?)""", holds);
 			}
 			return true;
 		}));
@@ -293,7 +313,9 @@ public class BaselineStore {
 	}
 
 	public int flaggedRuns(BaselineRef baseline) {
-		return jdbc.sql("select count(*) from run_assessment where baseline_id = :baseline and limit_flags + deviation_flags > 0")
+		return jdbc.sql("""
+				select count(*) from run_assessment
+				where baseline_id = :baseline and limit_flags + deviation_flags + stuck_flags > 0""")
 			.param("baseline", baseline.id())
 			.query(Integer.class)
 			.single();

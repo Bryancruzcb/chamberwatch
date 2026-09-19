@@ -105,9 +105,10 @@ function RunsTable({ runs, baseline }: { runs: readonly RunRow[]; baseline: Base
               <th scope="col">Label</th>
               <th scope="col" className="num">Limit flags</th>
               <th scope="col" className="num">Deviations</th>
+              <th scope="col" className="num">Holds</th>
               <th scope="col">Persistent z</th>
               <th scope="col">First channel</th>
-              <th scope="col" className="num">First excursion</th>
+              <th scope="col" className="num">First departure</th>
             </tr>
           </thead>
           <tbody>
@@ -120,6 +121,7 @@ function RunsTable({ runs, baseline }: { runs: readonly RunRow[]; baseline: Base
                 <td>{formatLabel(run.label)}</td>
                 <td className="num">{run.score?.limitFlags ?? MISSING}</td>
                 <td className="num">{run.score?.deviationFlags ?? MISSING}</td>
+                <td className="num">{run.score?.stuckFlags ?? MISSING}</td>
                 <td>{run.score !== null && baseline !== null ? <ZMeter z={run.score.persistentZ} k={baseline.k} /> : MISSING}</td>
                 <td>{run.score?.firstChannel ?? MISSING}</td>
                 <td className="num">{formatSeconds(run.score?.firstTimeS ?? null)}</td>

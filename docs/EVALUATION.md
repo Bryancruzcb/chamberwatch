@@ -55,25 +55,27 @@ Each simulated row covers 600 wafers. 0.10 comes closest at k = 5 and 6, around 
 | Pressure spike | Pressure | 1 to 10 % of the SF6 pressure, for 1 to 6 s | adds that much while it lasts |
 | Reflected power rise | SourceRFReflectedPower | 5 to 60 W | ramps up over 10 to 60 s, then holds to the end of the etch |
 | Sensor dropout | ForeLinePressure, HeliumBPPressure, SourceRFPeakToPeak | 1 to 20 s | reads 0 while it lasts |
+| Sensor stuck | ForeLinePressure, HeliumBPPressure, SourceRFPeakToPeak | 1 to 20 s | repeats the last reading while it lasts |
 
-The size ranges reach down to faults near the limit, so recall has room to fall below 1. A gas stuck below half its flow also hides its phase marker, so the aligner predicts those onsets and marks the run degraded. Channels do not affect each other: a stuck SF6 flow leaves the pressure alone.
+The size ranges reach down to faults near the limit, so recall has room to fall below 1. A gas stuck below half its flow also hides its phase marker, so the aligner predicts those onsets and marks the run degraded. A stuck sensor holds a reading that was in band when it froze, so the limit detector sees it only when the hold carries one phase's reading into the other phase. The stuck rule needs the hold to outlast the longest hold the good runs showed on that channel by the rule's factor and at least 2 s ([DATA.md](DATA.md#the-stuck-rule)), so the shortest stuck faults can be missed by design. Channels do not affect each other: a stuck SF6 flow leaves the pressure alone.
 
 ## The committed evaluation
 
-`Evaluation.run(EvaluationConfig.defaults(), SimulationTemplate.bundled())` fits a baseline on clean wafers 1 to 3 of 10 training lots, then simulates 100 test lots of 10 wafers. The seed picks 100 of the 1,000 test runs to carry one fault each, 25 of each kind, starting in a random cycle from 5 to 90. Each run is simulated, aligned, scored and dropped, and the whole evaluation takes about 20 s.
+`Evaluation.run(EvaluationConfig.defaults(), SimulationTemplate.bundled())` fits a baseline on clean wafers 1 to 3 of 10 training lots, then simulates 100 test lots of 10 wafers. The seed picks 125 of the 1,000 test runs to carry one fault each, 25 of each of the five kinds, starting in a random cycle from 5 to 90. Each run is simulated, aligned, scored and dropped, and the whole evaluation takes about 20 s.
 
-A fault counts as caught when its channel has an excursion confirmed after the fault starts that begins no later than one cycle after it ends. The latency runs from the fault's start to that confirmation. `FaultSignature` names the fault a run looks like, from the first excursion in rank order that fits a pattern: a gas flow reading low, the pressure or the reflected source power reading high, or a dropout channel reading exactly 0. Precision for a kind is the share of runs with that signature that really had that fault.
+A fault counts as caught when its channel has an excursion, or for a stuck sensor a hold, confirmed after the fault starts that begins no later than one cycle after it ends. The latency runs from the fault's start to the earliest such confirmation. `FaultSignature` names the fault a run looks like, from the first departure in rank order that fits a pattern: a gas flow reading low, the pressure or the reflected source power reading high, a dropout channel reading exactly 0, or a sensor channel holding one value. Precision for a kind is the share of runs with that signature that really had that fault.
 
 | Fault | Recall | Precision | Median latency | Caught faults ranked first |
 |---|---:|---:|---:|---:|
-| Gas flow stuck low | 1.00 | 1.00 | 2.8 s | 96 % |
-| Pressure spike | 0.88 | 1.00 | 1.1 s | 91 % |
-| Reflected power rise | 0.88 | 1.00 | 24.0 s | 95 % |
-| Sensor dropout | 1.00 | 1.00 | 0.9 s | 100 % |
+| Gas flow stuck low | 1.00 | 1.00 | 1.9 s | 96 % |
+| Pressure spike | 0.76 | 1.00 | 2.0 s | 89 % |
+| Reflected power rise | 0.72 | 1.00 | 21.2 s | 100 % |
+| Sensor dropout | 1.00 | 1.00 | 0.9 s | 96 % |
+| Sensor stuck | 0.96 | 1.00 | 1.8 s | 96 % |
 
-A stuck flow can only show while its gas is meant to be on, so it can wait out the other phase first. A reflected power rise needs time to climb past the band. When a caught fault is not ranked first, another channel had left its band earlier in the run.
+Adding the fifth kind redrew the whole schedule, so the runs, sizes and start cycles behind every row changed with it, and these rows are not comparable with the four-kind table before them: the pressure spike and reflected power rows moved from 0.88 to 0.76 and 0.72 on 25 faults each, a draw whose sampling error is about 0.08. A stuck flow can only show while its gas is meant to be on, so it can wait out the other phase first. A reflected power rise needs time to climb past the band. A stuck sensor is caught once its hold outlasts the rule's threshold, which on this simulated baseline is 10 samples on SourceRFPeakToPeak, 11 on ForeLinePressure and 15 on HeliumBPPressure (2.0, 2.2 and 3.0 s; the simulated good runs hold at most 2, 5 and 7 samples there), or sooner when the held reading leaves the band at a phase change, which came first in 4 of the 24 caught. All 24 also have a hold that passed the rule. HeliumBPPressure reads the same in both phases, so its 4 stuck faults were caught by the hold alone. The one miss in 25 is a 1.5 s fault on ForeLinePressure, a hold of 9 samples. When a caught fault is not ranked first, another channel had left its band earlier in the run.
 
-Of the 900 clean test runs, 13.7 % are flagged: 6.7 % by the limit detector and 9.0 % by the run-level detector, some by both. Among wafers 1 to 3 it is 7.5 %, close to the calibration. Among wafers 4 to 10 it is 16.3 %.
+Of the 875 clean test runs, 13.9 % are flagged: 6.4 % by the limit detector and 9.0 % by the run-level detector, some by both, and 0.2 % by the stuck rule, 2 runs. Among wafers 1 to 3 it is 8.1 %, close to the calibration. Among wafers 4 to 10 it is 16.4 %.
 
 After a deliberate change, `./mvnw test -Dtest=EvaluationRegressionTest -Dchamberwatch.writeMetrics=true` rewrites the metrics file. Otherwise CI fails when a rate moves more than 0.02, a latency more than 0.5 s, or a count or setting at all.
 

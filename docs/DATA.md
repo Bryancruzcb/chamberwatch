@@ -161,9 +161,25 @@ Taking only wafers 1 to 2, the two closest to the clean, does not help either. T
 
 A threshold on single samples would not work at all. All 30 held-out good wafers have some sample more than 8 standard deviations out. Most sit at phase edges: Gas5Flow reads almost exactly 0 early in a C4F8 phase, so one sample where the SF6 flow is still falling can score in the thousands.
 
+### The stuck rule
+
+A sensor that stops updating repeats one value, which a band detector cannot see while that value stays inside the band. The stuck rule is learned from the good runs like the bands are: for every channel, the baseline keeps the longest run of one identical value any good run showed inside the etch, and a run is flagged when a channel holds one value for more than a factor times that, and for at least 10 samples. Consecutive recorded samples count, across phase boundaries, and a recording gap ends a hold. The factor was chosen the same way as the limit threshold, on the good wafers scored against a baseline fitted without their own lot:
+
+| Factor | Held-out good wafers with a hold past it |
+|---:|---:|
+| 1.0 | 7 of 30 |
+| 1.25 | 3 of 30 |
+| 1.5 | 1 of 30 |
+| 2.0 | 0 of 30 |
+| 3.0 | 0 of 30 |
+
+The defaults are a factor of 2 and 10 samples. The wafer that still alarms at 1.5 holds Heater2Temp for 1,115 samples where the other lots' good wafers hold it for 611, which is a temperature controller at its setpoint, not a fault. The longest good-run holds say what the rule can see: the heater and the source RF tuning channels hold one value for minutes (Heater3Temp 2,036 samples, SourceRFTuningCapacitor the whole etch), so a stuck reading there is invisible, while the RF and pressure channels move within a second or two (SourceRFPeakToPeak 3 samples, PlatenRFLoadCapacitor 3, Pressure 8, ForeLinePressure 8, HeliumBPPressure 9), so a hold of 2.0 to 3.8 s on them is a flag.
+
+On the public data the rule flags two wafers, lot 6 wafers 6 and 10, both on PlatenRFLoadCapacitor, held for 22 and 12 samples where no good run holds it past 3: the match network stopped moving, on the wafers the limit detector already flags on the same channel. `PublicDataDetectionTest` pins the held-out count at the defaults and those two wafers.
+
 ### Flagged wafers
 
-15 of the 96 wafers are flagged, all by the limit detector and all on the two platen match capacitors, PlatenRFLoadCapacitor and PlatenRFTuningCapacitor. No wafer has a run-level deviation, and none of the 30 good wafers is flagged.
+15 of the 96 wafers are flagged, all by the limit detector and all on the two platen match capacitors, PlatenRFLoadCapacitor and PlatenRFTuningCapacitor; two of them, lot 6 wafers 6 and 10, also by the stuck rule on the load capacitor. No wafer has a run-level deviation, and none of the 30 good wafers is flagged.
 
 | Lot | Flagged wafers | Cycle of the first excursion | Largest persistent z |
 |---|---|---|---:|

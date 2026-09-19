@@ -2,9 +2,9 @@
 
 Tool-health monitoring for a plasma etch tool. ChamberWatch reads each wafer's machine telemetry, learns what a good run looks like at each point in the recipe, and flags runs that go out of range or drift across a lot. For every flag it shows which sensor changed first, next to the measured result on the wafer.
 
-![The run page of a flagged public wafer: four stats, the channels ranked by persistent z, and the PlatenRFLoadCapacitor trace against the good-run band with its excursions shaded](docs/images/run-55.png)
+![The run page of a flagged public wafer: five stats, the channels ranked by persistent z, and the PlatenRFLoadCapacitor trace against the good-run band with its excursions shaded](docs/images/run-55.png)
 
-Status: v1 is complete. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). An HTTP API serves the runs table, each run's ranked channels and charts, wafer measurements, relabeling, lot drift and a drift-versus-depth report. A React app covers the runs table, each run's trace against the good-run band, each lot's drift channel by channel, each wafer's depth map, and drift against depth by wafer position. A `simulate-lot` command stores a seeded synthetic lot with four known faults next to the clean lots its baseline learns from, with the injected fault kept beside each run; the app switches between the public and the simulated wafers and shows each injected fault next to what the detectors caught. `report` writes the drift-versus-depth report to a file ([results/public-drift.json](results/public-drift.json)). [docs/DESIGN.md](docs/DESIGN.md) describes the whole design, and [docs/PLAN.md](docs/PLAN.md) what comes next: the design's open questions, a hosted demo, predicted depth, the emission spectra, and a chamber simulator in C.
+Status: v1 is complete. The aligner places all 96 public wafers on a fixed recipe grid, the ingest loads their 10.1 million samples into PostgreSQL, the detectors score every wafer against a baseline learned from the first wafers of each lot, and the ingest stores those scores. A seeded simulator makes wafers with known faults, and CI scores the detectors on 1,000 of them ([results/metrics.json](results/metrics.json), [docs/EVALUATION.md](docs/EVALUATION.md)). An HTTP API serves the runs table, each run's ranked channels and charts, wafer measurements, relabeling, lot drift and a drift-versus-depth report. A React app covers the runs table, each run's trace against the good-run band, each lot's drift channel by channel, each wafer's depth map, and drift against depth by wafer position. A `simulate-lot` command stores a seeded synthetic lot with five known faults next to the clean lots its baseline learns from, with the injected fault kept beside each run; the app switches between the public and the simulated wafers and shows each injected fault next to what the detectors caught. `report` writes the drift-versus-depth report to a file ([results/public-drift.json](results/public-drift.json)). [docs/DESIGN.md](docs/DESIGN.md) describes the whole design, and [docs/PLAN.md](docs/PLAN.md) what comes next: the design's open questions, a hosted demo, predicted depth, the emission spectra, and a chamber simulator in C.
 
 ## How it works
 
@@ -16,9 +16,9 @@ The tool records 31 channels five times a second, but nothing in the record says
 
 ![The lots page: the ten public lots with their conditioning and flagged runs, then the mean drift score and the depth loss by wafer position](docs/images/lots.png)
 
-The public data labels no faults, so the detectors are scored on simulated wafers with known ones. On 1,000 simulated runs with 100 faults, recall is 1.00 for a gas flow stuck low and a sensor dropout and 0.88 for a pressure spike and a reflected power rise, precision is 1.00 for every kind, and 13.7 % of clean runs are flagged. A stored simulated lot shows the same thing in the app, with the injected fault next to what the detectors caught.
+The public data labels no faults, so the detectors are scored on simulated wafers with known ones. On 1,000 simulated runs with 125 faults of five kinds, recall is 1.00 for a gas flow stuck low and a sensor dropout, 0.96 for a sensor that repeats its last reading, and 0.76 and 0.72 for a pressure spike and a reflected power rise; precision is 1.00 for every kind, and 13.9 % of clean runs are flagged. A stored simulated lot shows the same thing in the app, with the injected fault next to what the detectors caught.
 
-![A simulated run's page: the injected fault panel says Gas5Flow delivers 36% of its flow from 187.9 s, and the detectors named Gas5Flow first 1.4 s later](docs/images/run-133.png)
+![A simulated run's page: the injected fault panel says Gas5Flow delivers 36% of its flow from 187.9 s, and the detectors named Gas5Flow first 1.4 s later](docs/images/simulated-run.png)
 
 ## Data
 
@@ -50,7 +50,7 @@ java -jar target/chamberwatch.jar align --data=../data/public/zenodo17122442 --m
 docker compose up -d
 java -jar target/chamberwatch.jar ingest --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
 
-# Store a seeded synthetic lot with four known faults, plus the clean training lots its baseline learns from. A rerun adds nothing.
+# Store a seeded synthetic lot with five known faults, plus the clean training lots its baseline learns from. A rerun adds nothing.
 java -jar target/chamberwatch.jar simulate-lot --seed=7 --lot=901
 
 # Write the drift-versus-depth report for the public data next to the metrics file.

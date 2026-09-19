@@ -82,7 +82,7 @@ class DriftApiTest {
 				.pressureOffsetFrom(1, PRESSURE_RISE[position - 1])
 				.build()
 				.run();
-			RunId run = runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot).orElseThrow();
+			RunId run = runs.insertIfAbsent(raw, Aligner.STANDARD.align(raw), lot, Optional.empty()).orElseThrow();
 			double depth = 44 - 0.2 * position;
 			measurements.insert(run, MeasurementSet.EIGHTY_NINE_POINT, List
 				.of(new MeasurementRecord("SIM", 1, Optional.empty(), 0, 0, 1.0, 0.5, true, depth + 0.5, 0.5, depth)));

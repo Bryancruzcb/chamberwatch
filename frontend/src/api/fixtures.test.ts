@@ -29,14 +29,16 @@ describe('captured API responses', () => {
     ['run-55.json', runDetailSchema],
     ['run-11.json', runDetailSchema],
     ['runs-synthetic.json', runsPageSchema],
-    ['run-133.json', runDetailSchema],
+    ['run-253.json', runDetailSchema],
+    ['run-256.json', runDetailSchema],
     ['drift-vs-depth-synthetic.json', driftVsDepthSchema],
     ['trace-55.json', traceSchema],
-    ['trace-133.json', traceSchema],
+    ['trace-253.json', traceSchema],
+    ['trace-256.json', traceSchema],
     ['measurements-55.json', measurementsSchema],
     ['measurements-55-nine.json', measurementsSchema],
     ['drift-6.json', lotDriftSchema],
-    ['drift-31.json', lotDriftSchema],
+    ['drift-75.json', lotDriftSchema],
     ['drift-vs-depth.json', driftVsDepthSchema],
   ] as const)('%s parses', (name, schema) => {
     const parsed = schema.safeParse(fixture(name))
@@ -53,7 +55,7 @@ describe('captured API responses', () => {
 
   it('count the 40 simulated wafers, 8 flagged, and carry the fault put into wafer 7 of lot 901', () => {
     const page = runsPageSchema.parse(fixture('runs-synthetic.json'))
-    const run = runDetailSchema.parse(fixture('run-133.json'))
+    const run = runDetailSchema.parse(fixture('run-253.json'))
 
     expect(page.runs).toHaveLength(40)
     expect(page.runs.filter((run) => isFlagged(run.score))).toHaveLength(8)
@@ -63,6 +65,18 @@ describe('captured API responses', () => {
     expect(run.injectedFault?.durationS).toBeNull()
     expect(run.assessment?.firstChannel).toBe('Gas5Flow')
     expect(runDetailSchema.parse(fixture('run-55.json')).injectedFault).toBeNull()
+  })
+
+  it('carry the stuck sensor of wafer 10 of lot 901 as a hold the rule caught', () => {
+    const run = runDetailSchema.parse(fixture('run-256.json'))
+
+    expect(run.injectedFault?.kind).toBe('SENSOR_STUCK')
+    expect(run.injectedFault?.channel).toBe('HeliumBPPressure')
+    expect(run.assessment?.stuckFlags).toBe(1)
+    expect(run.assessment?.firstChannel).toBe('HeliumBPPressure')
+    expect(run.channels[0]?.holds).toHaveLength(1)
+    expect(run.channels[0]?.longestHold).toBe(34)
+    expect(runDetailSchema.parse(fixture('run-55.json')).assessment?.stuckFlags).toBe(0)
   })
 
   it('put the tuning capacitor first in lot 6, out of the band, with no fit at the first wafer', () => {

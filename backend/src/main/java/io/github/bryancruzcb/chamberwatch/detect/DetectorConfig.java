@@ -6,20 +6,41 @@ package io.github.bryancruzcb.chamberwatch.detect;
  * @param band           how bands are learned
  * @param limit          the k-sigma persistence rule
  * @param runZ           a channel deviates at run level when its largest summary |z| exceeds this, 5.0
+ * @param stuck          the stuck-value rule
  * @param drift          how lot drift is judged
  * @param goodRunsPerLot by default the first this many wafers of each lot are good runs, 3
  */
-public record DetectorConfig(BandRule band, LimitRule limit, double runZ, DriftRule drift, int goodRunsPerLot) {
+public record DetectorConfig(BandRule band, LimitRule limit, double runZ, StuckRule stuck, DriftRule drift,
+		int goodRunsPerLot) {
 
 	public DetectorConfig {
-		if (band == null || limit == null || drift == null || !(runZ > 0) || goodRunsPerLot < 1) {
+		if (band == null || limit == null || stuck == null || drift == null || !(runZ > 0) || goodRunsPerLot < 1) {
 			throw new IllegalArgumentException("invalid detector config");
 		}
 	}
 
-	/** The limit and run-level thresholds come from held-out good wafers of the public data; see docs/DATA.md. */
+	/** The limit, run-level and stuck thresholds come from held-out good wafers of the public data; see docs/DATA.md. */
 	public static DetectorConfig defaults() {
-		return new DetectorConfig(BandRule.DEFAULT, LimitRule.DEFAULT, 5.0, DriftRule.DEFAULT, 3);
+		return new DetectorConfig(BandRule.DEFAULT, LimitRule.DEFAULT, 5.0, StuckRule.DEFAULT, DriftRule.DEFAULT, 3);
+	}
+
+	/**
+	 * Flag a channel that reports one value for more than {@code factor} times the longest hold any good run
+	 * showed on it, and for at least {@code minSamples} samples.
+	 *
+	 * @param factor     how far past the longest good-run hold a hold must go, 2.0
+	 * @param minSamples the shortest hold that can ever count, 10, which is two seconds at 5 Hz
+	 */
+	public record StuckRule(double factor, int minSamples) {
+
+		public static final StuckRule DEFAULT = new StuckRule(2.0, 10);
+
+		public StuckRule {
+			if (!(factor >= 1) || minSamples < 2) {
+				throw new IllegalArgumentException("invalid stuck rule");
+			}
+		}
+
 	}
 
 	/**

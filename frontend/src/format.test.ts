@@ -41,6 +41,9 @@ describe('format', () => {
       .toBe('Pressure rises 8% for 1.5 s from 135.3 s.')
     expect(describeFault({ kind: 'REFLECTED_POWER_RISE', channel: 'SourceRFReflectedPower', startS: 299.2, endS: 716.5, durationS: 11.2, magnitude: 28.4 }))
       .toBe('SourceRFReflectedPower climbs 28.4 W over 11.2 s from 299.2 s, then holds.')
+    expect(describeFault({ kind: 'SENSOR_STUCK', channel: 'HeliumBPPressure', startS: 499.0046, endS: 505.6034, durationS: 6.5988, magnitude: 0 }))
+      .toBe('HeliumBPPressure repeats its last reading for 6.6 s from 499.0 s.')
+    expect(formatFaultKind('SENSOR_STUCK')).toBe('Sensor stuck')
   })
 
   it('marks a missing value', () => {

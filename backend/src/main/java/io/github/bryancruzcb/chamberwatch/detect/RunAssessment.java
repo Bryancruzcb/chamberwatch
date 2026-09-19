@@ -42,8 +42,13 @@ public record RunAssessment(RunKey run, List<ChannelVerdict> verdicts) {
 		return (int) verdicts.stream().filter(ChannelVerdict::deviation).count();
 	}
 
+	/** Holds that passed the stuck rule across every channel. */
+	public int stuckFlags() {
+		return verdicts.stream().mapToInt((verdict) -> verdict.holds().size()).sum();
+	}
+
 	public boolean flagged() {
-		return limitFlags() + deviationFlags() > 0;
+		return limitFlags() + deviationFlags() + stuckFlags() > 0;
 	}
 
 	/** The largest persistent |z| of any channel: the run has a limit flag exactly when this passes k. */
@@ -51,9 +56,9 @@ public record RunAssessment(RunKey run, List<ChannelVerdict> verdicts) {
 		return verdicts.stream().mapToDouble(ChannelVerdict::persistentZ).max().orElse(0);
 	}
 
-	/** The earliest excursion, which belongs to the rank 1 channel whenever any channel has one. */
-	public Optional<Excursion> firstExcursion() {
-		return verdicts.stream().findFirst().flatMap(ChannelVerdict::firstExcursion);
+	/** The earliest departure of either kind, which belongs to the rank 1 channel whenever any channel has one. */
+	public Optional<ChannelVerdict.Departure> firstDeparture() {
+		return verdicts.stream().findFirst().flatMap(ChannelVerdict::firstDeparture);
 	}
 
 }

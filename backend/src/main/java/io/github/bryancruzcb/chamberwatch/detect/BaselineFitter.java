@@ -62,6 +62,7 @@ final class BaselineFitter {
 			Accumulator accumulator = channels.computeIfAbsent(name,
 					(ignored) -> new Accumulator(grid.slotCount(), config.band().maxDistinctTracked()));
 			accumulator.runs++;
+			accumulator.maxHold = Math.max(accumulator.maxHold, StuckDetector.longestHold(run, channel));
 			for (int slot = 0; slot < grid.slotCount(); slot++) {
 				float value = run.value(channel, slot);
 				if (linesUp[slot] && !Float.isNaN(value)) {
@@ -115,7 +116,7 @@ final class BaselineFitter {
 				}
 			}
 			bands.put(name, ChannelBand.adopt(name, constant ? ChannelRole.CONSTANT : ChannelRole.INFORMATIVE,
-					accumulator.runs, mean, sd));
+					accumulator.runs, accumulator.maxHold, mean, sd));
 		}
 		return Baseline.adopt(grid, config, goodRuns, bands, SummaryBands.of(summaryBands));
 	}
@@ -195,6 +196,9 @@ final class BaselineFitter {
 		private float max = Float.NEGATIVE_INFINITY;
 
 		private int runs;
+
+		/** The longest run of one value any good run showed, in samples. */
+		private int maxHold;
 
 		Accumulator(int slots, int maxDistinct) {
 			this.n = new int[slots];

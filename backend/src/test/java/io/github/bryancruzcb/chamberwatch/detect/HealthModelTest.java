@@ -167,6 +167,82 @@ class HealthModelTest {
 	}
 
 	@Test
+	void aChannelHoldingOneValueLongerThanAnyGoodRunIsStuckAndRanksFirst() {
+		// noisy pressure never holds a value in the good runs, so the learned longest hold is 1 sample and the
+		// rule's minimum of 10 samples is what a hold must reach
+		assertThat(baseline.band(PRESSURE).orElseThrow().maxHold()).isEqualTo(1);
+		Map<ChannelName, AlignedRuns.Signal> faults = Map.of(PRESSURE,
+				(cycle, phase, offset) -> (cycle == 50 && phase == Phase.SF6) ? Float.NaN : level(PRESSURE, phase, offset),
+				PLATEN_POWER, (cycle, phase, offset) -> (float) (level(PLATEN_POWER, phase, offset) + ((cycle >= 60) ? 3.0 : 0)));
+		AlignedRun run = withHeldPressure(clean(106, faults), 50, 0.0403f);
+
+		RunAssessment assessment = HealthModel.assess(run, baseline);
+
+		ChannelVerdict pressure = assessment.verdict(PRESSURE);
+		assertThat(pressure.holds()).hasSize(1);
+		assertThat(pressure.excursions()).isEmpty();
+		Hold hold = pressure.firstHold().orElseThrow();
+		assertThat(hold.startSlot()).isEqualTo(AlignedRuns.GRID.slot(50, Phase.SF6, 0));
+		assertThat(hold.confirmSlot()).isEqualTo(AlignedRuns.GRID.slot(50, Phase.SF6, 9));
+		assertThat(hold.samples()).isEqualTo(23);
+		assertThat(hold.value()).isEqualTo(0.0403f);
+		assertThat(pressure.longestHold()).isEqualTo(23);
+		assertThat(assessment.stuckFlags()).isEqualTo(1);
+		assertThat(assessment.firstChannel()).contains(PRESSURE);
+		assertThat(assessment.firstDeparture().orElseThrow().startSlot()).isEqualTo(hold.startSlot());
+	}
+
+	@Test
+	void aHoldShorterThanTheRulesMinimumIsNotStuck() {
+		Map<ChannelName, AlignedRuns.Signal> faults = Map.of(PRESSURE,
+				(cycle, phase, offset) -> (cycle == 50 && phase == Phase.SF6 && offset < 9) ? Float.NaN : level(PRESSURE, phase, offset));
+		AlignedRun run = withHeldPressure(clean(107, faults), 50, 0.0403f);
+
+		RunAssessment assessment = HealthModel.assess(run, baseline);
+
+		assertThat(assessment.verdict(PRESSURE).holds()).isEmpty();
+		assertThat(assessment.verdict(PRESSURE).longestHold()).isEqualTo(9);
+		assertThat(assessment.stuckFlags()).isZero();
+	}
+
+	@Test
+	void aRecordingGapEndsAHoldSoTheSamplesBeforeItNeverCount() {
+		// two missing slots make a 0.6 s step, past the grid's gap threshold; one missing slot would not
+		Set<Integer> gap = AlignedRuns.slots(50, Phase.SF6, 6, 7);
+		Map<ChannelName, AlignedRuns.Signal> faults = Map.of(PRESSURE,
+				(cycle, phase, offset) -> (cycle == 50 && phase == Phase.SF6) ? Float.NaN : level(PRESSURE, phase, offset));
+		AlignedRun run = withHeldPressure(AlignedRuns.run(RunKey.simulated(108, 1, 1), signals(108, faults), gap::contains),
+				50, 0.0403f);
+
+		RunAssessment assessment = HealthModel.assess(run, baseline);
+
+		// 6 held samples before the gap fall short of the rule's 10; the 15 after it pass on their own
+		Hold hold = assessment.verdict(PRESSURE).firstHold().orElseThrow();
+		assertThat(assessment.verdict(PRESSURE).holds()).hasSize(1);
+		assertThat(hold.startSlot()).isEqualTo(AlignedRuns.GRID.slot(50, Phase.SF6, 8));
+		assertThat(hold.samples()).isEqualTo(15);
+		assertThat(assessment.verdict(PRESSURE).longestHold()).isEqualTo(15);
+	}
+
+	/** The run with every NaN pressure sample of the cycle's SF6 phase replaced by one held value. */
+	private static AlignedRun withHeldPressure(AlignedRun run, int cycle, float held) {
+		int pressure = run.channels().indexOf(PRESSURE);
+		float[] values = new float[run.channels().size() * AlignedRuns.GRID.slotCount()];
+		for (int channel = 0; channel < run.channels().size(); channel++) {
+			System.arraycopy(run.copyProfile(channel), 0, values, channel * AlignedRuns.GRID.slotCount(),
+					AlignedRuns.GRID.slotCount());
+		}
+		float[] slotTimes = run.copySlotTimes();
+		for (int offset = 0; offset < 30; offset++) {
+			int slot = AlignedRuns.GRID.slot(cycle, Phase.SF6, offset);
+			if (!Float.isNaN(slotTimes[slot]) && Float.isNaN(values[pressure * AlignedRuns.GRID.slotCount() + slot])) {
+				values[pressure * AlignedRuns.GRID.slotCount() + slot] = held;
+			}
+		}
+		return AlignedRun.adopt(run.key(), AlignedRuns.GRID, run.channels(), values, slotTimes, run.report());
+	}
+
+	@Test
 	void fittingNothingIsRefused() {
 		assertThatIllegalArgumentException().isThrownBy(() -> HealthModel.fit(Stream.of(), DetectorConfig.defaults()));
 	}

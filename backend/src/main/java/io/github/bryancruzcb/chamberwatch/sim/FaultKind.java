@@ -18,6 +18,10 @@ public enum FaultKind {
 
 	/** A sensor reads 0 for a while. The process itself is untouched. */
 	SENSOR_DROPOUT(List.of(ChannelName.of("ForeLinePressure"), ChannelName.of("HeliumBPPressure"),
+			ChannelName.of("SourceRFPeakToPeak"))),
+
+	/** A sensor stops updating and repeats its last reading for a while. The process itself is untouched. */
+	SENSOR_STUCK(List.of(ChannelName.of("ForeLinePressure"), ChannelName.of("HeliumBPPressure"),
 			ChannelName.of("SourceRFPeakToPeak")));
 
 	private final List<ChannelName> channels;

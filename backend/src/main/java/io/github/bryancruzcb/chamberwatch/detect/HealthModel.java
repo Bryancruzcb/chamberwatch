@@ -16,12 +16,13 @@ import io.github.bryancruzcb.chamberwatch.recipe.PhaseSummary;
  * functions over domain types. The same calls score public wafers and synthetic runs.
  *
  * <p>Behind them: streaming band learning with pooled variance and floors, channel roles, the k-sigma
- * persistence rule with gap resets, run-level z-scores, first-channel ranking, and drift projection.
+ * persistence rule with gap resets, the stuck-value rule learned from the good runs' longest holds,
+ * run-level z-scores, first-channel ranking, and drift projection.
  */
 public final class HealthModel {
 
 	/** Bump when band learning or scoring changes, so stored baselines are fitted and scored again. */
-	public static final int VERSION = 1;
+	public static final int VERSION = 2;
 
 	private HealthModel() {
 	}
@@ -65,9 +66,11 @@ public final class HealthModel {
 			if (index < 0) {
 				continue;
 			}
-			LimitDetector.Scan scan = LimitDetector.scan(run, index, baseline.band(channel).orElseThrow(),
-					baseline.config().limit());
-			findings.add(new Ranking.ChannelFindings(channel, scan.excursions(), scan.persistentZ(),
+			ChannelBand band = baseline.band(channel).orElseThrow();
+			LimitDetector.Scan scan = LimitDetector.scan(run, index, band, baseline.config().limit());
+			StuckDetector.Scan holds = StuckDetector.scan(run, index, band, baseline.config().stuck());
+			findings.add(new Ranking.ChannelFindings(channel, scan.excursions(), scan.persistentZ(), holds.holds(),
+					holds.longestHold(),
 					RunDeviation.score(channel, summaries.getOrDefault(channel, List.of()), baseline.summaryBands())));
 		}
 		return new RunAssessment(run.key(), Ranking.rank(findings, baseline.config().runZ()));

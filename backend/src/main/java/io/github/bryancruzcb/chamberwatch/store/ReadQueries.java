@@ -46,7 +46,7 @@ public class ReadQueries {
 	private static final String LOTS = """
 			select l.id, l.source, l.lot_no, l.run_date, l.conditioning_count, l.conditioning_surface,
 			       count(r.id) as runs,
-			       count(a.run_id) filter (where a.limit_flags + a.deviation_flags > 0) as flagged_runs
+			       count(a.run_id) filter (where a.limit_flags + a.deviation_flags + a.stuck_flags > 0) as flagged_runs
 			from lot l
 			left join run r on r.lot_id = l.id
 			left join current_baseline cb on cb.source = l.source
@@ -75,8 +75,8 @@ public class ReadQueries {
 
 	/** One row of the runs table. The flag fields are null for a run not scored under the current baseline. */
 	public record RunRow(int id, String key, int lotId, int lotNo, int positionInLot, Label label, String alignment,
-			boolean good, boolean scored, Integer limitFlags, Integer deviationFlags, Double persistentZ,
-			String firstChannel, Double firstTimeS) {
+			boolean good, boolean scored, Integer limitFlags, Integer deviationFlags, Integer stuckFlags,
+			Double persistentZ, String firstChannel, Double firstTimeS) {
 	}
 
 	/** @param baseline null until the source has been refreshed once */
@@ -88,7 +88,7 @@ public class ReadQueries {
 			Double gapLengthS, Boolean gapInsideEtch, List<Integer> irregularCycles) {
 	}
 
-	public record Assessment(int limitFlags, int deviationFlags, double persistentZ, String firstChannel,
+	public record Assessment(int limitFlags, int deviationFlags, int stuckFlags, double persistentZ, String firstChannel,
 			Double firstTimeS) {
 	}
 
@@ -105,8 +105,17 @@ public class ReadQueries {
 			Double goodSd, Double goodSdSd, Double sdZ) {
 	}
 
+	/** A hold that passed the stuck rule, with the recipe position of its first sample and the record times of its slots. */
+	public record HoldView(String channel, int startSlot, int confirmSlot, int endSlot, int cycle, Phase phase, int offset,
+			Double startTimeS, Double confirmTimeS, Double endTimeS, int samples, double value) {
+	}
+
+	/**
+	 * @param longestHold the longest run of one value in the channel, in samples, whether or not it passed the rule
+	 * @param holds       the holds that passed the stuck rule, in slot order
+	 */
 	public record Channel(String channel, int rank, double persistentZ, boolean deviation, double maxAbsSummaryZ,
-			List<PhaseEvidence> phases, List<Excursion> excursions) {
+			int longestHold, List<PhaseEvidence> phases, List<Excursion> excursions, List<HoldView> holds) {
 	}
 
 	/**
@@ -240,7 +249,7 @@ public class ReadQueries {
 		List<RunRow> rows = jdbc.sql("""
 				select r.id, r.run_key, r.lot_id, l.lot_no, r.position_in_lot, r.label, r.alignment_status,
 				       g.run_id is not null as good, a.run_id is not null as scored, a.limit_flags, a.deviation_flags,
-				       a.max_persistent_z, c.name as first_channel, a.first_time_s
+				       a.stuck_flags, a.max_persistent_z, c.name as first_channel, a.first_time_s
 				from run r
 				join lot l on l.id = r.lot_id
 				left join current_baseline cb on cb.source = l.source
@@ -250,7 +259,7 @@ public class ReadQueries {
 				where l.source = :source
 				  and (cast(:lotId as integer) is null or r.lot_id = cast(:lotId as integer))
 				  and (cast(:flagged as boolean) is null
-				       or coalesce(a.limit_flags + a.deviation_flags > 0, false) = cast(:flagged as boolean))
+				       or coalesce(a.limit_flags + a.deviation_flags + a.stuck_flags > 0, false) = cast(:flagged as boolean))
 				order by l.lot_no, r.position_in_lot""")
 			.param("source", source.name())
 			.param("lotId", lotId, Types.INTEGER)
@@ -258,8 +267,8 @@ public class ReadQueries {
 			.query((rs, row) -> new RunRow(rs.getInt("id"), rs.getString("run_key"), rs.getInt("lot_id"),
 					rs.getInt("lot_no"), rs.getInt("position_in_lot"), Label.valueOf(rs.getString("label")),
 					rs.getString("alignment_status"), rs.getBoolean("good"), rs.getBoolean("scored"),
-					integer(rs, "limit_flags"), integer(rs, "deviation_flags"), decimal(rs, "max_persistent_z"),
-					rs.getString("first_channel"), real(rs, "first_time_s")))
+					integer(rs, "limit_flags"), integer(rs, "deviation_flags"), integer(rs, "stuck_flags"),
+					decimal(rs, "max_persistent_z"), rs.getString("first_channel"), real(rs, "first_time_s")))
 			.list();
 		return new RunsPage(currentBaseline(source).orElse(null), rows);
 	}
@@ -302,14 +311,16 @@ public class ReadQueries {
 				.query(Boolean.class)
 				.single();
 			assessment = jdbc.sql("""
-					select a.limit_flags, a.deviation_flags, a.max_persistent_z, c.name as first_channel, a.first_time_s
+					select a.limit_flags, a.deviation_flags, a.stuck_flags, a.max_persistent_z, c.name as first_channel,
+					       a.first_time_s
 					from run_assessment a
 					left join channel c on c.id = a.first_channel_id
 					where a.baseline_id = :baseline and a.run_id = :run""")
 				.param("baseline", baselineId)
 				.param("run", runId)
 				.query((rs, row) -> new Assessment(rs.getInt("limit_flags"), rs.getInt("deviation_flags"),
-						rs.getDouble("max_persistent_z"), rs.getString("first_channel"), real(rs, "first_time_s")))
+						rs.getInt("stuck_flags"), rs.getDouble("max_persistent_z"), rs.getString("first_channel"),
+						real(rs, "first_time_s")))
 				.optional();
 			if (assessment.isPresent()) {
 				channels = channels(baselineId, runId);
@@ -569,7 +580,7 @@ public class ReadQueries {
 				    group by v.run_id
 				)
 				select r.position_in_lot, count(*) as runs, count(d.score) as scored_runs, avg(d.score) as mean_drift_score,
-				       count(a.run_id) filter (where a.limit_flags + a.deviation_flags > 0) as flagged_runs
+				       count(a.run_id) filter (where a.limit_flags + a.deviation_flags + a.stuck_flags > 0) as flagged_runs
 				from run r
 				join lot l on l.id = r.lot_id
 				left join run_assessment a on a.baseline_id = :baseline and a.run_id = r.id
@@ -597,9 +608,13 @@ public class ReadQueries {
 	}
 
 	private List<Channel> channels(int baselineId, int runId) {
+		double[] slotTimes = slotTimes(runId);
 		Map<String, List<Excursion>> excursions = new HashMap<>();
-		excursions(baselineId, runId, null, slotTimes(runId))
+		excursions(baselineId, runId, null, slotTimes)
 			.forEach((excursion) -> excursions.computeIfAbsent(excursion.channel(), (name) -> new ArrayList<>()).add(excursion));
+		Map<String, List<HoldView>> holds = new HashMap<>();
+		holds(baselineId, runId, slotTimes)
+			.forEach((hold) -> holds.computeIfAbsent(hold.channel(), (name) -> new ArrayList<>()).add(hold));
 		Map<String, Map<Phase, double[]>> summaries = new HashMap<>();
 		jdbc.sql("""
 				select c.name, s.phase, s.mean, s.sd
@@ -620,7 +635,7 @@ public class ReadQueries {
 				.put(rs.getString("phase") + "-" + rs.getString("stat"),
 						new double[] { rs.getDouble("mean"), rs.getDouble("sd") }));
 		return jdbc.sql("""
-				select c.name, v.rank, v.persistent_z, v.deviation, v.max_abs_summary_z,
+				select c.name, v.rank, v.persistent_z, v.deviation, v.max_abs_summary_z, v.longest_hold,
 				       v.sf6_mean_z, v.sf6_sd_z, v.c4f8_mean_z, v.c4f8_sd_z
 				from channel_verdict v
 				join channel c on c.id = v.channel_id
@@ -636,7 +651,30 @@ public class ReadQueries {
 						evidence(Phase.C4F8, summaries.get(name), bands.get(name), decimal(rs, "c4f8_mean_z"),
 								decimal(rs, "c4f8_sd_z")));
 				return new Channel(name, rs.getInt("rank"), rs.getDouble("persistent_z"), rs.getBoolean("deviation"),
-						rs.getDouble("max_abs_summary_z"), phases, excursions.getOrDefault(name, List.of()));
+						rs.getDouble("max_abs_summary_z"), rs.getInt("longest_hold"), phases,
+						excursions.getOrDefault(name, List.of()), holds.getOrDefault(name, List.of()));
+			})
+			.list();
+	}
+
+	/** Every hold of the run under the baseline, in channel and slot order, with the times of its slots. */
+	private List<HoldView> holds(int baselineId, int runId, double[] slotTimes) {
+		return jdbc.sql("""
+				select c.name, h.start_slot, h.confirm_slot, h.end_slot, h.samples, h.value
+				from hold h
+				join channel c on c.id = h.channel_id
+				where h.baseline_id = :baseline and h.run_id = :run
+				order by c.name, h.start_slot""")
+			.param("baseline", baselineId)
+			.param("run", runId)
+			.query((rs, row) -> {
+				int start = rs.getInt("start_slot");
+				int confirm = rs.getInt("confirm_slot");
+				int end = rs.getInt("end_slot");
+				RecipePosition position = GRID.position(start);
+				return new HoldView(rs.getString("name"), start, confirm, end, position.cycle(), position.phase(),
+						position.offset(), time(slotTimes, start), time(slotTimes, confirm), time(slotTimes, end),
+						rs.getInt("samples"), real(rs, "value"));
 			})
 			.list();
 	}

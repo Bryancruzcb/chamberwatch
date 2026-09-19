@@ -55,6 +55,10 @@ public record Fingerprint(String hex) {
 			.append(config.limit().n())
 			.append("\nrunZ=")
 			.append(config.runZ())
+			.append("\nstuck=")
+			.append(config.stuck().factor())
+			.append(',')
+			.append(config.stuck().minSamples())
 			.append('\n');
 		for (RunKey key : new TreeSet<>(goodRuns)) {
 			text.append("good=").append(key.value()).append('\n');

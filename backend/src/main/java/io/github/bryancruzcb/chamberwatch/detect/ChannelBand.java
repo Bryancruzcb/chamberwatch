@@ -17,24 +17,35 @@ public final class ChannelBand {
 
 	private final int goodRuns;
 
+	private final int maxHold;
+
 	private final float[] mean;
 
 	private final float[] sd;
 
-	private ChannelBand(ChannelName channel, ChannelRole role, int goodRuns, float[] mean, float[] sd) {
+	private ChannelBand(ChannelName channel, ChannelRole role, int goodRuns, int maxHold, float[] mean, float[] sd) {
 		this.channel = channel;
 		this.role = role;
 		this.goodRuns = goodRuns;
+		this.maxHold = maxHold;
 		this.mean = mean;
 		this.sd = sd;
 	}
 
-	/** Takes ownership of the arrays without copying. */
-	public static ChannelBand adopt(ChannelName channel, ChannelRole role, int goodRuns, float[] mean, float[] sd) {
+	/**
+	 * Takes ownership of the arrays without copying.
+	 *
+	 * @param maxHold the longest run of one value any good run showed on the channel, in samples
+	 */
+	public static ChannelBand adopt(ChannelName channel, ChannelRole role, int goodRuns, int maxHold, float[] mean,
+			float[] sd) {
 		if (mean.length != sd.length) {
 			throw new IllegalArgumentException(channel + ": mean and sd arrays differ in length");
 		}
-		return new ChannelBand(channel, role, goodRuns, mean, sd);
+		if (maxHold < 0) {
+			throw new IllegalArgumentException(channel + ": negative longest hold");
+		}
+		return new ChannelBand(channel, role, goodRuns, maxHold, mean, sd);
 	}
 
 	public ChannelName channel() {
@@ -48,6 +59,11 @@ public final class ChannelBand {
 	/** Good runs that carried this channel. */
 	public int goodRuns() {
 		return goodRuns;
+	}
+
+	/** The longest run of one value any good run showed on this channel, in samples: the stuck rule's reference. */
+	public int maxHold() {
+		return maxHold;
 	}
 
 	public int slotCount() {

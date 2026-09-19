@@ -5,6 +5,7 @@ import {
   type Alignment,
   type Channel,
   type Excursion,
+  type Hold,
   type InjectedFault,
   type Label,
   type PhaseEvidence,
@@ -98,6 +99,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
               value={assessment.deviationFlags}
               detail={baseline === null ? undefined : `Phase statistics past z ${formatScore(baseline.runZ)}`}
             />
+            <Stat label="Stuck holds" value={assessment.stuckFlags} detail="One value held longer than any good run held it" />
             <Stat
               label="Persistent z"
               value={formatScore(assessment.persistentZ)}
@@ -107,7 +109,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
               label="First channel"
               value={assessment.firstChannel ?? 'None'}
               compact
-              detail={assessment.firstTimeS === null ? undefined : `First excursion at ${formatSeconds(assessment.firstTimeS)}`}
+              detail={assessment.firstTimeS === null ? undefined : `First departure at ${formatSeconds(assessment.firstTimeS)}`}
             />
           </dl>
         )}
@@ -163,6 +165,7 @@ function ChannelsTable({ channels, selected, k }: { channels: readonly Channel[]
                   {channel.channel}
                 </Link>
                 {channel.deviation && <span className="tag">Deviates</span>}
+                {channel.holds.length > 0 && <span className="tag">Stuck</span>}
               </td>
               <td>{k === null ? formatScore(channel.persistentZ) : <ZMeter z={channel.persistentZ} k={k} />}</td>
               <td className="num">{channel.excursions.length}</td>
@@ -219,7 +222,42 @@ function ChannelPanel({ runId, channel }: { runId: number; channel: Channel }) {
       <Loaded resource={trace}>{(data) => <TraceChart trace={data} />}</Loaded>
       <EvidenceTable phases={channel.phases} />
       {channel.excursions.length > 0 && <ExcursionsTable excursions={channel.excursions} />}
+      {channel.holds.length > 0 && <HoldsTable holds={channel.holds} longestHold={channel.longestHold} />}
     </section>
+  )
+}
+
+function HoldsTable({ holds, longestHold }: { holds: readonly Hold[]; longestHold: number }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <caption>{`Holds: one value reported longer than any good run held one on this channel (longest ${longestHold} samples)`}</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="num">Cycle</th>
+            <th scope="col">Phase</th>
+            <th scope="col" className="num">Starts</th>
+            <th scope="col" className="num">Confirmed</th>
+            <th scope="col" className="num">Ends</th>
+            <th scope="col" className="num">Samples</th>
+            <th scope="col" className="num">Value held</th>
+          </tr>
+        </thead>
+        <tbody>
+          {holds.map((hold) => (
+            <tr key={hold.startSlot}>
+              <td className="num">{hold.cycle}</td>
+              <td>{hold.phase}</td>
+              <td className="num">{formatSeconds(hold.startTimeS)}</td>
+              <td className="num">{formatSeconds(hold.confirmTimeS)}</td>
+              <td className="num">{formatSeconds(hold.endTimeS)}</td>
+              <td className="num">{hold.samples}</td>
+              <td className="num">{formatValue(hold.value)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
