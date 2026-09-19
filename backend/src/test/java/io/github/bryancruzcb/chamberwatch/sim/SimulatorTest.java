@@ -13,6 +13,7 @@ import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentReport;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentStatus;
 import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
+import io.github.bryancruzcb.chamberwatch.recipe.Phase;
 import io.github.bryancruzcb.chamberwatch.recipe.RawRun;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
 import org.junit.jupiter.api.Test;
@@ -179,10 +180,46 @@ class SimulatorTest {
 	}
 
 	@Test
+	void lotsDriftAlongThePublicProfileAndLevelOff() {
+		Simulator simulator = Simulator.seeded(21, TEMPLATE);
+		ChannelName tuning = ChannelName.of("PlatenRFTuningCapacitor");
+		ChannelTemplate.PhaseTemplate template = TEMPLATE.channel(tuning).phase(Phase.SF6);
+		int lots = 20;
+		double[] drift = new double[11];
+		for (int lot = 1; lot <= lots; lot++) {
+			double[] level = new double[11];
+			for (int position : new int[] { 1, 2, 3, 6, 10 }) {
+				level[position] = sf6Mean(simulator.run(RunSpec.clean(lot, position)).raw(), tuning);
+			}
+			double early = (level[1] + level[2] + level[3]) / 3;
+			drift[6] += (level[6] - early) / lots;
+			drift[10] += (level[10] - early) / lots;
+		}
+
+		assertThat(drift[6]).isCloseTo(template.driftAt(6), within(0.04));
+		assertThat(drift[10]).isCloseTo(template.driftAt(10), within(0.04));
+	}
+
+	@Test
 	void trainingRunsAreTheFirstThreeWafersOfEachLot() {
 		assertThat(Simulator.seeded(3, TEMPLATE).cleanTrainingRuns(6).map(SimulatedRun::key).map(RunKey::value))
 			.containsExactly("SIM-s3-L1-W01", "SIM-s3-L1-W02", "SIM-s3-L1-W03", "SIM-s3-L2-W01", "SIM-s3-L2-W02",
 					"SIM-s3-L2-W03");
+	}
+
+	/** The mean of a channel over the samples where the SF6 flow is on. */
+	private static double sf6Mean(RawRun raw, ChannelName channel) {
+		int index = raw.channels().indexOf(channel);
+		int flow = raw.channels().indexOf(ChannelName.GAS5_FLOW);
+		double sum = 0;
+		int counted = 0;
+		for (int sample = 0; sample < raw.sampleCount(); sample++) {
+			if (raw.value(flow, sample) > 300) {
+				sum += raw.value(index, sample);
+				counted++;
+			}
+		}
+		return sum / counted;
 	}
 
 	private static double[] times(RawRun raw) {

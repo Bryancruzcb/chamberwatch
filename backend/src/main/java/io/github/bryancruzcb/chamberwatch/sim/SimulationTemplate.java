@@ -35,10 +35,10 @@ public final class SimulationTemplate {
 	public static final String RESOURCE = "/sim/template.tsv";
 
 	private static final String HEADER = """
-			# ChamberWatch simulation template, format 1. Built by `java -jar chamberwatch.jar sim-template` from the
+			# ChamberWatch simulation template, format 2. Built by `java -jar chamberwatch.jar sim-template` from the
 			# public wafers of Zenodo record 17122442 (CC BY 4.0). Do not edit by hand: rebuild it.
 			# channel  name  constant  idle  resolution  nonNegative  noiseRho  wanderPhi
-			# phase  name  SF6|C4F8  lotSd  runSd  driftMean  driftSd  wanderSd  noiseSd  profile  trend
+			# phase  name  SF6|C4F8  lotSd  runSd  driftScaleSd  wanderSd  noiseSd  profile  trend  drift
 			# swings  goodRuns  channel:cycles:size,...
 			""";
 
@@ -131,10 +131,10 @@ public final class SimulationTemplate {
 						expect(fields, 11);
 						phases.computeIfAbsent(ChannelName.of(fields[1]), (name) -> new TreeMap<>())
 							.put(Phase.valueOf(fields[2]),
-									new ChannelTemplate.PhaseTemplate(numbers(fields[9]), numbers(fields[10]),
-											Double.parseDouble(fields[3]), Double.parseDouble(fields[4]),
+									new ChannelTemplate.PhaseTemplate(numbers(fields[8]), numbers(fields[9]),
+											Double.parseDouble(fields[3]), Double.parseDouble(fields[4]), numbers(fields[10]),
 											Double.parseDouble(fields[5]), Double.parseDouble(fields[6]),
-											Double.parseDouble(fields[7]), Double.parseDouble(fields[8])));
+											Double.parseDouble(fields[7])));
 					}
 					case "swings" -> {
 						if (fields.length != 2 && fields.length != 3) {
@@ -185,9 +185,9 @@ public final class SimulationTemplate {
 				}
 				ChannelTemplate.PhaseTemplate template = channel.phase(phase);
 				text.append(String.join("\t", "phase", channel.channel().value(), phase.name(), number(template.lotSd()),
-						number(template.runSd()), number(template.driftMean()), number(template.driftSd()),
-						number(template.wanderSd()), number(template.noiseSd()), numbers(template.profile()),
-						numbers(template.trend())))
+						number(template.runSd()), number(template.driftScaleSd()), number(template.wanderSd()),
+						number(template.noiseSd()), numbers(template.profile()), numbers(template.trend()),
+						numbers(template.drift())))
 					.append('\n');
 			}
 		}

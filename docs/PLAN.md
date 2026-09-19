@@ -121,7 +121,7 @@ Done when: a run streamed from the simulator ends up scored in the runs table wi
 | 2.2 good runs per lot | #18 | done: wafers 1 to 2 alarm no less held out and flag 49 of 96 wafers, so three stays |
 | 2.3 stuck-value detector | #19 | done: rule learned from good runs, 0 of 30 held-out alarms at factor 2, simulated recall 0.96 |
 | 2.4 knock-on effects | #21 | done: the public wafers show the chamber pressure held at setpoints and the foreline following the flow, 0.21 per sccm, so the knock-on moves the foreline; the stuck flow ranks above it in 23 of 23 |
-| 2.5 drift profile | | |
+| 2.5 drift profile | #22 | done: the simulator draws a lot's drift as a share of the public profile by position; late clean wafers raise run-level alarms in 2.1 % against the public 0 of 66, and clean flags fell from 13.9 to 8.0 % |
 | 2.6 relabel 202 | | |
 | 2.7 depth beside the flag | | |
 | 2.8 precise limits | | |

@@ -151,6 +151,18 @@ Every record passes through four settled gas loads, and they show which pressure
 
 The chamber pressure sits on round numbers, 0.020, 0.030 and 0.040, with a spread under 0.001, and the C4F8 phase heads for 0.050 at half the SF6 flow: the tool holds it at a setpoint per step, so it does not say how much gas arrived. The foreline pressure is not held. Between the idle tool and the SF6 phases it rises 0.21 per sccm (a line fitted to the samples of those two loads has slope 0.2099), and a line fitted to all 120,069 samples has slope 0.209 with r² 0.976. The factor depends on the gas: the stabilization step reads 91.9 where one factor for every gas would give 117. The C4F8 phase lasts 1.2 s and never settles, so its own factor cannot be read from these records. At the start of each SF6 phase the good-run foreline climbs from 86.0 through 104.6 and 140.7 to 155.3, so it shows 27 %, 79 % and all of a step in flow in the same sample, one sample later and two later. The simulator uses these numbers for the one knock-on it models ([EVALUATION.md](EVALUATION.md#the-faults)).
 
+### How the lots drift
+
+The simulator needs the shape of the drift, not only its size. For each channel and phase, take a run's level (the median distance of its core readings from the good-run shape), subtract the mean level of its lot's first three wafers, and average over the lots at each wafer position. Positions 7 to 10 average nine lots, since lot 7 has six wafers.
+
+| Wafer position | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| PlatenRFTuningCapacitor, SF6 | -0.09 | 0.00 | 0.09 | 0.18 | 0.24 | 0.29 | 0.33 | 0.32 | 0.32 | 0.32 |
+| ForeLinePressure, SF6 | 0.42 | -0.12 | -0.30 | -0.38 | -0.41 | -0.43 | -0.43 | -0.46 | -0.46 | -0.41 |
+| PlatenRFPeakToPeak, C4F8 | -4.5 | 0.2 | 4.4 | 4.5 | 6.5 | 8.7 | 9.5 | 9.6 | 11.9 | 14.5 |
+
+The tuning capacitor climbs 0.09 a wafer to wafer 4, about half that to wafer 7, and then stays. The foreline pressure drops after the first wafer and is flat from wafer 4. A straight line fits neither: it underestimates how far the first three wafers are apart, which is what sets the good-run band, and it keeps climbing after the lot has levelled off. Each lot is then fitted as its own level plus a share of the profile. The shares scatter around 1, by 10 % on the tuning capacitor's SF6 mean and 24 % on the peak-to-peak voltage's C4F8 mean, after taking off the scatter that run-to-run noise alone would give a fitted share. The simulation template stores the profile and that spread for every channel and phase.
+
 ## What the detectors find
 
 `PublicDataDetectionTest` runs the detectors on all 96 wafers and pins the results in this section. Everything here uses the defaults: bands learned from wafers 1 to 3 of each lot, a limit rule of `k = 6` held for 5 samples, and a run-level threshold of 5.

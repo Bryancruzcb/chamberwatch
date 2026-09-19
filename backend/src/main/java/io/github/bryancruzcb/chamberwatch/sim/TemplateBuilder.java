@@ -20,9 +20,9 @@ import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
 
 /**
  * Measures a {@link SimulationTemplate} from aligned public wafers. For every channel and phase it splits
- * the variation into the parts the simulator draws separately: a lot level, a run level around the lot's
- * line along wafer position, slow wander from cycle to cycle, fast noise from sample to sample, and the
- * occasional swing, a few cycles far from the run's level.
+ * the variation into the parts the simulator draws separately: a lot level, the drift by wafer position the
+ * lots share and how much of it each lot shows, a run level around those, slow wander from cycle to cycle,
+ * fast noise from sample to sample, and the occasional swing, a few cycles far from the run's level.
  *
  * <p>A cycle's level is the median distance of its core readings from the phase's average shape, so neither
  * a one-sample dip nor the shape itself moves it. Core offsets are ones nearly every steady cycle fills,
@@ -236,33 +236,60 @@ public final class TemplateBuilder {
 		}
 		double[] cycleTrend = withEdges(trend);
 
-		// lot level at wafer 2, drift per position, and the residual run level, from every wafer
+		// the drift profile: how far runs sit from their lot's first wafers, by position, averaged over lots
 		Map<LocalDate, List<Wafer>> lots = new TreeMap<>();
 		wafers.forEach((wafer) -> lots.computeIfAbsent(wafer.run().key().day().orElseThrow(), (day) -> new ArrayList<>())
 			.add(wafer));
+		int positions = wafers.stream().mapToInt((w) -> w.run().key().positionInLot()).max().orElseThrow();
+		int goodPositions = good.stream().mapToInt((w) -> w.run().key().positionInLot()).max().orElseThrow();
+		double[] drift = new double[positions + 1];
+		int[] lotsAtPosition = new int[positions + 1];
+		for (List<Wafer> members : lots.values()) {
+			double early = members.stream()
+				.filter((w) -> w.run().key().positionInLot() <= goodPositions)
+				.mapToDouble(runLevels::get)
+				.average()
+				.orElseThrow();
+			for (Wafer wafer : members) {
+				drift[wafer.run().key().positionInLot()] += runLevels.get(wafer) - early;
+				lotsAtPosition[wafer.run().key().positionInLot()]++;
+			}
+		}
+		for (int position = 1; position <= positions; position++) {
+			drift[position] /= lotsAtPosition[position];
+		}
+
+		// each lot's level and its share of that profile, by least squares, and the residual run level
 		double[] lotLevels = new double[lots.size()];
-		double[] drifts = new double[lots.size()];
+		double[] scales = new double[lots.size()];
+		double[] scaleSxx = new double[lots.size()];
 		double squaredResiduals = 0;
 		int lot = 0;
 		for (List<Wafer> members : lots.values()) {
-			double positionMean = members.stream().mapToDouble((w) -> w.run().key().positionInLot() - 2).average().orElseThrow();
+			double driftMean = members.stream().mapToDouble((w) -> drift[w.run().key().positionInLot()]).average().orElseThrow();
 			double levelMean = members.stream().mapToDouble(runLevels::get).average().orElseThrow();
 			double sxx = 0;
 			double sxy = 0;
 			for (Wafer wafer : members) {
-				double x = wafer.run().key().positionInLot() - 2 - positionMean;
+				double x = drift[wafer.run().key().positionInLot()] - driftMean;
 				sxx += x * x;
 				sxy += x * (runLevels.get(wafer) - levelMean);
 			}
-			drifts[lot] = sxy / sxx;
-			lotLevels[lot] = levelMean - drifts[lot] * positionMean;
+			scales[lot] = (sxx > 0) ? sxy / sxx : 1;
+			scaleSxx[lot] = sxx;
+			lotLevels[lot] = levelMean - scales[lot] * driftMean;
 			for (Wafer wafer : members) {
-				double fitted = lotLevels[lot] + drifts[lot] * (wafer.run().key().positionInLot() - 2);
+				double fitted = lotLevels[lot] + scales[lot] * drift[wafer.run().key().positionInLot()];
 				squaredResiduals += (runLevels.get(wafer) - fitted) * (runLevels.get(wafer) - fitted);
 			}
 			lot++;
 		}
-		double runSd = Math.sqrt(squaredResiduals / (wafers.size() - 2 * lots.size()));
+		// a level and a scale per lot, and the profile's positions less the two the lots' own terms absorb
+		double runSd = Math.sqrt(squaredResiduals / (wafers.size() - 2 * lots.size() - (positions - 2)));
+		// the scales scatter even when every lot drifts alike, by what the run levels' noise does to a fitted scale
+		double scaleNoise = Arrays.stream(scaleSxx).map((sxx) -> (sxx > 0) ? runSd * runSd / sxx : 0).average().orElseThrow();
+		double scaleSd = sampleSd(scales);
+		double driftScaleSd = Math.sqrt(Math.max(0, scaleSd * scaleSd - scaleNoise));
 
 		// fast noise: readings around their cycle's shape, and their correlation from one sample to the next
 		List<double[]> noiseSequences = new ArrayList<>();
@@ -315,8 +342,8 @@ public final class TemplateBuilder {
 			trendList.add(cycleTrend[cycle]);
 		}
 		ChannelTemplate.PhaseTemplate template = new ChannelTemplate.PhaseTemplate(
-				Arrays.stream(profile).boxed().toList(), trendList, sampleSd(lotLevels), runSd, mean(drifts),
-				sampleSd(drifts), Math.sqrt(wanderVariance), noiseSd);
+				Arrays.stream(profile).boxed().toList(), trendList, sampleSd(lotLevels), runSd,
+				Arrays.stream(drift, 1, positions + 1).boxed().toList(), driftScaleSd, Math.sqrt(wanderVariance), noiseSd);
 
 		// swings: runs of cycles far outside the typical spread, sized in band standard deviations
 		List<SimulationTemplate.Swing> swings = new ArrayList<>();

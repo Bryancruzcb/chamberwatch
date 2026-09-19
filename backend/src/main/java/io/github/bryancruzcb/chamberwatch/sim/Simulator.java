@@ -17,9 +17,9 @@ import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
  * wafer position decide a run completely, so runs can be made in any order or in parallel.
  *
  * <p>A reading during the etch is the template's profile at its phase offset, plus the cycle's trend, a lot
- * level drawn once per lot, a drift along wafer position drawn once per lot, a run level, slow wander from
- * cycle to cycle and fast noise from sample to sample, then clamped at 0 where the channel never went
- * negative and rounded to the channel's resolution. The marker channels switch cleanly between their phase
+ * level drawn once per lot, the public lots' drift by wafer position scaled once per lot, a run level, slow
+ * wander from cycle to cycle and fast noise from sample to sample, then clamped at 0 where the channel never
+ * went negative and rounded to the channel's resolution. The marker channels switch cleanly between their phase
  * levels, as they do in every public wafer, so the aligner sees the same structure.
  *
  * <p>Channels do not affect each other, with one exception: a gas flow stuck low takes the foreline pressure
@@ -150,7 +150,7 @@ public final class Simulator {
 			for (Phase phase : Phase.values()) {
 				ChannelTemplate.PhaseTemplate p = template.phase(phase);
 				shifts[c][phase.ordinal()] = p.lotSd() * lotLevel
-						+ (p.driftMean() + p.driftSd() * drift) * (spec.position() - 2) + p.runSd() * runLevel;
+						+ (1 + p.driftScaleSd() * drift) * p.driftAt(spec.position()) + p.runSd() * runLevel;
 			}
 			wander[c] = autoregressive(runDraws, template.wanderPhi(), cycles + 1);
 			swung[c] = swings(swingDraws, swings.get(c), cycles);
