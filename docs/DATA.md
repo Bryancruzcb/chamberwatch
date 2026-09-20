@@ -20,7 +20,7 @@ The data is never committed. `data/` is in `.gitignore`.
 | `Readme.pdf` | 359,703 | Dataset description |
 | `Wafer_layout.pdf` | 25,434 | Measurement locations |
 
-The MD5 sums are in [`zenodo17122442.md5`](zenodo17122442.md5). The ten daily optical emission files, 476 to 834 MB each, and `Dictionary_OES.nc` are not used in v1.
+The MD5 sums are in [`zenodo17122442.md5`](zenodo17122442.md5), the ten daily optical emission files and `Dictionary_OES.nc` among them. Those ten files are 476 to 834 MB each, 7.9 GB in all; v1 did not use them, and [Optical emission spectra](#optical-emission-spectra) covers what they hold and what ChamberWatch takes from them. They are optional: everything else works without them.
 
 From the repository root:
 
@@ -99,6 +99,85 @@ Channels jump between phases, so two wafers compared at the same clock time are 
 | Pressure | about 0.040 | about 0.050 |
 
 Before the etch, the tool runs Gas1Flow at 150 and Gas4Flow at 300 for 11.8 s and brings the helium backside pressure up to 15. A rule that looks only at Gas4Flow would count that step as a C4F8 phase, which is why the phase rule above also bounds the length. Short SF6 steps of 1.2 to 1.4 s run before the etch too. During the source plasma strike, SourceRFReflectedPower reads 1000, its highest value anywhere in the file.
+
+## Optical emission spectra
+
+The ten `Day_YYYY_MM_DD.nc` files hold the light the plasma gave off while it etched. Each is NetCDF-4 on HDF5 with
+one group per wafer of that day, named `Wafer_NN` with no day in the name, and three variables.
+
+| Variable | Type | Dimensions | Meaning |
+|---|---|---|---|
+| `times` | float64 | time | Seconds since 1970-01-01, and here that is true: these are wall-clock stamps, unlike the telemetry's offsets. |
+| `wavelengths` | float64 | wavelength | 3,648 wavelengths from 185.891 to 883.967 nm, the same array in every group, 0.179 to 0.203 nm apart. |
+| `data` | uint16 | time, wavelength | Codes into the `data` variable of `Dictionary_OES.nc`, 61,443 sorted float32 values from -323.576 to 7,782.855. |
+
+The codes reach 61,422, past the top of a signed short, so they are read unsigned, as the telemetry's are. Decoded
+readings can be negative.
+
+- The spectrometer is an Ocean Optics HR4-4UVV250-5, per the Readme, and it runs at about 23 Hz, not the 25 Hz a
+  reader might assume: the median step is 0.041 to 0.045 s.
+- It records continuously and skips. 42 of the 96 wafers have at least one step longer than 0.2 s, and the worst,
+  `Day_2024_08_05_Wafer_06`, has 93 of them and a 0.99 s gap. Samples must be placed by their recorded time, never
+  by counting: fitted against a constant rate, the stamps wander by 1.4 s on a median wafer and by 41 s on the worst.
+- Nothing below about 428 nm carries signal. Over the whole of the spectrometer's first chunk band the plasma raises
+  the reading by 1 to 2 counts against a noise floor of 49, so the reduction never reads those pixels.
+- The wavelength axis reads about 1.23 nm low against the published wavelengths of the lines it shows, measured on
+  sixteen fluorine lines from 624 to 780 nm. A window placed by the published number alone lands beside the line and
+  reads noise, which is why the reduction's pixels were measured rather than looked up.
+
+### What ChamberWatch takes from them
+
+Five lines, each summed over three pixels and averaged into the recipe's 0.2 s slots, become ordinary channels of
+the run beside the flows and the powers. Three are fluorine, which the SF6 phase gives off while it etches; two are
+C2 Swan band heads, which the C4F8 phase gives off while it lays down its passivation.
+
+| Channel | Line | Pixel | What it reports |
+|---|---|---|---|
+| `Emission685` | F I 685.6 nm | 2557 | The brightest feature in the spectrum, and the one that says whether the plasma is on at all: it steps by about 190 times at the etch's start. |
+| `Emission703` | F I 703.7 nm | 2654 | Fluorine again, the line the literature most often uses. |
+| `Emission623` | F I 624.0 nm | 2229 | Fluorine, in the other chunk band, so a reader can tell a line's behaviour from a band's. |
+| `Emission516` | C2 Swan 516.5 nm | 1665 | The passivation marker: about 40 times brighter in the C4F8 phase than in the SF6 phase. |
+| `Emission563` | C2 Swan 563.6 nm | 1910 | The same band's next head, as a check on the first. |
+
+Three pixels, not one: the lines are about as wide as the pixels are apart (measured FWHM 1.04 to 1.10 pixels), so a
+single pixel samples wherever the line happens to fall on the detector's grid rather than measuring the line. Three
+pixels hold it however it lands.
+
+Each line's plasma-off level, measured on the run's own samples before the etch, is subtracted. The detector carries
+a fixed pattern of about 13 counts that alternates between odd and even pixels, which is half of what a faint line
+reads in the phase where it is dark.
+
+### Lining the two clocks up
+
+The spectrometer's stamps and the telemetry's offsets cannot be joined by their times, so the two records are lined
+up by the plasma they both saw. The fluorine line's step gives the etch's edges in the spectra; the aligner's own
+`etchStartS` gives it in the telemetry; the difference is the offset to within about a second. The recipe settles
+the rest: the offset that best separates the phases wins, scoring how far the fluorine line sits above the C2 line
+in the grid's SF6 slots against the same difference in its C4F8 slots.
+
+The two clocks turn out to agree already. Across all 96 wafers the offset is within 0.07 s, except
+`Day_2024_08_07_Wafer_08`, whose telemetry record starts 128.3 s earlier, so the search is still made per wafer. A
+wrong alignment is loud: one slot out halves the phase separation and half a cycle out inverts it.
+
+A sample joins the slot whose telemetry sample is nearest, within half a slot. About 4.7 emission samples land in
+each 0.2 s slot, and a slot that got fewer than two stays empty rather than storing one sample's noise as an
+average.
+
+### What the ten files gave
+
+`ingest-spectra` read all 7.4 GiB in 3 minutes 15 seconds and stored emission channels on **84 of the 96 wafers**;
+a rerun writes nothing in 18 seconds. Every wafer's record was placeable, and the phases separated on every one of
+them, by 4.35 standard deviations against the 3.5 the reduction demands. The offsets it found are within 0.05 s.
+
+The other 12 are left with no emission channels at all, because the spectrometer skipped through their etch and a
+thin record is worse than none: its slot means are noisy, and the detectors would learn that noise as the chamber's
+own spread. `Day_2024_08_05_Wafer_06` is the clearest case, with 287 of its 2,990 slots empty against 0 to 4 on its
+neighbours. A wafer keeps its emission channels only when at most 0.5 percent of the slots inside its etch stay
+empty.
+
+Since the lines are not on every wafer, they are not among the channels the depth model can use: it takes only the
+channels every wafer records. [DEPTH.md](DEPTH.md) reports what they do to a depth prediction as a measurement of
+its own.
 
 ## Wafer measurements
 

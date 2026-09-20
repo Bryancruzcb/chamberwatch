@@ -146,6 +146,7 @@ The dominant reads:
 | `detect` | Good-run policy, band learning, limit detector, run deviation, ranking, drift projection, the `HealthModel` facade | none | Functional core: fit and assess are pure functions of runs and settings |
 | `sim` | Seeded simulator and fault injection | none | Functional core: a seed, a lot and a position decide a run completely |
 | `eval` | Evaluation harness, fault signatures, metrics and the metrics file | none | Functional core: the same config gives the same metrics on any machine |
+| `spectra` | The emission lines, the plasma's edges in a spectrum, the two clocks' offset, the reduction into slots, and the netCDF reader of a daily file | netCDF-Java inside one class | Functional core with an object-oriented reader: the reduction is a pure function of a record and a run's slot times |
 | `depth` | Ridge regression, the depth features, leave-one-lot-out scoring against two baselines | none | Functional core: a report is a pure function of the wafers, their depths and the penalties |
 | `ingest` | md5 checks, the netCDF, CSV and xlsx readers, the load | netCDF-Java inside one class | Object-oriented shell: file I/O around the pure readers |
 | `store` | All SQL: `RunStore`, `BaselineStore`, `ReadQueries`, the COPY writer | JDBC | Object-oriented shell: repositories that own the SQL |
@@ -156,7 +157,7 @@ The dominant reads:
 | `frontend/src/pages`, `charts` | Pages and charts | React | Functional reactive: state in hooks, everything shown derived from what the API answered |
 | `frontend/src/api`, `format.ts` | Parsing at the boundary, formatting | zod | Functional: pure parsers and formatters |
 
-Dependencies point one way: `api` to `health`, `store`, `detect` and `recipe`; `health` and `store` to `detect` and `recipe`; `detect` and `sim` to `recipe`. `ingest` uses `store`, `health`, `detect`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. `depth` imports nothing but the language, and `api` hands it the rows `store` read. The four pure packages import nothing from Spring or JDBC.
+Dependencies point one way: `api` to `health`, `store`, `detect` and `recipe`; `health` and `store` to `detect` and `recipe`; `detect` and `sim` to `recipe`. `ingest` uses `store`, `health`, `detect`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. `depth` imports nothing but the language, and `api` hands it the rows `store` read. `spectra` reads `recipe` only, and `ingest` drives it. The pure packages import nothing from Spring or JDBC, and the only framework type anywhere near them is the netCDF file that `ingest` and `spectra` each keep inside one reader.
 
 ## Alignment
 
@@ -209,7 +210,7 @@ Good runs are chosen in one place, `GoodRuns.select`: a run labeled GOOD, or a r
 6. Measurements load keyed by run, set and point number. The 9 rows with blank keys are skipped and counted.
 7. `HealthService.refresh(PUBLIC)` ends the command. The same files give the same good runs and the same fingerprint, so a rerun reuses the baseline and scores nothing.
 
-A crash loses at most the wafer in flight, and a rerun resumes. Spring Batch is not used. The unit of work is a whole wafer, because alignment needs the full time series, and a transaction per wafer plus a natural key already gives restart. Batch would add a job repository to explain for one step.
+A crash loses at most the wafer in flight, and a rerun resumes. Spring Batch is not used. The unit of work is a whole wafer, because alignment needs the full time series, and a transaction per wafer plus a natural key already gives restart. Batch would add a job repository to explain for one step. The spectra ingest, 7.9 GB against the telemetry's 8.8 MB, kept the same shape and tested it: `ingest-spectra` reads one daily file at a time and one wafer at a time, in blocks of samples so a wafer's 122 MB of codes never has to fit anywhere, and it resumes from the database rather than a checkpoint of its own. The ingest ledger holds a file under the reduction's version, and each run records which reduction wrote its emission channels, so a rerun reads nothing and a new reduction replaces what the old one wrote. It is a command a reader runs on purpose: the hosted demo never downloads the spectra.
 
 ## Evaluation
 

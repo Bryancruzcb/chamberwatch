@@ -36,6 +36,8 @@ This is a per-slot baseline plus three rules, not a trained model. [docs/DESIGN.
 
 96 wafers in 10 lots, 31 tool channels at 5 Hz, and etch depth on each wafer. The files are not in this repository. [docs/DATA.md](docs/DATA.md) covers the source, the download, and the quirks the code handles.
 
+The same dataset also holds the light the plasma gave off, 3,648 wavelengths per sample across 7.9 GB of daily files. Those are optional: everything above works without them. With them downloaded, `ingest-spectra` reduces five emission lines into the recipe's slots and stores them as channels of the wafers beside the flows and powers, so the same bands, detectors and charts read them. Three fluorine lines rise while the etch step cuts; two C2 bands rise while the passivation step protects, about 40 times brighter in that half of the cycle.
+
 ## Layout
 
 | Path | Contents |
@@ -71,6 +73,9 @@ docker compose up -d
 java -jar target/chamberwatch.jar ingest --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
 
 # Store a seeded synthetic lot with five known faults, plus the clean training lots its baseline learns from.
+# Reduce the optical emission spectra into channels of the wafers already ingested, if the daily files were downloaded.
+java -jar target/chamberwatch.jar ingest-spectra --data=../data/public/zenodo17122442 --md5=../docs/zenodo17122442.md5
+
 java -jar target/chamberwatch.jar simulate-lot --seed=7 --lot=901
 
 # Write the drift-versus-depth report for the public data next to the metrics file.

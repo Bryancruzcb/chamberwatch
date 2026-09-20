@@ -113,6 +113,110 @@ public class RunStore {
 	}
 
 	/**
+	 * A stored run and the spectra reduction that wrote its emission channels.
+	 *
+	 * @param spectraVersion 0 when the run has no emission channels
+	 */
+	public record StoredRun(RunId id, int spectraVersion) {
+	}
+
+	/** @return empty when no run has that key */
+	public Optional<StoredRun> find(RunKey key) {
+		return jdbc.sql("select id, spectra_version from run where run_key = :key")
+			.param("key", key.value())
+			.query((rs, row) -> new StoredRun(new RunId(rs.getInt("id")), rs.getInt("spectra_version")))
+			.optional();
+	}
+
+	/**
+	 * Adds channels of slot values to a run that is already stored: the samples, their phase summaries and the
+	 * version of the reduction that made them, in one transaction, so a run never carries half a reduction. Rows
+	 * of the same channels from an earlier reduction are replaced, so a rerun under a new version is safe.
+	 *
+	 * <p>Each array holds one value per slot of the grid, NaN in a slot the reduction has no value for. A row takes
+	 * the time the telemetry already wrote for its slot, so every channel of a run keeps one clock, and a slot that
+	 * no telemetry sample filled takes no row.
+	 *
+	 * @throws IllegalStateException when the run failed alignment, another aligner version placed it, or it has no
+	 *                               slotted samples
+	 * @throws IllegalArgumentException when an array is not one value per slot, or a value is infinite
+	 */
+	public void putSlotChannels(RunId id, SortedMap<ChannelName, float[]> values, int spectraVersion) {
+		RecipeGrid grid = RecipeGrid.STANDARD;
+		for (Map.Entry<ChannelName, float[]> channel : values.entrySet()) {
+			if (channel.getValue().length != grid.slotCount()) {
+				throw new IllegalArgumentException(channel.getKey().value() + " has " + channel.getValue().length
+						+ " values, not one per slot");
+			}
+		}
+		Header header = header(id);
+		Map<ChannelName, Short> ids = channelIds(ChannelSet.of(values.keySet()));
+		float[] slotTimes = slotTimes(id, grid);
+		transactions.executeWithoutResult((status) -> {
+			List<Short> channels = List.copyOf(ids.values());
+			jdbc.sql("delete from sample where run_id = :run and channel_id in (:channels)")
+				.param("run", id.value())
+				.param("channels", channels)
+				.update();
+			jdbc.sql("delete from run_phase_summary where run_id = :run and channel_id in (:channels)")
+				.param("run", id.value())
+				.param("channels", channels)
+				.update();
+			copySlotValues(id.value(), values, ids, slotTimes);
+			insertSummaries(id.value(), slotChannelRun(header, grid, values, slotTimes), ids);
+			jdbc.sql("update run set spectra_version = :version where id = :run")
+				.param("version", spectraVersion)
+				.param("run", id.value())
+				.update();
+		});
+	}
+
+	/** The time the telemetry wrote for each slot, NaN in a slot no sample filled. */
+	private float[] slotTimes(RunId id, RecipeGrid grid) {
+		float[] times = emptyProfile(grid);
+		jdbcTemplate.query("select slot, max(t_s) from sample where run_id = ? and slot is not null group by slot",
+				(RowCallbackHandler) (rs) -> times[rs.getShort(1)] = rs.getFloat(2), id.value());
+		for (float time : times) {
+			if (!Float.isNaN(time)) {
+				return times;
+			}
+		}
+		throw new IllegalStateException("run " + id.value() + " has no slotted samples");
+	}
+
+	private void copySlotValues(int runId, SortedMap<ChannelName, float[]> values, Map<ChannelName, Short> ids,
+			float[] slotTimes) {
+		StringBuilder csv = new StringBuilder(values.size() * slotTimes.length * 24);
+		for (Map.Entry<ChannelName, float[]> channel : values.entrySet()) {
+			short channelId = ids.get(channel.getKey());
+			float[] bySlot = channel.getValue();
+			for (int slot = 0; slot < bySlot.length; slot++) {
+				float value = bySlot[slot];
+				if (Float.isNaN(value) || Float.isNaN(slotTimes[slot])) {
+					continue;
+				}
+				if (Float.isInfinite(value)) {
+					throw new IllegalArgumentException(channel.getKey().value() + ": value is not finite at slot " + slot);
+				}
+				csv.append(runId).append(',').append(channelId).append(',').append(slot).append(',');
+				csv.append(slotTimes[slot]).append(',').append(value).append(',').append(slot).append('\n');
+			}
+		}
+		Copy.in(dataSource, COPY_SAMPLES, csv, "the slot channels of run " + runId);
+	}
+
+	/** The run as the new channels alone, which is all {@link AlignedRun#summaries()} needs to summarize them. */
+	private static AlignedRun slotChannelRun(Header header, RecipeGrid grid, SortedMap<ChannelName, float[]> values,
+			float[] slotTimes) {
+		ChannelSet channels = ChannelSet.of(values.keySet());
+		float[] flat = new float[channels.size() * grid.slotCount()];
+		for (int channel = 0; channel < channels.size(); channel++) {
+			System.arraycopy(values.get(channels.name(channel)), 0, flat, channel * grid.slotCount(), grid.slotCount());
+		}
+		return AlignedRun.adopt(header.key(), grid, channels, flat, slotTimes.clone(), header.report());
+	}
+
+	/**
 	 * Records an engineer's label and gives the run the next label sequence value.
 	 *
 	 * @return the run's source, or empty when no run has that id
@@ -229,18 +333,7 @@ public class RunStore {
 	 * @throws IllegalStateException when the run failed alignment, or another aligner version placed it
 	 */
 	public AlignedRun loadAligned(RunId id) {
-		Header header = jdbc.sql("""
-				select r.run_key, l.source, r.position_in_lot, r.aligner_version, r.sample_count, r.alignment_status,
-				       r.alignment_note, r.etch_start_s, r.etch_end_s, r.cycle1_sf6, r.c4f8_phases, r.last_cycle,
-				       r.onsets_detected, r.onsets_predicted, r.gap_start_s, r.gap_length_s, r.gap_inside_etch,
-				       r.pre_etch_samples, r.post_etch_samples, r.steady_overflow, r.edge_overflow, r.slot_collisions,
-				       r.irregular_cycles
-				from run r
-				join lot l on l.id = r.lot_id
-				where r.id = :id""")
-			.param("id", id.value())
-			.query(RunStore::header)
-			.single();
+		Header header = header(id);
 		RecipeGrid grid = RecipeGrid.STANDARD;
 		Map<Short, ChannelName> names = channelNames();
 		SortedMap<ChannelName, float[]> profiles = new TreeMap<>();
@@ -365,6 +458,21 @@ public class RunStore {
 	}
 
 	private record Header(RunKey key, AlignmentReport report) {
+	}
+
+	private Header header(RunId id) {
+		return jdbc.sql("""
+				select r.run_key, l.source, r.position_in_lot, r.aligner_version, r.sample_count, r.alignment_status,
+				       r.alignment_note, r.etch_start_s, r.etch_end_s, r.cycle1_sf6, r.c4f8_phases, r.last_cycle,
+				       r.onsets_detected, r.onsets_predicted, r.gap_start_s, r.gap_length_s, r.gap_inside_etch,
+				       r.pre_etch_samples, r.post_etch_samples, r.steady_overflow, r.edge_overflow, r.slot_collisions,
+				       r.irregular_cycles
+				from run r
+				join lot l on l.id = r.lot_id
+				where r.id = :id""")
+			.param("id", id.value())
+			.query(RunStore::header)
+			.single();
 	}
 
 	private static Header header(ResultSet rs, int row) throws SQLException {
