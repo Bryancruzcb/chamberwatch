@@ -25,6 +25,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Build the chamber simulator, so the live path is driven against the real binary
+        run: make -C ../chamber-sim
       - name: Build and test
         run: ./mvnw -B -ntp verify
 

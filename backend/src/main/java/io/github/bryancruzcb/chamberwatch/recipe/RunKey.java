@@ -21,12 +21,14 @@ public record RunKey(String value, Source source, int positionInLot) implements 
 
 	private static final Pattern SYNTHETIC = Pattern.compile("SIM-s(-?\\d+)-L(\\d+)-W(\\d{2})");
 
+	private static final Pattern LIVE = Pattern.compile("LIVE-s(-?\\d+)-L(\\d+)-W(\\d{2})");
+
 	public RunKey {
 		if (value == null || source == null) {
 			throw new IllegalArgumentException("run key needs a value and a source");
 		}
-		Matcher matcher = (source == Source.PUBLIC ? PUBLIC : SYNTHETIC).matcher(value);
-		int positionGroup = source == Source.PUBLIC ? 4 : 3;
+		Matcher matcher = pattern(source).matcher(value);
+		int positionGroup = (source == Source.PUBLIC) ? 4 : 3;
 		if (!matcher.matches() || positionInLot < 1 || Integer.parseInt(matcher.group(positionGroup)) != positionInLot) {
 			throw new IllegalArgumentException("not a " + source + " run key: " + value);
 		}
@@ -40,6 +42,23 @@ public record RunKey(String value, Source source, int positionInLot) implements 
 		}
 		dayOf(matcher);
 		return new RunKey(groupName, Source.PUBLIC, Integer.parseInt(matcher.group(4)));
+	}
+
+	private static Pattern pattern(Source source) {
+		return switch (source) {
+			case PUBLIC -> PUBLIC;
+			case SYNTHETIC -> SYNTHETIC;
+			case LIVE -> LIVE;
+		};
+	}
+
+	/** The key the chamber simulator gives a run it streams. */
+	public static RunKey live(long seed, int lotNo, int positionInLot) {
+		if (lotNo < 1 || positionInLot < 1 || positionInLot > 99) {
+			throw new IllegalArgumentException("invalid live lot " + lotNo + " wafer " + positionInLot);
+		}
+		return new RunKey(String.format(Locale.ROOT, "LIVE-s%d-L%d-W%02d", seed, lotNo, positionInLot), Source.LIVE,
+				positionInLot);
 	}
 
 	public static RunKey simulated(long seed, int lotNo, int positionInLot) {
@@ -60,12 +79,12 @@ public record RunKey(String value, Source source, int positionInLot) implements 
 		return Optional.of(dayOf(matcher));
 	}
 
-	/** The seed a synthetic run was simulated from, empty for public runs. */
+	/** The seed a run was generated from, empty for a public run, which was etched rather than drawn. */
 	public OptionalLong seed() {
-		if (source != Source.SYNTHETIC) {
+		if (source == Source.PUBLIC) {
 			return OptionalLong.empty();
 		}
-		Matcher matcher = SYNTHETIC.matcher(value);
+		Matcher matcher = pattern(source).matcher(value);
 		matcher.matches();
 		return OptionalLong.of(Long.parseLong(matcher.group(1)));
 	}
