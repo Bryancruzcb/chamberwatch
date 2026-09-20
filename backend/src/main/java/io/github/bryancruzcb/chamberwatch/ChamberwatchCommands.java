@@ -8,6 +8,7 @@ import io.github.bryancruzcb.chamberwatch.ingest.IngestReport;
 import io.github.bryancruzcb.chamberwatch.ingest.IngestService;
 import io.github.bryancruzcb.chamberwatch.ingest.SimulateLotReport;
 import io.github.bryancruzcb.chamberwatch.ingest.SimulateLotService;
+import io.github.bryancruzcb.chamberwatch.ingest.SpectraIngestService;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
 import io.github.bryancruzcb.chamberwatch.store.ReadQueries;
 
@@ -25,9 +26,11 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class ChamberwatchCommands implements ApplicationRunner, ExitCodeGenerator {
 
-	static final Set<String> NAMES = Set.of("ingest", "simulate-lot", "report");
+	static final Set<String> NAMES = Set.of("ingest", "ingest-spectra", "simulate-lot", "report");
 
 	private final IngestService ingest;
+
+	private final SpectraIngestService spectra;
 
 	private final SimulateLotService simulateLot;
 
@@ -37,9 +40,10 @@ public class ChamberwatchCommands implements ApplicationRunner, ExitCodeGenerato
 
 	private int exitCode;
 
-	public ChamberwatchCommands(IngestService ingest, SimulateLotService simulateLot, ReadQueries queries,
-			JsonMapper json) {
+	public ChamberwatchCommands(IngestService ingest, SpectraIngestService spectra, SimulateLotService simulateLot,
+			ReadQueries queries, JsonMapper json) {
 		this.ingest = ingest;
+		this.spectra = spectra;
 		this.simulateLot = simulateLot;
 		this.queries = queries;
 		this.json = json;
@@ -57,6 +61,13 @@ public class ChamberwatchCommands implements ApplicationRunner, ExitCodeGenerato
 						Path.of(option(args, "md5", "docs/zenodo17122442.md5")));
 				System.out.println(report.describe());
 				exitCode = report.hasProblems() ? 1 : 0;
+			}
+			case "ingest-spectra" -> {
+				SpectraIngestService.SpectraReport report = spectra.ingest(
+						Path.of(option(args, "data", "data/public/zenodo17122442")),
+						Path.of(option(args, "md5", "docs/zenodo17122442.md5")));
+				System.out.println(report.describe());
+				exitCode = 0;
 			}
 			case "simulate-lot" -> {
 				SimulateLotReport report = simulateLot.simulate(Long.parseLong(option(args, "seed", "7")),

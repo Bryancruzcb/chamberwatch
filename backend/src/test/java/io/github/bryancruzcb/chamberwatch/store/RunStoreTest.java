@@ -1,11 +1,15 @@
 package io.github.bryancruzcb.chamberwatch.store;
 
+import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 
 import io.github.bryancruzcb.chamberwatch.TestcontainersConfiguration;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignedRun;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignmentResult;
+import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 import io.github.bryancruzcb.chamberwatch.recipe.EtchRuns;
 import io.github.bryancruzcb.chamberwatch.recipe.RawRun;
 import io.github.bryancruzcb.chamberwatch.recipe.RecipeGrid;
@@ -76,6 +80,75 @@ class RunStoreTest {
 			.single();
 
 		assertThat(onset).isCloseTo(generated.sf6Onsets()[50], org.assertj.core.api.Assertions.within(1e-3));
+	}
+
+	@Test
+	void aReductionAddsItsChannelsToAStoredRunAndAReductionAfterItReplacesThem() {
+		LotRef lot = runs.upsertLot(new LotRecord(Source.SYNTHETIC, 903, Optional.empty(), Optional.empty()));
+		RawRun raw = EtchRuns.etch().key(RunKey.simulated(7, 903, 1)).build().run();
+		AlignmentResult result = Aligner.STANDARD.align(raw);
+		AlignedRun telemetry = result.orElseThrow();
+		RunId id = runs.insertIfAbsent(raw, result, lot, Optional.empty()).orElseThrow();
+		int slots = RecipeGrid.STANDARD.slotCount();
+		long filled = 0;
+		for (int slot = 0; slot < slots; slot++) {
+			if (telemetry.hasSample(slot)) {
+				filled++;
+			}
+		}
+		ChannelName line = ChannelName.of("EmissionF703");
+		float[] values = new float[slots];
+		Arrays.fill(values, Float.NaN);
+		for (int slot = 0; slot < slots; slot++) {
+			if (telemetry.hasSample(slot)) {
+				values[slot] = 10 + slot % 7;
+			}
+		}
+
+		runs.putSlotChannels(id, new TreeMap<>(Map.of(line, values)), 1);
+
+		assertThat(runs.find(raw.key()).orElseThrow().spectraVersion()).isEqualTo(1);
+		assertThat(count("select count(*) from sample s join channel c on c.id = s.channel_id "
+				+ "where s.run_id = ? and c.name = 'EmissionF703'", id.value())).isEqualTo(filled);
+		assertThat(count("select count(*) from run_phase_summary s join channel c on c.id = s.channel_id "
+				+ "where s.run_id = ? and c.name = 'EmissionF703'", id.value())).isEqualTo(2);
+		AlignedRun loaded = runs.loadAligned(id);
+		assertThat(loaded.channels().contains(line)).isTrue();
+		assertThat(loaded.channels().size()).isEqualTo(telemetry.channels().size() + 1);
+		int index = loaded.channels().indexOf(line);
+		for (int slot = 0; slot < slots; slot++) {
+			if (telemetry.hasSample(slot)) {
+				assertThat(loaded.value(index, slot)).isEqualTo(values[slot]);
+				assertThat(loaded.timeAt(slot)).isEqualTo(telemetry.timeAt(slot));
+			}
+			else {
+				assertThat(loaded.value(index, slot)).isNaN();
+				assertThat(loaded.timeAt(slot)).isNaN();
+			}
+		}
+
+		float[] second = values.clone();
+		for (int slot = 0; slot < slots; slot++) {
+			if (!Float.isNaN(second[slot])) {
+				second[slot] += 1;
+			}
+		}
+		runs.putSlotChannels(id, new TreeMap<>(Map.of(line, second)), 2);
+
+		assertThat(runs.find(raw.key()).orElseThrow().spectraVersion()).isEqualTo(2);
+		assertThat(count("select count(*) from sample s join channel c on c.id = s.channel_id "
+				+ "where s.run_id = ? and c.name = 'EmissionF703'", id.value())).isEqualTo(filled);
+		assertThat(runs.loadAligned(id).value(index, firstFilledSlot(telemetry, slots)))
+			.isEqualTo(second[firstFilledSlot(telemetry, slots)]);
+	}
+
+	private static int firstFilledSlot(AlignedRun run, int slots) {
+		for (int slot = 0; slot < slots; slot++) {
+			if (run.hasSample(slot)) {
+				return slot;
+			}
+		}
+		throw new IllegalStateException("the run filled no slot");
 	}
 
 	private long count(String sql, Object param) {
