@@ -10,3 +10,6 @@ Thumbs.db
 
 # Local environment
 .env
+
+# the C simulator's build output
+chamber-sim/build/

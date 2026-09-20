@@ -28,6 +28,22 @@ jobs:
       - name: Build and test
         run: ./mvnw -B -ntp verify
 
+  simulator:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chamber-sim
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test with gcc
+        run: make CC=gcc test
+      - name: Test under the sanitizers
+        run: make CC=gcc SAN=1 clean test
+      - name: Build and test with clang
+        run: make CC=clang clean test
+      - name: Drive the real binary over a socket
+        run: make CC=gcc clean smoke
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
