@@ -133,7 +133,8 @@ class BaselineStoreTest {
 	}
 
 	private Fingerprint fingerprint(Baseline baseline) {
-		return Fingerprint.of(Source.SYNTHETIC, baseline.goodRuns(), config, Aligner.VERSION, HealthModel.VERSION);
+		return Fingerprint.of(Source.SYNTHETIC, baseline.goodRuns(), baseline.bands().keySet(), config,
+				Aligner.VERSION, HealthModel.VERSION);
 	}
 
 }

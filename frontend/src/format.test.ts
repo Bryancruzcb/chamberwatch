@@ -3,6 +3,7 @@ import {
   describeDepthLoss,
   describeFault,
   describeResidual,
+  formatChannelName,
   formatConditioning,
   formatDate,
   formatDepthFeature,
@@ -69,6 +70,13 @@ describe('format', () => {
     expect(describeResidual(-0.0627)).toBe('Predicted 0.06 µm shallower than measured')
     expect(describeResidual(0.2)).toBe('Predicted 0.20 µm deeper than measured')
     expect(describeResidual(null)).toBe('Not measured in this set')
+  })
+
+  it('names an emission line by its wavelength and what it reports', () => {
+    expect(formatChannelName('Emission685')).toBe('Fluorine 685.6 nm')
+    expect(formatChannelName('Emission516')).toBe('Carbon C2 516.5 nm')
+    expect(formatChannelName('Gas5Flow')).toBe('Gas 5 flow')
+    expect(formatChannelName('NotAChannel')).toBe('NotAChannel')
   })
 
   it('marks a missing value', () => {

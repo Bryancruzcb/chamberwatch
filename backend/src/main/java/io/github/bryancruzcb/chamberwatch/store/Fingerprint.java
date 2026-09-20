@@ -9,6 +9,7 @@ import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import io.github.bryancruzcb.chamberwatch.detect.DetectorConfig;
+import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
 
@@ -31,9 +32,14 @@ public record Fingerprint(String hex) {
 	/**
 	 * The drift rule and the good-run policy are left out. Drift is judged when a lot is read, and the
 	 * policy matters only through the good runs it picked.
+	 *
+	 * @param channels the channels the good runs carry. A run can gain channels after it was stored, as it does
+	 *                 when the optical emission spectra are reduced into it, and a baseline fitted before that
+	 *                 knows nothing of them, so the channel set belongs to a baseline's identity as much as the
+	 *                 runs do.
 	 */
-	public static Fingerprint of(Source source, Collection<RunKey> goodRuns, DetectorConfig config, int alignerVersion,
-			int detectorVersion) {
+	public static Fingerprint of(Source source, Collection<RunKey> goodRuns, Collection<ChannelName> channels,
+			DetectorConfig config, int alignerVersion, int detectorVersion) {
 		DetectorConfig.BandRule band = config.band();
 		StringBuilder text = new StringBuilder().append("source=")
 			.append(source)
@@ -60,6 +66,9 @@ public record Fingerprint(String hex) {
 			.append(',')
 			.append(config.stuck().minSamples())
 			.append('\n');
+		for (ChannelName channel : new TreeSet<>(channels)) {
+			text.append("channel=").append(channel.value()).append('\n');
+		}
 		for (RunKey key : new TreeSet<>(goodRuns)) {
 			text.append("good=").append(key.value()).append('\n');
 		}

@@ -7,13 +7,16 @@ import java.sql.Types;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.SortedMap;
+import java.util.SortedSet;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -118,6 +121,23 @@ public class RunStore {
 	 * @param spectraVersion 0 when the run has no emission channels
 	 */
 	public record StoredRun(RunId id, int spectraVersion) {
+	}
+
+	/**
+	 * The channels the runs carry, from their phase summaries. A run gains channels when a later reduction writes
+	 * them, so this is what a baseline's identity has to include, not the channel table.
+	 */
+	public SortedSet<ChannelName> channelsOf(Collection<RunId> ids) {
+		if (ids.isEmpty()) {
+			return new TreeSet<>();
+		}
+		return new TreeSet<>(jdbc.sql("""
+				select distinct c.name from run_phase_summary s
+				join channel c on c.id = s.channel_id
+				where s.run_id in (:ids)""")
+			.param("ids", ids.stream().map(RunId::value).toList())
+			.query((rs, row) -> ChannelName.of(rs.getString("name")))
+			.list());
 	}
 
 	/** @return empty when no run has that key */

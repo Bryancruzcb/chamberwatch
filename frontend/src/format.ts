@@ -47,6 +47,11 @@ const SURFACE_NAMES = {
 } as const satisfies Record<ConditioningSurface, string>
 
 const CHANNEL_NAMES: Record<string, string> = {
+  Emission685: 'Fluorine 685.6 nm',
+  Emission703: 'Fluorine 703.7 nm',
+  Emission623: 'Fluorine 624.0 nm',
+  Emission516: 'Carbon C2 516.5 nm',
+  Emission563: 'Carbon C2 563.6 nm',
   PlatenRFLoadCapacitor: 'Platen RF load cap',
   PlatenRFTuningCapacitor: 'Platen RF tuning cap',
   PlatenDcBias: 'Platen DC bias',

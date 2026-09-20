@@ -8,8 +8,8 @@ test('shows why a flagged wafer was flagged', async ({ page }) => {
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
   await expect(stat(page, 'Limit flags')).toHaveText('25')
-  await expect(stat(page, 'First channel')).toHaveText('PlatenRFLoadCapacitor')
-  await expect(page.getByRole('heading', { level: 2, name: 'PlatenRFLoadCapacitor' })).toBeVisible()
+  await expect(stat(page, 'First channel')).toHaveText('Platen RF load cap')
+  await expect(page.getByRole('heading', { level: 2, name: 'Platen RF load cap' })).toBeVisible()
   await expect(page.locator('figure.chart svg [data-kind="excursion"]')).toHaveCount(21)
 })
 
@@ -103,8 +103,8 @@ test('puts the fault the simulator injected next to what the detectors caught', 
   await expect(page.locator('.page-head .badge-warning')).toHaveText('Degraded')
   await expect(panel).toContainText('Gas flow stuck low')
   await expect(panel).toContainText('Gas 5 flow delivers 36% of its flow from 187.9 s to the end of the etch, and the foreline pressure falls with the missing flow.')
-  await expect(panel).toContainText('Yes. Gas5Flow was named first, 1.4 s after the fault began.')
-  await expect(stat(page, 'First channel')).toHaveText('Gas5Flow')
+  await expect(panel).toContainText('Yes. Gas 5 flow was named first, 1.4 s after the fault began.')
+  await expect(stat(page, 'First channel')).toHaveText('Gas 5 flow')
 })
 
 test('shows a stuck sensor as a hold next to the fault the simulator injected', async ({ page }) => {
@@ -114,10 +114,10 @@ test('shows a stuck sensor as a hold next to the fault the simulator injected', 
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('SIM-s7-L901-W10')
   await expect(stat(page, 'Stuck holds')).toHaveText('1')
-  await expect(stat(page, 'First channel')).toHaveText('HeliumBPPressure')
+  await expect(stat(page, 'First channel')).toHaveText('Helium backside pressure')
   await expect(panel).toContainText('Sensor stuck')
   await expect(panel).toContainText('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')
-  await expect(panel).toContainText('Yes. HeliumBPPressure was named first, 0.0 s after the fault began.')
+  await expect(panel).toContainText('Yes. Helium backside pressure was named first, 0.0 s after the fault began.')
   await expect(page.locator('table.compact').getByText('Stuck', { exact: true })).toBeVisible()
   await expect(page.getByRole('table', { name: /^Holds:/ }).locator('tbody tr')).toHaveCount(1)
   await expect(page.getByRole('table', { name: /^Holds:/ })).toContainText('34')
@@ -129,4 +129,13 @@ test('shows no fault panel for a public run', async ({ page }) => {
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
   await expect(page.getByRole('region', { name: 'Injected fault' })).toHaveCount(0)
+})
+
+test("ranks the plasma's own light among the channels it scores", async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55')
+
+  const channels = page.getByRole('region', { name: 'Channels by rank' })
+  await expect(channels.getByRole('row', { name: /Fluorine 685.6 nm/ })).toBeVisible()
+  await expect(channels.getByRole('row', { name: /Carbon C2 516.5 nm/ })).toBeVisible()
 })
