@@ -25,7 +25,8 @@ import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
 import {
-  describeDepthLoss, describeFault, formatFaultKind, formatLabel, formatMicrons, formatScore, formatSeconds, formatValue,
+  describeDepthLoss, describeFault, formatChannelName, formatFaultKind, formatLabel, formatMicrons, formatScore,
+  formatSeconds, formatValue,
 } from '../format'
 import { NotFound } from './NotFound'
 
@@ -119,7 +120,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
             />
             <Stat
               label="First channel"
-              value={assessment.firstChannel ?? 'None'}
+              value={assessment.firstChannel === null ? 'None' : formatChannelName(assessment.firstChannel)}
               compact
               detail={assessment.firstTimeS === null ? undefined : `First departure at ${formatSeconds(assessment.firstTimeS)}`}
             />
@@ -178,7 +179,7 @@ function ChannelsTable({ channels, selected, k }: { channels: readonly Channel[]
                   preventScrollReset
                   aria-current={channel === selected ? 'true' : undefined}
                 >
-                  {channel.channel}
+                  {formatChannelName(channel.channel)}
                 </Link>
                 {channel.deviation && <span className="tag">Deviates</span>}
                 {channel.holds.length > 0 && <span className="tag">Stuck</span>}
@@ -222,7 +223,7 @@ function ChannelPanel({ runId, channel }: { runId: number; channel: Channel }) {
   return (
     <section className="panel" aria-labelledby="trace-title">
       <header className="panel-head">
-        <h2 id="trace-title">{channel.channel}</h2>
+        <h2 id="trace-title">{formatChannelName(channel.channel)}</h2>
         <div className="segmented" role="group" aria-label="Part of the record shown">
           <button type="button" aria-pressed={sameView(view, ETCH)} onClick={() => show(ETCH)}>Etch</button>
           {zoom !== null && (
@@ -504,11 +505,11 @@ function describeCatch(fault: InjectedFault, assessment: Score | null): string {
   if (assessment.firstChannel === fault.channel) {
     const latency = assessment.firstTimeS === null ? null : Math.max(0, assessment.firstTimeS - fault.startS)
     return latency === null
-      ? `Yes. ${fault.channel} was named first.`
-      : `Yes. ${fault.channel} was named first, ${formatSeconds(latency)} after the fault began.`
+      ? `Yes. ${formatChannelName(fault.channel)} was named first.`
+      : `Yes. ${formatChannelName(fault.channel)} was named first, ${formatSeconds(latency)} after the fault began.`
   }
   if (assessment.firstChannel !== null) {
-    return `The run was flagged, but ${assessment.firstChannel} was named first, not ${fault.channel}.`
+    return `The run was flagged, but ${formatChannelName(assessment.firstChannel)} was named first, not ${formatChannelName(fault.channel)}.`
   }
   return 'No. The run was not flagged.'
 }

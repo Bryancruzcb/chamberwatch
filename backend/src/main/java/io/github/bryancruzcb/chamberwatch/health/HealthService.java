@@ -11,6 +11,7 @@ import io.github.bryancruzcb.chamberwatch.detect.GoodRuns;
 import io.github.bryancruzcb.chamberwatch.detect.HealthModel;
 import io.github.bryancruzcb.chamberwatch.recipe.AlignedRun;
 import io.github.bryancruzcb.chamberwatch.recipe.Aligner;
+import io.github.bryancruzcb.chamberwatch.recipe.ChannelName;
 import io.github.bryancruzcb.chamberwatch.recipe.RunKey;
 import io.github.bryancruzcb.chamberwatch.recipe.Source;
 import io.github.bryancruzcb.chamberwatch.store.BaselineRef;
@@ -54,7 +55,10 @@ public class HealthService {
 			return Refresh.nothingToFit(source);
 		}
 		Map<RunKey, RunId> ids = roster.ids();
-		Fingerprint fingerprint = Fingerprint.of(source, good, config, Aligner.VERSION, HealthModel.VERSION);
+		// a run can gain channels after it was stored, as it does when the spectra are reduced into it
+		SortedSet<ChannelName> channels = runs.channelsOf(good.stream().map(ids::get).toList());
+		Fingerprint fingerprint = Fingerprint.of(source, good, channels, config, Aligner.VERSION,
+				HealthModel.VERSION);
 		Optional<BaselineRef> stored = baselines.find(fingerprint);
 		BaselineRef baseline;
 		Baseline model = null;

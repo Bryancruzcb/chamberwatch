@@ -60,6 +60,31 @@ The summaries are now summed about each phase's first reading, which is exact fo
 
 Whether the sample counts should be features on purpose is a fair question. Adding the two counts to the feature set gives 0.146 µm on the 89-point set and 0.149 on the 9-point set, better than 0.162 but short of the 0.135 the rounding produced. That result is not adopted here, because the feature set was fixed before the held-out scores were seen, and changing it afterwards would be choosing a model on the scores it is judged by. Phase durations belong in a later round, together with the rest of the timing the aligner already knows, scored the same way.
 
+## What the plasma's own light adds
+
+Phase 5 reduced the dataset's optical emission spectra into five channels of the runs
+([DATA.md](DATA.md#optical-emission-spectra)), which raises an obvious question for this page: does the light the
+plasma gave off predict the depth it etched?
+
+Barely. The lines are on 84 of the 96 wafers, so the comparison is made on the 78 of those that the 89-point set
+measured, with the same leave-one-lot-out scoring as everything above.
+
+| Features | 89-point, 78 wafers | 9-point, 69 wafers |
+|---|---|---|
+| Process channels, the 124 features above | 0.157 | 0.145 |
+| Process channels and the five emission lines, 144 features | 0.151 | 0.145 |
+| The five emission lines alone, 20 features | 0.235 | 0.231 |
+| Position in the lot | 0.221 | 0.201 |
+
+Root mean square error in micrometres. Adding the lines moves the 89-point error by 0.006 µm on 78 wafers, which is
+noise, and moves the 9-point error not at all. On their own the lines are no better than a straight line on wafer
+position.
+
+This is the same story the flags tell. The emission lines hold steady while the depth falls through a lot, so what
+they report is that the plasma's chemistry stayed where it was put, not how deep the wafer under it went. The
+depth model above therefore stays on the process channels, which is also what the model would do by itself: it
+takes only the channels every wafer records, and twelve wafers have no emission channels at all.
+
 ## Where the numbers come from
 
 `PublicDataDepthTest` builds the features straight from the dataset files and pins every number in the table above; it runs wherever the data is downloaded and CI skips it. `DepthModelTest` and `RidgeTest` cover the model itself on small made-up data, including that a lot never predicts itself and that the dual solve matches the direct one.

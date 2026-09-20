@@ -176,8 +176,22 @@ neighbours. A wafer keeps its emission channels only when at most 0.5 percent of
 empty.
 
 Since the lines are not on every wafer, they are not among the channels the depth model can use: it takes only the
-channels every wafer records. [DEPTH.md](DEPTH.md) reports what they do to a depth prediction as a measurement of
-its own.
+channels every wafer records. [DEPTH.md](DEPTH.md#what-the-plasmas-own-light-adds) reports what they do to a depth
+prediction as a measurement of its own.
+
+### What the spectra changed about the flags
+
+Nothing, and that is the result. With the five lines in the baseline the detectors flag **the same 15 wafers as
+before**, named by the same channels: the platen RF load capacitor on 10 and the platen RF tuning capacitor on 5.
+No emission line produced a single excursion or a single stuck hold on any of the 96 wafers.
+
+That is not because they were ignored. All five are learned as `INFORMATIVE` channels, scored by every rule the
+process channels are scored by, and they sit 1.7 to 2.7 standard deviations from their bands on the flagged wafers,
+below the 6 the limit rule needs. The plasma's light held steady across the campaign while the match network moved,
+which says the drift those flags mark is the tool's, not the chemistry's.
+
+A baseline now records which channels it was fitted on, so loading the spectra refits on its own rather than
+quietly scoring new channels against bands that never saw them.
 
 ## Wafer measurements
 
