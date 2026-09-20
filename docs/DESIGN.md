@@ -154,6 +154,7 @@ The dominant reads:
 | `api` | Controllers, JSON views, error mapping, the settings the web app reads | Spring MVC | Object-oriented shell: adapters from HTTP to the services |
 | `web` | The web app's own pages, forwarded to its `index.html` | Spring MVC | Object-oriented shell |
 | root | Application, properties, the command-line commands | Spring Boot | Object-oriented shell |
+| `chamber-sim/src` | The C chamber: recipe state machine, interlocks, hidden chamber state, faults, the JSON-lines protocol and the socket | none | Procedural C11, with the model kept apart from the socket: everything but `main.c` is a function of state |
 | `frontend/src/pages`, `charts` | Pages and charts | React | Functional reactive: state in hooks, everything shown derived from what the API answered |
 | `frontend/src/api`, `format.ts` | Parsing at the boundary, formatting | zod | Functional: pure parsers and formatters |
 
