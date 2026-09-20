@@ -152,13 +152,14 @@ The dominant reads:
 | `store` | All SQL: `RunStore`, `BaselineStore`, `ReadQueries`, the COPY writer | JDBC | Object-oriented shell: repositories that own the SQL |
 | `health` | Refit, rescore, the current-baseline pointer, the queue that runs a relabel's refresh | Spring `@Service` | Object-oriented shell: services, one with a thread and a lifecycle |
 | `api` | Controllers, JSON views, error mapping, the settings the web app reads | Spring MVC | Object-oriented shell: adapters from HTTP to the services |
+| `live` | Reading the chamber simulator's frames, recording a streamed run, and storing it when it ends | Spring `@Service` | Functional core with an object-oriented shell: `FrameCodec` parses at the boundary, `LiveRun` accumulates, `LiveRunService` owns the socket |
 | `web` | The web app's own pages, forwarded to its `index.html` | Spring MVC | Object-oriented shell |
 | root | Application, properties, the command-line commands | Spring Boot | Object-oriented shell |
 | `chamber-sim/src` | The C chamber: recipe state machine, interlocks, hidden chamber state, faults, the JSON-lines protocol and the socket | none | Procedural C11, with the model kept apart from the socket: everything but `main.c` is a function of state |
 | `frontend/src/pages`, `charts` | Pages and charts | React | Functional reactive: state in hooks, everything shown derived from what the API answered |
 | `frontend/src/api`, `format.ts` | Parsing at the boundary, formatting | zod | Functional: pure parsers and formatters |
 
-Dependencies point one way: `api` to `health`, `store`, `detect` and `recipe`; `health` and `store` to `detect` and `recipe`; `detect` and `sim` to `recipe`. `ingest` uses `store`, `health`, `detect`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. `depth` imports nothing but the language, and `api` hands it the rows `store` read. `spectra` reads `recipe` only, and `ingest` drives it. The pure packages import nothing from Spring or JDBC, and the only framework type anywhere near them is the netCDF file that `ingest` and `spectra` each keep inside one reader.
+Dependencies point one way: `api` to `health`, `store`, `detect` and `recipe`; `health` and `store` to `detect` and `recipe`; `detect` and `sim` to `recipe`. `ingest` uses `store`, `health`, `detect`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. `depth` imports nothing but the language, and `api` hands it the rows `store` read. `spectra` reads `recipe` only, and `ingest` drives it. `live` reads `recipe`, `sim`'s fault records and `store`, and goes through the same aligner and store as every other run. The pure packages import nothing from Spring or JDBC, and the only framework type anywhere near them is the netCDF file that `ingest` and `spectra` each keep inside one reader.
 
 ## Alignment
 
