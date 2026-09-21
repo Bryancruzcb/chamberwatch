@@ -16,6 +16,8 @@ ifeq ($(OS),Windows_NT)
 else
 	EXE :=
 	CFLAGS += -D_POSIX_C_SOURCE=200809L
+	# floor() lives in libm, which clang does not link on its own; gcc usually inlines it, which hides the need
+	LDLIBS += -lm
 endif
 
 ifdef SAN
