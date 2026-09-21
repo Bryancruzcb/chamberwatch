@@ -2,8 +2,8 @@
  *
  * SplitMix64, with streams so that one draw's count cannot shift another's. A stream is named by the seed, a
  * purpose and an index, mixed into a starting state, so adding a draw to the chamber model never moves the
- * numbers the recipe or the faults draw. Only the bits of the state decide a value, and no libm function is
- * called at all, so two platforms agree exactly. */
+ * numbers the recipe or the faults draw. Only the bits of the state decide a value, and the draws call no libm
+ * function, so two platforms agree exactly. */
 #ifndef CHAMBER_RNG_H
 #define CHAMBER_RNG_H
 

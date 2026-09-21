@@ -42,8 +42,9 @@ nothing at all after the run ends. A refusal is answered on the wire and the run
 
 The same seed, lot and wafer give the same run on any machine. The generator is SplitMix64 with a separate stream
 per purpose, so adding a draw to the chamber never moves the numbers the recipe or the faults draw; the normal is
-twelve uniforms less six, so no libm function is called and no platform's rounding can differ; and a run's
-commands are the only other input, so replaying them replays the run.
+twelve uniforms less six, so the random draws call no libm function whose rounding could differ between platforms
+(the one libm call left, `floor` when a reading is rounded to the tool's resolution, is exact); and a run's commands
+are the only other input, so replaying them replays the run.
 
 ## Talking to it
 
