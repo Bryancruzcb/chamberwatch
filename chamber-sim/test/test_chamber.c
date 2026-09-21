@@ -99,6 +99,32 @@ void test_chamber(void)
 	CHECK(clean.last_values[CH_EPD_INTENSITY] == 0.123);
 	CHECK(clean.last_values[CH_GAS3_FLOW] == 0.0);
 
+	/* every channel is read through a sensor, so two wafers never report the same number twice: a channel that
+	 * repeated exactly would be given a band of no width, and the smallest departure would score in the millions */
+	session_t third;
+	summary_t wafer3 = run_wafer(&third, 7, 1, 3, NULL);
+	CHECK(wafer3.sf6_gas5 != clean.sf6_gas5);
+	CHECK(wafer3.c4f8_gas4 != clean.c4f8_gas4);
+	CHECK(wafer3.last_values[CH_PRESSURE] != clean.last_values[CH_PRESSURE]);
+	CHECK(wafer3.last_values[CH_PLATEN_RF_LOAD_CAPACITOR] != clean.last_values[CH_PLATEN_RF_LOAD_CAPACITOR]);
+	/* and within one wafer the SF6 marker moves from cycle to cycle rather than repeating its setpoint */
+	session_t moving;
+	session_begin(&moving, 7, 1, 1);
+	double first_reading = -1.0;
+	int different = 0;
+	while (session_tick(&moving)) {
+		if (moving.recipe.state == STATE_ETCH_SF6) {
+			double value = moving.values[CH_GAS5_FLOW];
+			if (first_reading < 0.0) {
+				first_reading = value;
+			}
+			else if (value != first_reading) {
+				different++;
+			}
+		}
+	}
+	CHECK(different > 1000);
+
 	/* a stuck mass flow controller drags the foreline pressure down with it, without being told to */
 	fault_t stuck;
 	stuck.kind = FAULT_GAS_FLOW_STUCK_LOW;

@@ -39,6 +39,7 @@ function Masthead() {
       <nav aria-label="Main">
         <NavLink to="/" end className={({ isActive }) => (isActive || onRunPage ? 'active' : undefined)}>Runs</NavLink>
         <NavLink to="/lots">Lots</NavLink>
+        <NavLink to="/live">Live</NavLink>
       </nav>
     </header>
   )

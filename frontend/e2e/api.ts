@@ -38,14 +38,51 @@ export interface ApiLog {
  * trace for every other channel, run 55's measurements, the drift of lots 6 and 901 and the drift report of either
  * source. Every other run and lot is missing, like run 9999.
  */
+/** The live session, which the live page drives: idle, then etching, then the run it stored. */
+const LIVE_IDLE = {
+  recording: false, run: null, state: null, cycle: 0, samples: 0, timeS: 0, stored: null, failure: null,
+}
+const LIVE_ETCHING = {
+  recording: true, run: 'LIVE-s7-L1-W01', state: 'ETCH_SF6', cycle: 12, samples: 640, timeS: 128,
+  stored: null, failure: null,
+}
+const LIVE_STORED = {
+  recording: false, run: 'LIVE-s7-L1-W01', state: 'END', cycle: 100, samples: 2988, timeS: 597.6,
+  stored: {
+    run: 'LIVE-s7-L1-W01', runId: 4242, samples: 2988, reason: 'COMPLETE', alignment: 'ALIGNED',
+    faultKind: 'GAS_FLOW_STUCK_LOW', faultChannel: 'Gas5Flow',
+  },
+  failure: null,
+}
+
 export async function serveApi(page: Page, options: { readOnly?: boolean } = {}): Promise<ApiLog> {
   const log: ApiLog = { requests: [], relabels: [] }
   const settings = { readOnly: options.readOnly ?? false }
+  // the live session answers idle until a recording is started, then etching, then what it stored
+  let live: unknown = LIVE_IDLE
   await page.route('**/api/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     log.requests.push(url.pathname + url.search)
-    const { status, body } = url.pathname === '/api/settings' ? found(settings) : answer(request, url, log)
+    let answered: { status: number; body: unknown }
+    if (url.pathname === '/api/settings') {
+      answered = found(settings)
+    }
+    else if (url.pathname === '/api/live/session' && request.method() === 'GET') {
+      answered = found(live)
+      live = live === LIVE_ETCHING ? LIVE_STORED : live
+    }
+    else if (url.pathname === '/api/live/start') {
+      live = LIVE_ETCHING
+      answered = { status: 202, body: live }
+    }
+    else if (url.pathname === '/api/live/inject' || url.pathname === '/api/live/session') {
+      answered = found(live)
+    }
+    else {
+      answered = answer(request, url, log)
+    }
+    const { status, body } = answered
     await route.fulfill({
       status,
       contentType: status < 400 ? 'application/json' : 'application/problem+json',
