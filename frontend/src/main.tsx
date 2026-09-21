@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router/dom'
 import { App, RouteError } from './App'
 import './index.css'
 import { LotPage } from './pages/LotPage'
+import { LivePage } from './pages/LivePage'
 import { LotsPage } from './pages/LotsPage'
 import { NotFound } from './pages/NotFound'
 import { RunPage } from './pages/RunPage'
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
       { path: 'runs/:runId', element: <RunPage /> },
       { path: 'runs/:runId/wafer', element: <WaferPage /> },
       { path: 'lots', element: <LotsPage /> },
+      { path: 'live', element: <LivePage /> },
       { path: 'lots/:lotId', element: <LotPage /> },
       { path: '*', element: <NotFound /> },
     ],

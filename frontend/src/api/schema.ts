@@ -324,6 +324,30 @@ export const runDepthSchema = z.object({
 })
 export type RunDepth = z.infer<typeof runDepthSchema>
 
+/** The run a live recording stored, once the stream ended. */
+export const liveStoredSchema = z.object({
+  run: z.string(),
+  runId: id,
+  samples: count,
+  reason: z.string(),
+  alignment: z.string().nullable(),
+  faultKind: faultKindSchema.nullable(),
+  faultChannel: z.string().nullable(),
+})
+
+/** What the chamber simulator is doing right now, and what the last recording came to. */
+export const liveSessionSchema = z.object({
+  recording: z.boolean(),
+  run: z.string().nullable(),
+  state: z.string().nullable(),
+  cycle: count,
+  samples: count,
+  timeS: z.number(),
+  stored: liveStoredSchema.nullable(),
+  failure: z.string().nullable(),
+})
+export type LiveSession = z.infer<typeof liveSessionSchema>
+
 /** What the server allows. A read-only one, a public demo, refuses relabels. */
 export const settingsSchema = z.object({ readOnly: z.boolean() })
 

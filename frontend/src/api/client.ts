@@ -21,6 +21,15 @@ export function putJson<T>(path: string, body: unknown, schema: z.ZodType<T>): P
   return request(path, { method: 'PUT', headers, body: JSON.stringify(body) }, schema)
 }
 
+export function postJson<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  return request(path, { method: 'POST', headers, body: JSON.stringify(body) }, schema)
+}
+
+export function deleteJson<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+  return request(path, { method: 'DELETE' }, schema)
+}
+
 async function request<T>(path: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')

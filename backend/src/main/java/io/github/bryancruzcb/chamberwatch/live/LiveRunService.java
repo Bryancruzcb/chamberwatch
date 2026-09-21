@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.github.bryancruzcb.chamberwatch.health.HealthService;
@@ -53,9 +55,27 @@ public class LiveRunService {
 
 	private final AtomicReference<Session> session = new AtomicReference<>();
 
+	/** One recording at a time, on a thread of its own so a caller never waits eleven minutes for a run. */
+	private final ExecutorService recorder = Executors.newSingleThreadExecutor((task) -> {
+		Thread thread = new Thread(task, "live-run");
+		thread.setDaemon(true);
+		return thread;
+	});
+
+	/** What the last recording came to, kept until another one starts, for a page that asks after the fact. */
+	private final AtomicReference<Finished> last = new AtomicReference<>();
+
 	public LiveRunService(RunStore runs, HealthService health) {
 		this.runs = runs;
 		this.health = health;
+	}
+
+	/**
+	 * How a recording ended: the run it stored, or why it did not.
+	 *
+	 * @param failure the message of what went wrong, empty when the run was recorded
+	 */
+	public record Finished(Optional<Recorded> recorded, Optional<String> failure) {
 	}
 
 	/** What a finished stream came to. */
@@ -83,7 +103,46 @@ public class LiveRunService {
 
 	public Optional<Progress> progress() {
 		Session current = session.get();
-		return (current == null) ? Optional.empty() : Optional.of(current.progress);
+		return (current == null || current.progress == null) ? Optional.empty() : Optional.of(current.progress);
+	}
+
+	/** Whether a run is being recorded right now. */
+	public boolean recording() {
+		return session.get() != null;
+	}
+
+	/** What the last recording came to, empty until one has finished since the app started. */
+	public Optional<Finished> last() {
+		return Optional.ofNullable(last.get());
+	}
+
+	/**
+	 * Starts recording on a thread of its own and returns at once. The page watches {@link #progress()} and reads
+	 * {@link #last()} when it stops.
+	 *
+	 * @throws IllegalStateException when a run is already being recorded
+	 */
+	public void start(String host, int port) {
+		if (recording()) {
+			throw new IllegalStateException("a live run is already being recorded");
+		}
+		last.set(null);
+		recorder.execute(() -> {
+			try {
+				last.set(new Finished(Optional.of(record(host, port)), Optional.empty()));
+			}
+			catch (RuntimeException ex) {
+				last.set(new Finished(Optional.empty(), Optional.of(String.valueOf(ex.getMessage()))));
+			}
+		});
+	}
+
+	/** Stops a recording by closing the connection; the simulator is left to finish on its own. */
+	public void stop() {
+		Session current = session.get();
+		if (current != null) {
+			closeQuietly(current.socket);
+		}
 	}
 
 	/**

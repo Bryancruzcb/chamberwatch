@@ -28,7 +28,14 @@ windows the public wafers show, so a seed decides the whole run before the first
 Nothing writes a reading directly. The recipe sets flows; the mass flow controllers take time to reach them; the
 throttle valve holds the chamber at its setpoint while the foreline pressure follows the gas load at the
 0.21 per sccm the public wafers show; the match networks chase the plasma; the walls condition as it burns, and
-the platen capacitors walk with them. The 31 channels are views of that state.
+the platen capacitors walk with them. The 31 channels are views of that state, read through sensors that add this
+wafer's own offset, a slow wander and the channel's noise.
+
+Every number in the channel table was measured on the public wafers rather than chosen: the idle levels from the
+template the Java simulator built, the phase levels from a public wafer's phase means, and the noise from the
+median step between consecutive samples inside the etch. What is **not** calibrated is how often a fault of a
+given size is caught: [docs/EVALUATION.md](../docs/EVALUATION.md)'s recall numbers belong to the Java simulator,
+which was fitted to the public alarm rates. A fault streamed from here is caught on its own merits.
 
 That is why a fault attaches where the trouble starts rather than to a reading. A stuck mass flow controller
 delivers a share of what it was told, and the foreline pressure falls with the missing gas **by itself**. The
@@ -37,6 +44,30 @@ knock-on is the chamber's, not the fault's.
 Interlocks refuse a step whose preconditions are not met, rather than letting the chamber into a state it could
 not reach: no strike without process gas, none onto an unclamped wafer, no second strike while the plasma burns,
 nothing at all after the run ends. A refusal is answered on the wire and the run is left where it stood.
+
+## Watching ChamberWatch catch it
+
+A baseline has to be learned before anything can be judged against it, so the demo is four wafers: stream three
+clean ones, then one with a fault.
+
+```sh
+# three clean wafers, then one with a fault; the Live page starts each recording, or curl does
+for wafer in 1 2 3 4; do
+  fault=$([ $wafer = 4 ] && echo --fault=random)
+  build/chamber-sim --port=5610 --rate=50 --lot=1 --wafer=$wafer $fault &
+  sleep 1
+  curl -sXPOST localhost:8080/api/live/start -H 'Content-Type: application/json'     -d '{"host":"127.0.0.1","port":5610}'
+  wait
+done
+```
+
+Measured here on a lot streamed that way: the three clean wafers score 2.5 to 3.0 against their own bands and are
+flagged by nothing, and the faulted one, a sensor dropout at 415.6 s, is flagged with `HeliumBPPressure` named
+first at 415.4 s. A starved SF6 flow is caught the same way, with the foreline pressure ranked second behind it
+because the model drags it down.
+
+The wafer streamed first cannot be judged: it is the only good run its baseline has, so it is scored against
+itself and nothing can depart from anything.
 
 ## Determinism
 
