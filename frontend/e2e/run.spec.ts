@@ -117,7 +117,8 @@ test('shows a stuck sensor as a hold next to the fault the simulator injected', 
   await expect(stat(page, 'First channel')).toHaveText('Helium backside pressure')
   await expect(panel).toContainText('Sensor stuck')
   await expect(panel).toContainText('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')
-  await expect(panel).toContainText('Yes. Helium backside pressure was named first, 0.0 s after the fault began.')
+  // the hold is timed from the first sample of the value it repeats, which came just before the fault
+  await expect(panel).toContainText('Yes. Helium backside pressure was named first, as the fault began.')
   await expect(page.locator('table.compact').getByText('Stuck', { exact: true })).toBeVisible()
   await expect(page.getByRole('table', { name: /^Holds:/ }).locator('tbody tr')).toHaveCount(1)
   await expect(page.getByRole('table', { name: /^Holds:/ })).toContainText('34')

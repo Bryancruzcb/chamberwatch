@@ -16,6 +16,7 @@ const threeDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 3,
 const SUBTITLES = {
   PUBLIC: 'The public lots, each started after a chamber clean, and how wafers change with their position in a lot.',
   SYNTHETIC: 'The simulated lots: the clean training lots the baseline learns from, and the lot with known faults.',
+  LIVE: 'The lots streamed from the chamber simulator. Their first wafers teach the live baseline.',
 } as const satisfies Record<Source, string>
 
 export function LotsPage() {

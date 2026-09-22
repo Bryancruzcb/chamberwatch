@@ -1,11 +1,20 @@
 import type {
-  ConditioningSurface, DepthMethod, DriftState, FaultKind, InjectedFault, Label, MeasuredDepth, MeasurementSet, Source,
+  ConditioningSurface, DepthMethod, DriftState, FaultKind, InjectedFault, Label, MeasuredDepth, MeasurementSet, Score,
+  Source,
 } from './api/schema'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
 const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 })
 const oneDecimal = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const whole = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+
+/**
+ * How far before a fault's recorded start an alarm on the fault's own channel still counts as catching it. An
+ * alarm is timed from the 0.2 s slot it starts in, and a stuck sensor's hold from the first sample of the value it
+ * goes on repeating, so either can sit a sample or two ahead of the moment the fault was put in.
+ */
+const CATCH_LEAD_S = 1.0
 // Dates arrive as plain days, so they are formatted in UTC to keep the day from shifting with the reader's time zone.
 const day = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' })
 
@@ -24,7 +33,7 @@ const DRIFT_STATE_NAMES = {
   INSUFFICIENT_RUNS: 'Too few wafers',
 } as const satisfies Record<DriftState, string>
 
-const SOURCE_NAMES = { PUBLIC: 'Public', SYNTHETIC: 'Simulated' } as const satisfies Record<Source, string>
+const SOURCE_NAMES = { PUBLIC: 'Public', SYNTHETIC: 'Simulated', LIVE: 'Live' } as const satisfies Record<Source, string>
 
 const DEPTH_METHOD_NAMES = {
   TELEMETRY: 'Telemetry model',
@@ -125,6 +134,39 @@ export function formatChannelName(channel: string): string {
 /** A reading or a band value: four significant digits, grouped. */
 export function formatValue(value: number | null): string {
   return value === null ? MISSING : significant.format(value)
+}
+
+/** A count of things, grouped and without decimals: 2,400, not 2,400.0. */
+export function formatCount(value: number): string {
+  return whole.format(value)
+}
+
+/**
+ * Whether the detectors caught the fault the simulator put in: the right channel named first, and when. An alarm
+ * well before the fault began was set off by something else, and says so rather than counting as a catch.
+ */
+export function describeCatch(fault: InjectedFault, assessment: Score | null): string {
+  if (assessment === null) {
+    return 'Not scored under the current baseline.'
+  }
+  const first = assessment.firstChannel
+  const at = assessment.firstTimeS
+  if (first === null) {
+    return 'No. The run was not flagged.'
+  }
+  if (at !== null && at < fault.startS - CATCH_LEAD_S) {
+    return `The run was flagged before the fault began: ${formatChannelName(first)} departed at ${formatSeconds(at)}, `
+      + `and the fault started at ${formatSeconds(fault.startS)}.`
+  }
+  if (first !== fault.channel) {
+    return `The run was flagged, but ${formatChannelName(first)} was named first, not ${formatChannelName(fault.channel)}.`
+  }
+  if (at === null) {
+    return `Yes. ${formatChannelName(fault.channel)} was named first.`
+  }
+  return at <= fault.startS
+    ? `Yes. ${formatChannelName(fault.channel)} was named first, as the fault began.`
+    : `Yes. ${formatChannelName(fault.channel)} was named first, ${formatSeconds(at - fault.startS)} after the fault began.`
 }
 
 /** A z-score or a t-statistic, to one decimal. */

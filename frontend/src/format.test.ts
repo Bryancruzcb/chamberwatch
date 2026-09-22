@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  describeCatch,
   describeDepthLoss,
   describeFault,
   describeResidual,
   formatChannelName,
+  formatCount,
   formatConditioning,
   formatDate,
   formatDepthFeature,
@@ -77,6 +79,30 @@ describe('format', () => {
     expect(formatChannelName('Emission516')).toBe('Carbon C2 516.5 nm')
     expect(formatChannelName('Gas5Flow')).toBe('Gas 5 flow')
     expect(formatChannelName('NotAChannel')).toBe('NotAChannel')
+  })
+
+  it('prints a count as a count', () => {
+    expect(formatCount(2400)).toBe('2,400')
+    expect(formatCount(412)).toBe('412')
+  })
+
+  it('calls a fault caught only when its own channel was named first, and not before it began', () => {
+    const fault = { kind: 'GAS_FLOW_STUCK_LOW', channel: 'Gas5Flow', startS: 174.2, endS: 597.6, durationS: null, magnitude: 0.36 } as const
+    const score = { limitFlags: 42, deviationFlags: 2, stuckFlags: 0, persistentZ: 4751.3, firstChannel: 'Gas5Flow', firstTimeS: 175.6 }
+
+    expect(describeCatch(fault, score)).toBe('Yes. Gas 5 flow was named first, 1.4 s after the fault began.')
+    // a slot or a repeated reading can put the alarm a sample ahead of the fault's recorded start
+    expect(describeCatch(fault, { ...score, firstTimeS: 174.0 })).toBe('Yes. Gas 5 flow was named first, as the fault began.')
+    // but an alarm long before it was set off by something else, whatever channel it was on
+    expect(describeCatch(fault, { ...score, firstTimeS: 38.4 }))
+      .toBe('The run was flagged before the fault began: Gas 5 flow departed at 38.4 s, and the fault started at 174.2 s.')
+    expect(describeCatch(fault, { ...score, firstChannel: 'Heater3Temp', firstTimeS: 30.6 }))
+      .toBe('The run was flagged before the fault began: Heater 3 temp departed at 30.6 s, and the fault started at 174.2 s.')
+    expect(describeCatch(fault, { ...score, firstChannel: 'ForeLinePressure', firstTimeS: 174.4 }))
+      .toBe('The run was flagged, but Foreline pressure was named first, not Gas 5 flow.')
+    expect(describeCatch(fault, { ...score, firstTimeS: null })).toBe('Yes. Gas 5 flow was named first.')
+    expect(describeCatch(fault, { ...score, firstChannel: null, firstTimeS: null })).toBe('No. The run was not flagged.')
+    expect(describeCatch(fault, null)).toBe('Not scored under the current baseline.')
   })
 
   it('marks a missing value', () => {

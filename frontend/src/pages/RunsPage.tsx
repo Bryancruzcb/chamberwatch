@@ -19,6 +19,7 @@ const ORDERS = [['flagged', 'Flagged first'], ['lot', 'Lot and wafer'], ['z', 'H
 const SUBTITLES = {
   PUBLIC: 'A queue of the public wafers. Flagged ones sit at the top. Open one to see which sensor left first.',
   SYNTHETIC: 'Simulated wafers. Some have a planted fault. Open one to see the fault next to what the detectors called.',
+  LIVE: 'Wafers the C chamber simulator etched while ChamberWatch watched, from the Live page. A faulted one shows what went in.',
 } as const satisfies Record<Source, string>
 
 export function RunsPage() {
