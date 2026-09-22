@@ -50,6 +50,9 @@ typedef struct {
 	double noise;      /* the size of its sample-to-sample noise */
 	double resolution; /* the smallest step the tool reports, 0 when it reports a bare float */
 	int non_negative;  /* 1 when the tool never reports below zero */
+	double drift;      /* for a channel that moves slower than it is reported, the per-sample step of its slow
+	                    * drift, 0 for the rest */
+	double spread;     /* how far one wafer's phase mean sits from another's, as a standard deviation */
 } channel_spec_t;
 
 /* The table itself, CHANNEL_COUNT entries in channel_t order. */

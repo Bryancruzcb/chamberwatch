@@ -37,11 +37,15 @@ all: $(BUILD)/chamber-sim$(EXE)
 $(BUILD)/chamber-sim$(EXE): $(OBJECTS) $(BUILD)/main.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+# -MMD -MP writes each object's header dependencies beside it, so changing a header rebuilds every object that
+# includes it; without them a struct's layout could differ between two objects of the same binary
 $(BUILD)/%.o: src/%.c | $(BUILD)
-	$(CC) $(CFLAGS) -Isrc -c -o $@ $<
+	$(CC) $(CFLAGS) -MMD -MP -Isrc -c -o $@ $<
 
 $(BUILD)/%.o: test/%.c | $(BUILD)
-	$(CC) $(CFLAGS) -Isrc -c -o $@ $<
+	$(CC) $(CFLAGS) -MMD -MP -Isrc -c -o $@ $<
+
+-include $(wildcard $(BUILD)/*.d)
 
 $(BUILD):
 	@mkdir -p $(BUILD)

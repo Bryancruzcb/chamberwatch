@@ -25,15 +25,18 @@ that alternate an SF6 phase of about 4.4 s with a C4F8 phase of about 1.4 s, and
 phase long and leaves the gas on a second after the plasma stops. The lengths are drawn from the seed, inside the
 windows the public wafers show, so a seed decides the whole run before the first tick.
 
-Nothing writes a reading directly. The recipe sets flows; the mass flow controllers take time to reach them; the
-throttle valve holds the chamber at its setpoint while the foreline pressure follows the gas load at the
-0.21 per sccm the public wafers show; the match networks chase the plasma; the walls condition as it burns, and
+Nothing writes a reading directly. The recipe sets flows; the mass flow controllers answer the way the public ones
+do, covering about 93% of a new setpoint in the first 0.2 s sample and holding it to a few thousandths of a sccm
+from the third, so the first slot of a phase is the only wide one; the throttle valve holds the chamber at its
+setpoint while the foreline pressure follows the gas load at the 0.21 per sccm the public wafers show; the match networks chase the plasma; the walls condition as it burns, and
 the platen capacitors walk with them. The 31 channels are views of that state, read through sensors that add this
 wafer's own offset, a slow wander and the channel's noise.
 
 Every number in the channel table was measured on the public wafers rather than chosen: the idle levels from the
-template the Java simulator built, the phase levels from a public wafer's phase means, and the noise from the
-median step between consecutive samples inside the etch. What is **not** calibrated is how often a fault of a
+template the Java simulator built, the phase levels from a public wafer's phase means, the noise from the median
+step between consecutive samples inside the etch, and the spread between wafers from how far one wafer's phase mean
+sits from another's. The heaters drift slower than the 0.1 degree they are reported in, and their drift is set so
+the reported value holds as long on average as the public heaters' does. What is **not** calibrated is how often a fault of a
 given size is caught: [docs/EVALUATION.md](../docs/EVALUATION.md)'s recall numbers belong to the Java simulator,
 which was fitted to the public alarm rates. A fault streamed from here is caught on its own merits.
 
@@ -47,27 +50,25 @@ nothing at all after the run ends. A refusal is answered on the wire and the run
 
 ## Watching ChamberWatch catch it
 
-A baseline has to be learned before anything can be judged against it, so the demo is four wafers: stream three
-clean ones, then one with a fault.
+A baseline has to be learned before anything can be judged against it, and a live one learns the way the public
+one does: from the first three wafers of every lot. So the demo streams wafers 1 to 3 of ten lots first, the 30
+good runs the public baseline has, and then a wafer with a fault. `frontend/e2e/record-live.mjs` does exactly that
+and films the last one, which is how `docs/images/live.gif` was made.
 
-```sh
-# three clean wafers, then one with a fault; the Live page starts each recording, or curl does
-for wafer in 1 2 3 4; do
-  fault=$([ $wafer = 4 ] && echo --fault=random)
-  build/chamber-sim --port=5610 --rate=50 --lot=1 --wafer=$wafer $fault &
-  sleep 1
-  curl -sXPOST localhost:8080/api/live/start -H 'Content-Type: application/json'     -d '{"host":"127.0.0.1","port":5610}'
-  wait
-done
-```
+Measured here, with those 30 wafers learned:
 
-Measured here on a lot streamed that way: the three clean wafers score 2.5 to 3.0 against their own bands and are
-flagged by nothing, and the faulted one, a sensor dropout at 415.6 s, is flagged with `HeliumBPPressure` named
-first at 415.4 s. A starved SF6 flow is caught the same way, with the foreline pressure ranked second behind it
-because the model drags it down.
+- **Clean wafers:** wafer 4 of each of the ten lots, streamed clean, drew no flag in 9 of 10, scoring 2.0 to 4.0
+  against a limit of 6. The tenth drew a stuck flag on Heater 3. Heaters move slower than the 0.1 degree they are
+  reported in, so they hold one value for long stretches, and the model's longest holds are not calibrated the way
+  its average hold is. The same rule raised 0 alarms on 30 held-out public wafers.
+- **Faulted wafers:** 12 wafers, each given a seeded random fault, were all flagged, 11 with the faulty channel named
+  first. The exception was a stuck SF6 flow whose foreline pressure departed in the same 0.2 s slot and won the
+  tie, which is the knock-on this model is built to produce. Stuck flows, dropouts and stuck sensors were named
+  within about a second of the fault; a slow rise in reflected power took up to 13 s, or only showed at run level.
 
-The wafer streamed first cannot be judged: it is the only good run its baseline has, so it is scored against
-itself and nothing can depart from anything.
+Fewer good runs are not enough. With three, the bands come out as narrow as three wafers happen to agree, and a
+fourth that differs by an ordinary amount is flagged. That is how this README first described the demo, and
+streaming a real lot through it is how that was found.
 
 ## Determinism
 

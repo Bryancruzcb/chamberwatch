@@ -41,6 +41,22 @@ typedef struct {
 	const char *host;
 } options_t;
 
+/* Seconds on a clock that only moves forward, for keeping the stream to its rate. */
+static double now_seconds(void)
+{
+#ifdef _WIN32
+	LARGE_INTEGER frequency;
+	LARGE_INTEGER count;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&count);
+	return (double)count.QuadPart / (double)frequency.QuadPart;
+#else
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (double)now.tv_sec + (double)now.tv_nsec / 1e9;
+#endif
+}
+
 static void sleep_seconds(double seconds)
 {
 	if (seconds <= 0.0) {
@@ -161,6 +177,11 @@ static int serve(socket_t client, const options_t *options)
 	char buffer[COMMAND_MAX];
 	int used = 0;
 	int ended = 0;
+	/* Each tick has a moment it is due, counted from the start. The stream sleeps only when it is ahead of that
+	 * schedule, and by however far ahead it is, so a sleep that the system rounds up (Windows rounds to about
+	 * 15.6 ms) is paid back by the ticks after it instead of slowing every tick down: --rate=60 really is 60 */
+	double started = now_seconds();
+	long ticks = 0;
 	while (session_running(&session) && !ended) {
 		if (drain(client, buffer, &used, &session, &ended) < 0) {
 			return -1;
@@ -174,8 +195,13 @@ static int serve(socket_t client, const options_t *options)
 		if (send_line(client, out) < 0) {
 			return -1;
 		}
+		ticks++;
 		if (options->rate > 0.0) {
-			sleep_seconds(RECIPE_TICK_S / options->rate);
+			double due = started + ticks * RECIPE_TICK_S / options->rate;
+			double ahead = due - now_seconds();
+			if (ahead > 0.0) {
+				sleep_seconds(ahead);
+			}
 		}
 	}
 	const char *reason = (session.recipe.state == STATE_ABORTED) ? "ABORTED" : "COMPLETE";

@@ -12,6 +12,20 @@
 #include "recipe.h"
 #include "rng.h"
 
+/*
+ * A mass flow controller as the public wafers show one behaving: told a new setpoint, it covers about 93% of the
+ * step in the first 0.2 s sample and 99.8% in the second, then holds the setpoint to a few thousandths of a sccm.
+ * Told to stop, it keeps about 0.4% of the flow for one sample and reads 0 after. The share of the step the first
+ * sample catches varies from one change to the next, which is why the first slot of a phase is the widest band.
+ */
+typedef struct {
+	double from;   /* what it delivered when the setpoint last changed */
+	double target; /* the setpoint it is heading to */
+	int since;     /* samples since the setpoint last changed */
+	double first;  /* the share of the step covered by the first sample after the change */
+	double second; /* and by the second */
+} controller_t;
+
 typedef struct {
 	/* what the recipe asks for */
 	double sf6_setpoint;
@@ -20,6 +34,9 @@ typedef struct {
 	/* what the chamber is actually doing */
 	double sf6_flow;
 	double c4f8_flow;
+	controller_t sf6_controller;
+	controller_t c4f8_controller;
+	rng_t controller_rng;
 	double source_power;
 	double chamber_pressure;
 	double foreline_pressure;
