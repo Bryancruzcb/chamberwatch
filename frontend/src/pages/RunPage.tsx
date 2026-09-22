@@ -25,7 +25,7 @@ import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
 import {
-  describeDepthLoss, describeFault, formatChannelName, formatFaultKind, formatLabel, formatMicrons, formatScore,
+  describeCatch, describeDepthLoss, describeFault, formatChannelName, formatFaultKind, formatLabel, formatMicrons, formatScore,
   formatSeconds, formatValue,
 } from '../format'
 import { NotFound } from './NotFound'
@@ -486,8 +486,12 @@ function InjectedFaultPanel({ fault, assessment, scoredChannels }: {
         <dt>Channel</dt>
         <dd>
           {scored
-            ? <Link to={{ search: `?channel=${encodeURIComponent(fault.channel)}` }} replace preventScrollReset>{fault.channel}</Link>
-            : fault.channel}
+            ? (
+                <Link to={{ search: `?channel=${encodeURIComponent(fault.channel)}` }} replace preventScrollReset>
+                  {formatChannelName(fault.channel)}
+                </Link>
+              )
+            : formatChannelName(fault.channel)}
         </dd>
         <dt>What it did</dt>
         <dd>{describeFault(fault)}</dd>
@@ -496,22 +500,6 @@ function InjectedFaultPanel({ fault, assessment, scoredChannels }: {
       </dl>
     </section>
   )
-}
-
-function describeCatch(fault: InjectedFault, assessment: Score | null): string {
-  if (assessment === null) {
-    return 'Not scored under the current baseline.'
-  }
-  if (assessment.firstChannel === fault.channel) {
-    const latency = assessment.firstTimeS === null ? null : Math.max(0, assessment.firstTimeS - fault.startS)
-    return latency === null
-      ? `Yes. ${formatChannelName(fault.channel)} was named first.`
-      : `Yes. ${formatChannelName(fault.channel)} was named first, ${formatSeconds(latency)} after the fault began.`
-  }
-  if (assessment.firstChannel !== null) {
-    return `The run was flagged, but ${formatChannelName(assessment.firstChannel)} was named first, not ${formatChannelName(fault.channel)}.`
-  }
-  return 'No. The run was not flagged.'
 }
 
 function AlignmentFacts({ alignment }: { alignment: Alignment }) {

@@ -7,7 +7,7 @@ const id = z.number().int()
 const count = z.number().int().nonnegative()
 const seconds = z.number()
 
-export const sourceSchema = z.enum(['PUBLIC', 'SYNTHETIC'])
+export const sourceSchema = z.enum(['PUBLIC', 'SYNTHETIC', 'LIVE'])
 export const labelSchema = z.enum(['AUTO', 'GOOD', 'BAD'])
 export const phaseSchema = z.enum(['SF6', 'C4F8'])
 export const alignmentStatusSchema = z.enum(['ALIGNED', 'DEGRADED', 'FAILED'])

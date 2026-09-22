@@ -5,7 +5,7 @@ import { type LiveSession, liveSessionSchema, settingsSchema } from '../api/sche
 import { useResource } from '../api/useResource'
 import { Loaded } from '../components/Loaded'
 import { Stat } from '../components/Stat'
-import { formatChannelName, formatFaultKind, formatScore, formatSeconds, MISSING } from '../format'
+import { formatChannelName, formatCount, formatFaultKind, formatSeconds, MISSING } from '../format'
 
 /** How often the page asks the server what the chamber is doing. One tick of the recipe is 0.2 s. */
 const POLL_MS = 500
@@ -54,9 +54,9 @@ export function LivePage() {
           The chamber simulator in <code>chamber-sim/</code> etches a wafer and streams what its 31 channels read,
           one frame every 0.2 s. ChamberWatch records the stream and, when the run ends, aligns, stores and scores
           it exactly as it does a wafer from the dataset. Start it with{' '}
-          <code>chamber-sim --port=5610 --rate=50</code>, or <code>--fault=random</code> to give it something to
-          find. Stream three clean wafers before a faulted one: the first wafer is the only good run its baseline
-          has, so nothing can depart from anything yet.
+          <code>chamber-sim --port=5610 --rate=60</code>, or <code>--fault=random</code> to give it something to
+          find. A baseline learns from the first three wafers of each lot, so stream wafers 1 to 3 of ten lots before
+          a faulted one: that is the 30 good runs the public baseline has, and fewer give bands too narrow to trust.
         </p>
       </header>
       <Loaded resource={session}>
@@ -69,7 +69,7 @@ export function LivePage() {
                   <dl className="stats">
                     <Stat label="Wafer" value={live.run ?? MISSING} compact detail={live.recording ? 'streaming' : 'idle'} />
                     <Stat label="Step" value={live.state ?? MISSING} compact detail={`Cycle ${live.cycle} of 100`} />
-                    <Stat label="Samples" value={formatScore(live.samples)} detail={formatSeconds(live.timeS)} />
+                    <Stat label="Samples" value={formatCount(live.samples)} detail={formatSeconds(live.timeS)} />
                   </dl>
                   {allowed.readOnly
                     ? <p className="status-line">This ChamberWatch is read-only, so it does not record live runs.</p>
@@ -133,7 +133,7 @@ function Outcome({ live }: { live: LiveSession }) {
     <section className="panel" aria-labelledby="outcome-title">
       <h2 id="outcome-title">The last wafer it recorded</h2>
       <dl className="stats">
-        <Stat label="Run" value={stored.run} compact detail={`${stored.reason} after ${stored.samples} samples`} />
+        <Stat label="Run" value={stored.run} compact detail={`${stored.reason} after ${formatCount(stored.samples)} samples`} />
         <Stat label="Alignment" value={stored.alignment ?? MISSING} compact detail="On the recipe grid" />
         <Stat
           label="Fault put in"
