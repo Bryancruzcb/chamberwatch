@@ -1,7 +1,6 @@
 #include "chamber.h"
 
-/* How fast a mass flow controller reaches its setpoint, per 0.2 s tick. */
-#define FLOW_LAG 0.55
+#include <math.h>
 
 /* How fast a match network reaches its position. */
 #define MATCH_LAG 0.30
@@ -11,24 +10,50 @@
 
 #define FORELINE_BASE 23.804
 
+/* How much of a slowly drifting channel's position carries over from one sample to the next. */
+#define DRIFT_PHI 0.999
+
 /* How far the platen load capacitor walks over a lot as the walls condition. */
 #define WALL_PER_TICK 0.0000085
 
 /*
- * How far a channel moves from wafer to wafer. It is its noise where it has any, and a thousandth of its level
- * where it has none: a tool's readings are not identical from one wafer to the next even on a channel whose
- * noise is below what it reports, and a channel that never moved at all would be learned with a band of no
- * width, so the smallest departure would score in the millions. A channel the tool reports as a constant stays
- * exactly constant.
+ * A lot sits somewhere and a wafer sits somewhere inside its lot, and between them they give a channel the spread
+ * from wafer to wafer the public tool shows. The lot's share is the larger, as it is in the public data, where a
+ * clean shifts a lot's levels more than its wafers differ from each other.
  */
-static double wafer_scale(const channel_spec_t *spec)
+#define LOT_SHARE 0.88
+#define WAFER_SHARE 0.47
+
+static double clamp(double value, double low, double high)
 {
-	if (spec->noise > 0.0) {
-		return spec->noise;
+	return value < low ? low : (value > high ? high : value);
+}
+
+/* Advances a controller one sample toward its setpoint, drawing how much of a new step the first samples catch. */
+static void controller_step(controller_t *controller, double *flow, double target, rng_t *rng)
+{
+	if (target != controller->target) {
+		controller->from = *flow;
+		controller->target = target;
+		controller->since = 0;
+		if (target > controller->from) {
+			/* measured on the public SF6 and C4F8 controllers: 93% of the step, sd 5 to 6%, then 99.8% */
+			controller->first = clamp(0.93 + 0.055 * rng_normal(rng), 0.6, 1.0);
+			controller->second = clamp(0.998 + 0.004 * rng_normal(rng), controller->first, 1.0);
+		}
+		else {
+			/* and when it stops: about 0.4% of the flow left for one sample, then nothing */
+			controller->first = 1.0 - fabs(0.0038 + 0.0045 * rng_normal(rng));
+			controller->second = 1.0;
+		}
 	}
-	double level = (spec->sf6 > spec->idle) ? spec->sf6 : spec->idle;
-	int constant = (spec->sf6 == spec->c4f8) && (spec->c4f8 == spec->idle);
-	return constant ? 0.0 : level * 0.001;
+	controller->since++;
+	double covered = (controller->since == 1) ? controller->first : (controller->since == 2) ? controller->second : 1.0;
+	*flow = controller->from + (controller->target - controller->from) * covered;
+	if (controller->since >= 3 && controller->target > 0.0) {
+		/* a held setpoint wanders by about 1 part in 75,000, as the public flows do */
+		*flow = controller->target * (1.0 + 1.3e-5 * rng_normal(rng));
+	}
 }
 
 static double toward(double value, double target, double lag)
@@ -42,14 +67,20 @@ void chamber_begin(chamber_t *chamber, uint64_t seed, int lot, int wafer)
 	rng_t lot_rng = rng_stream(seed, RNG_LOT, (uint64_t)lot);
 	rng_t run_rng = rng_stream(seed, RNG_RUN, (uint64_t)lot * 1000u + (uint64_t)wafer);
 	chamber->noise = rng_stream(seed, RNG_NOISE, (uint64_t)lot * 1000u + (uint64_t)wafer);
+	chamber->controller_rng = rng_stream(seed, RNG_CONTROLLER, (uint64_t)lot * 1000u + (uint64_t)wafer);
+	controller_t idle = { 0.0, 0.0, 3, 1.0, 1.0 };
+	chamber->sf6_controller = idle;
+	chamber->c4f8_controller = idle;
 	chamber->wander_rng = rng_stream(seed, RNG_WANDER, (uint64_t)lot * 1000u + (uint64_t)wafer);
 	for (int channel = 0; channel < CHANNEL_COUNT; channel++) {
-		double scale = wafer_scale(&table[channel]);
-		/* a lot sits somewhere, a wafer sits somewhere inside its lot, both small against the noise */
-		double lot_level = rng_normal(&lot_rng) * scale * 1.5;
-		double run_level = rng_normal(&run_rng) * scale * 0.8;
+		double spread = table[channel].spread;
+		double lot_level = rng_normal(&lot_rng) * spread * LOT_SHARE;
+		double run_level = rng_normal(&run_rng) * spread * WAFER_SHARE;
 		chamber->run_offset[channel] = lot_level + run_level;
-		chamber->wander[channel] = 0.0;
+		/* a slowly drifting channel starts wherever its drift would have left it, not at its centre */
+		chamber->wander[channel] = (table[channel].drift > 0.0)
+				? rng_normal(&chamber->wander_rng) * table[channel].drift / sqrt(1.0 - DRIFT_PHI * DRIFT_PHI)
+				: 0.0;
 		chamber->last_reported[channel] = 0.0;
 	}
 	chamber->sf6_setpoint = 0.0;
@@ -120,8 +151,8 @@ void chamber_step(chamber_t *chamber, recipe_state_t state, const fault_t *fault
 			c4f8_target *= fault->magnitude;
 		}
 	}
-	chamber->sf6_flow = toward(chamber->sf6_flow, sf6_target, FLOW_LAG);
-	chamber->c4f8_flow = toward(chamber->c4f8_flow, c4f8_target, FLOW_LAG);
+	controller_step(&chamber->sf6_controller, &chamber->sf6_flow, sf6_target, &chamber->controller_rng);
+	controller_step(&chamber->c4f8_controller, &chamber->c4f8_flow, c4f8_target, &chamber->controller_rng);
 	chamber->source_power = toward(chamber->source_power, chamber->source_power_setpoint, 0.75);
 
 	/* the throttle valve holds the chamber at its setpoint; the foreline follows the gas load */
@@ -158,9 +189,15 @@ void chamber_step(chamber_t *chamber, recipe_state_t state, const fault_t *fault
 
 	/* slow correlated movement, one step per tick per channel */
 	for (int channel = 0; channel < CHANNEL_COUNT; channel++) {
-		double scale = wafer_scale(&table[channel]);
-		chamber->wander[channel] = chamber->wander[channel] * 0.92
-				+ rng_normal(&chamber->wander_rng) * scale * 0.12;
+		if (table[channel].drift > 0.0) {
+			chamber->wander[channel] = chamber->wander[channel] * DRIFT_PHI
+					+ rng_normal(&chamber->wander_rng) * table[channel].drift;
+		}
+		else {
+			/* slow movement inside a wafer, a third of the spread between wafers at its widest */
+			chamber->wander[channel] = chamber->wander[channel] * 0.92
+					+ rng_normal(&chamber->wander_rng) * table[channel].spread * 0.12;
+		}
 	}
 }
 
@@ -184,10 +221,8 @@ void chamber_read(chamber_t *chamber, recipe_state_t state, const fault_t *fault
 		/* a channel the chamber keeps state for is read from that state; the rest sit at their phase level */
 		double value;
 		switch (channel) {
-			case CH_GAS5_FLOW: value = chamber->sf6_flow * 0.968; break;
-			case CH_GAS4_FLOW:
-				value = (chamber->c4f8_flow > 1.0) ? chamber->c4f8_flow * 0.908 : spec->sf6;
-				break;
+			case CH_GAS5_FLOW: value = chamber->sf6_flow; break;
+			case CH_GAS4_FLOW: value = chamber->c4f8_flow; break;
 			case CH_SOURCE_RF_LOAD_POWER: value = chamber->source_power; break;
 			case CH_PRESSURE: value = chamber->chamber_pressure; break;
 			case CH_FORELINE_PRESSURE: value = chamber->foreline_pressure; break;
@@ -196,12 +231,16 @@ void chamber_read(chamber_t *chamber, recipe_state_t state, const fault_t *fault
 			case CH_HELIUM_BP_PRESSURE: value = chamber->helium_pressure; break;
 			default: value = level_of(spec, state); break;
 		}
-		/* every channel is read through a sensor, so every channel carries this run's offset, its wander and
-		 * its noise. Without this the state-derived channels would repeat exactly from run to run, band
-		 * learning would give them a band of no width, and the smallest departure would score in the millions */
-		value += chamber->run_offset[channel] + chamber->wander[channel];
-		if (spec->noise > 0.0) {
-			value += rng_normal(&chamber->noise) * spec->noise;
+		/* every other channel is read through a sensor, so it carries this run's offset, its wander and its
+		 * noise. Without them a state-derived channel would repeat exactly from run to run, band learning would
+		 * give it a band of no width, and the smallest departure would score in the millions. The two flows are
+		 * the exception: their controllers hold the setpoint, and their variation is the controller's own */
+		int controlled = channel == CH_GAS5_FLOW || channel == CH_GAS4_FLOW;
+		if (!controlled) {
+			value += chamber->run_offset[channel] + chamber->wander[channel];
+			if (spec->noise > 0.0) {
+				value += rng_normal(&chamber->noise) * spec->noise;
+			}
 		}
 		if (fault_active(fault, chamber->time_s) && fault->channel == channel) {
 			if (fault->kind == FAULT_REFLECTED_POWER_RISE) {

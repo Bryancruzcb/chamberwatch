@@ -1,0 +1,7 @@
+# Shell scripts, Makefiles and the C sources run on Linux, where a carriage return breaks them (`set -e` reads
+# as `set -e\r`), so they keep LF line endings whatever the checkout's platform is.
+*.sh text eol=lf
+Makefile text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.py text eol=lf

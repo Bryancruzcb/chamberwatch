@@ -20,7 +20,8 @@ typedef enum {
 	RNG_RUN = 3,
 	RNG_WANDER = 4,
 	RNG_NOISE = 5,
-	RNG_FAULT = 6
+	RNG_FAULT = 6,
+	RNG_CONTROLLER = 7
 } rng_purpose_t;
 
 /* A stream of its own for (seed, purpose, index). */
