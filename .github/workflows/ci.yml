@@ -27,8 +27,30 @@ jobs:
           cache: maven
       - name: Build the chamber simulator, so the live path is driven against the real binary
         run: make -C ../chamber-sim
+      - name: Download the five public wafer files, so the detector tests run
+        run: |
+          mkdir -p ../data/public/zenodo17122442
+          cd ../data/public/zenodo17122442
+          for f in Process_data.nc Dictionary_process.nc Lot_status.xlsx \
+              Si_Oxide_etch_9_points.csv Si_Oxide_etch_89_points.csv; do
+            curl -fL --retry 5 --retry-all-errors --retry-delay 2 \
+              -o "$f" "https://zenodo.org/api/records/17122442/files/$f/content"
+          done
+          sums=$(grep -E ' (Process_data\.nc|Dictionary_process\.nc|Lot_status\.xlsx|Si_Oxide_etch_9_points\.csv|Si_Oxide_etch_89_points\.csv)$' \
+            ../../../docs/zenodo17122442.md5)
+          test "$(printf '%s\n' "$sums" | grep -c .)" -eq 5
+          printf '%s\n' "$sums" | md5sum -c -
       - name: Build and test
         run: ./mvnw -B -ntp verify
+      - name: Fail unless the public wafer detectors actually ran
+        run: |
+          report=target/surefire-reports/TEST-io.github.bryancruzcb.chamberwatch.ingest.PublicDataDetectionTest.xml
+          test -f "$report"
+          suite=$(grep '<testsuite ' "$report")
+          tests=$(printf '%s\n' "$suite" | sed -n 's/.*tests="\([0-9]*\)".*/\1/p')
+          skipped=$(printf '%s\n' "$suite" | sed -n 's/.*skipped="\([0-9]*\)".*/\1/p')
+          test "$tests" = 3
+          test "$skipped" = 0
 
   simulator:
     runs-on: ubuntu-latest
@@ -70,18 +92,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # the bootstrap would fetch from Zenodo, so here the image starts on an empty database without it
       - name: Build the image and start it next to Postgres
-        run: CHAMBERWATCH_BOOTSTRAP=false docker compose up --build --detach
-      - name: Check it serves the web app, the API and its health, and refuses a relabel
+        run: docker compose up --build --detach
+      - name: Check it serves the API and its health, refuses a relabel, and returns a scored run
         run: |
           for i in $(seq 1 60); do curl -sf http://localhost:8080/actuator/health && break; sleep 2; done
-          curl -sf http://localhost:8080/runs/55 | grep -q 'id="root"'
+          curl -sf http://localhost:8080/actuator/health
           curl -sf http://localhost:8080/api/settings | grep -q '"readOnly":true'
           curl -sf http://localhost:8080/api/lots
           status=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' \
             -d '{"label":"GOOD"}' http://localhost:8080/api/runs/1/label)
           test "$status" = 403
+          # health answers before bootstrap has scored the public runs
+          deadline=$((SECONDS + 1800))
+          id=
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            body=$(curl -sf --max-time 30 "http://localhost:8080/api/runs?source=PUBLIC" || true)
+            id=$(printf '%s' "$body" | python3 -c '
+          import json, sys
+          raw = sys.stdin.read()
+          if not raw.strip():
+              raise SystemExit(0)
+          try:
+              page = json.loads(raw)
+          except json.JSONDecodeError:
+              raise SystemExit(0)
+          if not isinstance(page, dict):
+              raise SystemExit(0)
+          for row in page.get("runs") or []:
+              if not isinstance(row, dict) or row.get("scored") is not True:
+                  continue
+              found = row.get("id")
+              if isinstance(found, int):
+                  print(found)
+                  break
+          ')
+            if [ -n "$id" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$id" ]; then
+            echo "no scored public run within 30 minutes" >&2
+            exit 1
+          fi
+          curl -sf "http://localhost:8080/api/runs/${id}" | python3 -c '
+          import json, sys
+          detail = json.loads(sys.stdin.read())
+          assessment = detail.get("assessment") if isinstance(detail, dict) else None
+          if not isinstance(assessment, dict) or "limitFlags" not in assessment:
+              raise SystemExit("run has no assessment with limitFlags")
+          '
       - name: Show the app's log
         if: always()
         run: docker compose logs app

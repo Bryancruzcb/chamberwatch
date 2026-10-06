@@ -87,6 +87,6 @@ takes only the channels every wafer records, and twelve wafers have no emission 
 
 ## Where the numbers come from
 
-`PublicDataDepthTest` builds the features straight from the dataset files and pins every number in the table above; it runs wherever the data is downloaded and CI skips it. `DepthModelTest` and `RidgeTest` cover the model itself on small made-up data, including that a lot never predicts itself and that the dual solve matches the direct one.
+`PublicDataDepthTest` builds the features straight from the dataset files and pins every number in the table above; it runs wherever the data is downloaded and CI runs it. `DepthModelTest` and `RidgeTest` cover the model itself on small made-up data, including that a lot never predicts itself and that the dual solve matches the direct one.
 
 The API serves the same report: `GET /api/reports/depth-model` for the table, the strongest features and the by-position curve, and `GET /api/runs/{runId}/depth` for one public wafer's prediction, its residual and its lot's error, both taking `set=NINE_POINT` or `set=EIGHTY_NINE_POINT`. The lots page shows the comparison, and a public wafer's page puts the predicted depth beside the measured one.

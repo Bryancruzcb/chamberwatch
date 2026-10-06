@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Runs the detectors on the 96 public wafers and pins what they find. The data is never committed, so
- * this runs only where it has been downloaded, and CI skips it. The tables behind docs/DATA.md are
+ * this runs only where it has been downloaded, and CI runs it. The tables behind docs/DATA.md are
  * written to target/public-calibration.txt and target/public-scoring.txt.
  */
 @EnabledIf("publicDataPresent")
