@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.entry;
 
 /**
  * Aligns the 96 public wafers. The data is never committed, so this runs only where it has been
- * downloaded as docs/DATA.md describes, and CI skips it.
+ * downloaded as docs/DATA.md describes, and CI runs it.
  */
 @EnabledIf("publicDataPresent")
 class PublicDataAlignmentTest {

@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.within;
 /**
  * The depth model on the public wafers, straight from the files: phase summaries from the aligner, depth from the
  * measurement files, lots from the lot sheet. The numbers pinned here are the ones docs/DEPTH.md reports. The
- * dataset is not in the repository, so this runs only where it has been downloaded, and CI skips it.
+ * dataset is not in the repository, so this runs only where it has been downloaded, and CI runs it.
  */
 @EnabledIf("publicDataPresent")
 class PublicDataDepthTest {
