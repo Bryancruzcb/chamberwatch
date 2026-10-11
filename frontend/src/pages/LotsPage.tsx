@@ -130,7 +130,7 @@ function LotsTable({ lots, source }: { lots: readonly Lot[]; source: Source }) {
             <th scope="col">Date</th>
             <th scope="col">Conditioning</th>
             <th scope="col" className="num">Runs</th>
-            <th scope="col" className="num">Flagged</th>
+            <th scope="col" className="num">Out of range</th>
           </tr>
         </thead>
         <tbody>
@@ -145,7 +145,7 @@ function LotsTable({ lots, source }: { lots: readonly Lot[]; source: Source }) {
               </td>
               <td className="num">{lot.runs}</td>
               <td className="num">
-                {lot.flaggedRuns === 0 ? 0 : <Link to={withSource(`/?lot=${lot.id}&flagged=true`, source)}>{lot.flaggedRuns}</Link>}
+                {lot.flaggedRuns === 0 ? 0 : <Link to={`${withSource('/', source)}#lot-${lot.id}`}>{lot.flaggedRuns}</Link>}
               </td>
             </tr>
           ))}
@@ -216,7 +216,7 @@ function ReportTable({ report }: { report: DriftVsDepth }) {
           <tr>
             <th scope="col" className="num">Position</th>
             <th scope="col" className="num">Runs</th>
-            <th scope="col" className="num">Flagged</th>
+            <th scope="col" className="num">Out of range</th>
             <th scope="col" className="num">Mean drift score</th>
             <th scope="col" className="num">89-point loss</th>
             <th scope="col" className="num">Wafers</th>

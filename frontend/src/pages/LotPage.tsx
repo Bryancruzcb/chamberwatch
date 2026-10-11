@@ -89,7 +89,7 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
       </header>
       <dl className="stats">
         <Stat label="Runs" value={lot.runs} detail={<Link to={withSource(`/?lot=${lot.id}`, lot.source)}>Show them in the runs table</Link>} />
-        <Stat label="Flagged runs" value={lot.flaggedRuns} />
+        <Stat label="Out-of-range runs" value={lot.flaggedRuns} />
         <Stat label="Out of the band" value={outOfBand} detail={`Channels whose ${phase} mean left the good runs' band`} />
         <Stat label="Projected to leave" value={leaving} detail={`Within ${rule.plannedLotSize} wafers`} />
       </dl>
