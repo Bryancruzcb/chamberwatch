@@ -1,4 +1,5 @@
 import { isRouteErrorResponse, Link, NavLink, Outlet, useMatch, useRouteError } from 'react-router'
+import { ThemeToggle } from './components/ThemeToggle'
 
 export function App() {
   return (
@@ -35,12 +36,15 @@ function Masthead() {
   const onRunPage = useMatch('/runs/*') !== null
   return (
     <header className="masthead">
-      <Link className="wordmark" to="/">ChamberWatch</Link>
-      <nav aria-label="Main">
-        <NavLink to="/" end className={({ isActive }) => (isActive || onRunPage ? 'active' : undefined)}>Runs</NavLink>
-        <NavLink to="/lots">Lots</NavLink>
-        <NavLink to="/live">Live</NavLink>
-      </nav>
+      <div className="masthead-in">
+        <Link className="wordmark" to="/">ChamberWatch</Link>
+        <nav aria-label="Main">
+          <NavLink to="/" end className={({ isActive }) => (isActive || onRunPage ? 'active' : undefined)}>Runs</NavLink>
+          <NavLink to="/lots">Lots</NavLink>
+          <NavLink to="/live">Live</NavLink>
+        </nav>
+        <ThemeToggle />
+      </div>
     </header>
   )
 }

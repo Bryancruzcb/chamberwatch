@@ -11,6 +11,7 @@ import { NotFound } from './pages/NotFound'
 import { RunPage } from './pages/RunPage'
 import { RunsPage } from './pages/RunsPage'
 import { WaferPage } from './pages/WaferPage'
+import { applyTheme, readStoredTheme } from './theme'
 
 const router = createBrowserRouter([
   {
@@ -28,6 +29,9 @@ const router = createBrowserRouter([
     ],
   },
 ])
+
+// A theme picked on an earlier visit applies before the first render, so the page never flashes the other one.
+applyTheme(readStoredTheme())
 
 const root = document.getElementById('root')
 if (root === null) {
