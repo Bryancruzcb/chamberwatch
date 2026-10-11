@@ -38,8 +38,9 @@ With no command the jar serves the API on port 8080, with the OpenAPI descriptio
 
 | Screen | Call |
 |---|---|
-| Runs table, lot filter | `GET /api/lots` |
-| Runs table | `GET /api/runs?source=PUBLIC&lot=6&flagged=true` |
+| Runs page, lot dates and conditioning | `GET /api/lots` |
+| Runs page: the answer, the lot cards and the table | `GET /api/runs?source=PUBLIC` |
+| Runs page, drift along the lots | `GET /api/lots/{lotId}/drift?phase=SF6` for each lot of the source |
 | Run page header, ranked channels, evidence | `GET /api/runs/{runId}` |
 | Run page chart | `GET /api/runs/{runId}/channels/{channel}/trace?fromCycle=1&toCycle=100&maxPoints=2000` |
 | Run page, mark good or bad | `PUT /api/runs/{runId}/label` with `{"label": "BAD"}`, then `GET /api/refreshes/{refreshId}` until it is done |
@@ -70,7 +71,7 @@ The lot call returns every channel that has a good-run band on the phase mean. E
 
 ### Web app
 
-`frontend/` is a React app that reads only the HTTP API. Every response goes through a zod schema where it enters the app, so a field the server stops sending fails in one place instead of deep inside a page. The charts are SVG, with no chart library. The run page draws each trace bucket's lowest and highest reading against the good-run band, with the excursions shaded. The lot page plots a channel's phase mean by wafer against the band, with the fitted line dashed where it projects. The wafer page places every measured site on the wafer, shaded by depth on one blue ramp. The lots page puts the drift score and the depth loss by wafer position in two charts, never on two axes of one. The pointer or the arrow keys read one value at a time, and every chart has a table view. The runs and lots pages switch between the public wafers and the simulated ones, and a simulated run's page opens with the fault the simulator put in, what it did to the channel, and whether the detectors named that channel first and how long after the fault began. `npm run e2e` builds the app and drives the built bundle in Chromium, answering API calls with responses captured from the real API, so the tests need no backend.
+`frontend/` is a React app that reads only the HTTP API. Every response goes through a zod schema where it enters the app, so a field the server stops sending fails in one place instead of deep inside a page. The charts are SVG, with no chart library. The run page draws each trace bucket's lowest and highest reading against the good-run band, with the excursions shaded. The lot page plots a channel's phase mean by wafer against the band, with the fitted line dashed where it projects. The wafer page places every measured site on the wafer, shaded by depth on one blue ramp. The lots page puts the drift score and the depth loss by wafer position in two charts, never on two axes of one. The pointer or the arrow keys read one value at a time, and every chart has a table view. The runs page opens on the answer, worked out in the browser from the runs and the lots by a pure function (`frontend/src/summary.ts`): how many runs are out of range and in which lots, the lot with the most of them (named only when no other lot ties it), and which channel each out-of-range run named first; below it sit one card per lot that needs a look, the drift of every lot by its last wafer, and the full table one tab away. The runs and lots pages switch between the public wafers and the simulated ones, and a simulated run's page opens with the fault the simulator put in, what it did to the channel, and whether the detectors named that channel first and how long after the fault began. `npm run e2e` builds the app and drives the built bundle in Chromium, answering API calls with responses captured from the real API, so the tests need no backend.
 
 ### Java call sites
 
@@ -157,7 +158,7 @@ The dominant reads:
 | root | Application, properties, the command-line commands | Spring Boot | Object-oriented shell |
 | `chamber-sim/src` | The C chamber: recipe state machine, interlocks, hidden chamber state, faults, the JSON-lines protocol and the socket | none | Procedural C11, with the model kept apart from the socket: everything but `main.c` is a function of state |
 | `frontend/src/pages`, `charts` | Pages and charts | React | Functional reactive: state in hooks, everything shown derived from what the API answered |
-| `frontend/src/api`, `format.ts` | Parsing at the boundary, formatting | zod | Functional: pure parsers and formatters |
+| `frontend/src/api`, `format.ts`, `summary.ts` | Parsing at the boundary, formatting, the runs page's answer | zod | Functional: pure parsers, formatters and calculations |
 
 Dependencies point one way: `api` to `health`, `store`, `detect` and `recipe`; `health` and `store` to `detect` and `recipe`; `detect` and `sim` to `recipe`. `ingest` uses `store`, `health`, `detect`, `recipe` and `sim`, `store` reads `sim`'s fault records to store them, and `eval` uses `sim`, `detect` and `recipe`. `depth` imports nothing but the language, and `api` hands it the rows `store` read. `spectra` reads `recipe` only, and `ingest` drives it. `live` reads `recipe`, `sim`'s fault records and `store`, and goes through the same aligner and store as every other run. The pure packages import nothing from Spring or JDBC, and the only framework type anywhere near them is the netCDF file that `ingest` and `spectra` each keep inside one reader.
 
