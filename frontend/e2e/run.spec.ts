@@ -91,7 +91,7 @@ test('marks a good run the detectors left alone', async ({ page }) => {
   await page.goto('/runs/11')
 
   await expect(page.locator('.page-head')).toContainText('Baseline run')
-  await expect(page.locator('.page-head .badge-good')).toHaveText('Clean')
+  await expect(page.locator('.page-head .badge-good')).toHaveText('In range')
 })
 
 test('puts the fault the simulator injected next to what the detectors caught', async ({ page }) => {

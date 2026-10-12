@@ -50,14 +50,17 @@ export function LivePage() {
     <>
       <header className="page-head">
         <h1>Live chamber</h1>
-        <p className="note">
-          The chamber simulator in <code>chamber-sim/</code> etches a wafer and streams what its 31 channels read,
-          one frame every 0.2 s. ChamberWatch records the stream and, when the run ends, aligns, stores and scores
-          it exactly as it does a wafer from the dataset. Start it with{' '}
-          <code>chamber-sim --port=5610 --rate=60</code>, or <code>--fault=random</code> to give it something to
-          find. A baseline learns from the first three wafers of each lot, so stream wafers 1 to 3 of ten lots before
-          a faulted one: that is the 30 good runs the public baseline has, and fewer give bands too narrow to trust.
-        </p>
+        <details className="how">
+          <summary>How to start the chamber simulator</summary>
+          <p>
+            The chamber simulator in <code>chamber-sim/</code> etches a wafer and streams what its 31 channels read,
+            one frame every 0.2 s. ChamberWatch records the stream and, when the run ends, aligns, stores and scores
+            it exactly as it does a wafer from the dataset. Start it with{' '}
+            <code>chamber-sim --port=5610 --rate=60</code>, or <code>--fault=random</code> to give it something to
+            find. A baseline learns from the first three wafers of each lot, so stream wafers 1 to 3 of ten lots before
+            a faulted one: that is the 30 good runs the public baseline has, and fewer give bands too narrow to trust.
+          </p>
+        </details>
       </header>
       <Loaded resource={session}>
         {(live) => (
@@ -134,7 +137,7 @@ function Outcome({ live }: { live: LiveSession }) {
       <h2 id="outcome-title">The last wafer it recorded</h2>
       <dl className="stats">
         <Stat label="Run" value={stored.run} compact detail={`${stored.reason} after ${formatCount(stored.samples)} samples`} />
-        <Stat label="Alignment" value={stored.alignment ?? MISSING} compact detail="On the recipe grid" />
+        <Stat label="Alignment" value={stored.alignment ?? MISSING} compact />
         <Stat
           label="Fault put in"
           value={stored.faultKind === null ? 'None' : formatFaultKind(stored.faultKind)}

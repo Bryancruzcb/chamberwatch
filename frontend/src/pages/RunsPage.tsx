@@ -1,33 +1,58 @@
-import { Link, useSearchParams } from 'react-router'
-import { type Baseline, isFlagged, lotsSchema, type RunRow, runsPageSchema, type Source } from '../api/schema'
-import { readSource, sourceQuery } from '../api/source'
+import { type KeyboardEvent, useEffect, useMemo } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router'
+import { lotsSchema, runsPageSchema, type Source } from '../api/schema'
+import { readSource, withSource } from '../api/source'
+import { useLotDrifts } from '../api/useLotDrifts'
 import { useResource } from '../api/useResource'
-import { Loaded } from '../components/Loaded'
-import { Segmented } from '../components/Segmented'
+import { Icon, type IconName } from '../components/Icon'
 import { SourceSwitch } from '../components/SourceSwitch'
-import { Stat } from '../components/Stat'
-import { RunStatus } from '../components/Status'
-import { ZMeter } from '../components/ZMeter'
-import { formatChannelName, formatLabel, formatScore, formatSeconds, MISSING } from '../format'
+import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
+import { AttentionPanel } from './RunsAttention'
+import { RunsTablePanel } from './RunsTable'
 
-type FlagFilter = 'all' | 'flagged' | 'clean'
-type Order = 'flagged' | 'lot' | 'z'
+/** The three views of the page: the lots that need a look, every run, or the runs in range. */
+type Tab = 'attention' | 'all' | 'in'
 
-const FLAG_FILTERS = [['all', 'All runs'], ['flagged', 'Flagged'], ['clean', 'Not flagged']] as const
-const ORDERS = [['flagged', 'Flagged first'], ['lot', 'Lot and wafer'], ['z', 'How unusual']] as const
+const TABS = [
+  { id: 'attention', text: 'Needs a look', icon: 'alert' },
+  { id: 'all', text: 'All runs', icon: 'layers' },
+  { id: 'in', text: 'In range', icon: 'check' },
+] as const satisfies ReadonlyArray<{ id: Tab; text: string; icon: IconName }>
 
-const SUBTITLES = {
-  PUBLIC: 'A queue of the public wafers. Flagged ones sit at the top. Open one to see which sensor left first.',
-  SYNTHETIC: 'Simulated wafers. Some have a planted fault. Open one to see the fault next to what the detectors called.',
-  LIVE: 'Wafers the C chamber simulator etched while ChamberWatch watched, from the Live page. A faulted one shows what went in.',
+const EMPTY_HINTS = {
+  PUBLIC: 'The public wafers show up here once the ingest command has loaded them.',
+  SYNTHETIC: 'The simulated wafers show up here once the simulate-lot command has stored them.',
+  LIVE: 'A wafer recorded on the Live page shows up here when its run ends.',
 } as const satisfies Record<Source, string>
 
+interface View {
+  readonly source: Source
+  readonly tab: Tab
+  readonly lotId: number | null
+  readonly order: TableOrder
+}
+
+/**
+ * The page the app opens to. It leads with the answer, in facts: how many runs are out of range and where, the lot
+ * with the most of them, and which channel each one named first. Everything shown is derived from two answers of the
+ * API, the source's runs and the lot list, plus each lot's drift; the view itself lives in the URL.
+ */
 export function RunsPage() {
   const [params, setParams] = useSearchParams()
-  const { source, lotId, flags, order } = readFilters(params)
+  const view = readView(params)
   const [lots] = useResource('/api/lots', lotsSchema)
-  const [page] = useResource(runsPath(source, lotId, flags), runsPageSchema)
-  const lotsOfSource = lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === source) : []
+  const [page, reload] = useResource(withSource('/api/runs', view.source), runsPageSchema)
+  // a new source keeps the old runs on hand until its own arrive; they never stand in for the new source's answer
+  const summary = useMemo(() => {
+    if (page.kind !== 'ready' || page.refreshing) {
+      return null
+    }
+    const known = lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === view.source) : []
+    return summarize(page.data.runs, known)
+  }, [page, lots, view.source])
+  const drifts = useLotDrifts(summary === null ? [] : summary.lots.map((group) => group.lotId))
+  // the lot list only adds dates and conditioning, so the page waits for it but does without it if it fails
+  const ready = page.kind === 'ready' && lots.kind !== 'loading' && summary !== null
 
   function update(changes: Record<string, string | null>) {
     setParams((current) => {
@@ -41,127 +66,196 @@ export function RunsPage() {
         }
       }
       return next
-    }, { replace: true })
+    }, { replace: true, preventScrollReset: true })
   }
+
+  function choose(tab: Tab) {
+    // a lot filter belongs to the table, and a link with a lot opens the table, so leaving the table drops it
+    update(tab === 'attention' ? { show: null, lot: null, flagged: null } : { show: tab, flagged: null })
+  }
+
+  useScrollToHash(ready && view.tab === 'attention')
 
   return (
     <>
       <title>Runs · ChamberWatch</title>
-      <header className="page-head">
-        <h1>Runs</h1>
-        <p className="subtitle">{SUBTITLES[source]}</p>
-      </header>
-      <div className="filters">
-        <SourceSwitch value={source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />
-        <label className="field">
-          Lot
-          <select value={lotId ?? ''} onChange={(event) => update({ lot: event.target.value === '' ? null : event.target.value })}>
-            <option value="">All lots</option>
-            {lotsOfSource.map((lot) => (
-              <option key={lot.id} value={lot.id}>
-                {`Lot ${lot.lotNo}${lot.runDate === null ? '' : `, ${lot.runDate}`}, ${lot.flaggedRuns} flagged`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Segmented
-          label="Show"
-          value={flags}
-          options={FLAG_FILTERS}
-          onChange={(next) => update({ flagged: next === 'all' ? null : String(next === 'flagged') })}
-        />
-        <Segmented label="Order" value={order} options={ORDERS} onChange={(next) => update({ order: next === 'flagged' ? null : next })} />
+      <section className="answer" aria-live="polite" aria-busy={!ready}>
+        {page.kind === 'error'
+          ? <h1>The runs did not load.</h1>
+          : summary === null || !ready
+            ? <AnswerSkeleton />
+            : <Answer summary={summary} />}
+      </section>
+      <div className="runs-bar">
+        <Tabs tab={view.tab} summary={ready ? summary : null} onChoose={choose} />
+        <SourceSwitch value={view.source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />
       </div>
-      <Loaded resource={page}>
-        {(data) => <RunsTable runs={sortRuns(data.runs, order)} baseline={data.baseline} />}
-      </Loaded>
+      <div id="runs-panel" role="tabpanel" aria-labelledby={`tab-${view.tab}`} className="runs-panel">
+        {page.kind === 'error'
+          ? <ErrorState message={page.error.message} onRetry={reload} />
+          : !ready || summary === null || page.kind !== 'ready'
+            ? <PanelSkeleton />
+            : summary.runs.length === 0
+              ? <EmptyState source={view.source} />
+              : view.tab === 'attention'
+                ? <AttentionPanel key={view.source} summary={summary} baseline={page.data.baseline} drifts={drifts} source={view.source} />
+                : (
+                    <RunsTablePanel
+                      key={`${view.source} ${view.tab}`}
+                      summary={summary}
+                      baseline={page.data.baseline}
+                      inRangeOnly={view.tab === 'in'}
+                      lotId={view.lotId}
+                      order={view.order}
+                      onLot={(lotId) => update({ lot: lotId === null ? null : String(lotId) })}
+                      onOrder={(order) => update({ order: order === 'out' ? null : order })}
+                    />
+                  )}
+      </div>
     </>
   )
 }
 
-function RunsTable({ runs, baseline }: { runs: readonly RunRow[]; baseline: Baseline | null }) {
-  const flagged = runs.filter((run) => isFlagged(run.score)).length
+function Answer({ summary }: { summary: RunsSummary }) {
+  const said = headline(summary)
+  const hasNext = said.startText !== '' || said.channelText !== null || said.detail !== null
   return (
     <>
-      <dl className="stats">
-        <Stat label="Runs" value={runs.length} />
-        <Stat label="Flagged" value={flagged} detail={runs.length === 0 ? undefined : `${Math.round((100 * flagged) / runs.length)}% of these runs`} />
-        {baseline !== null && (
-          <Stat
-            label="Baseline"
-            value={`#${baseline.id}`}
-            detail={`${baseline.goodRuns} good runs, limit z ${formatScore(baseline.k)} held for ${baseline.n} samples`}
-          />
-        )}
-      </dl>
-      <div className="panel table-wrap">
-        <table>
-          <caption className="visually-hidden">Runs</caption>
-          <thead>
-            <tr>
-              <th scope="col">Wafer</th>
-              <th scope="col" className="num">Lot</th>
-              <th scope="col" className="num">#</th>
-              <th scope="col">Status</th>
-              <th scope="col">First sensor</th>
-              <th scope="col" className="num">At</th>
-              <th scope="col">How unusual</th>
-              <th scope="col" className="num">Out</th>
-              <th scope="col">Label</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id} className={isFlagged(run.score) ? 'flagged-row' : undefined}>
-                <td><Link className="key" to={`/runs/${run.id}`}>{run.key}</Link></td>
-                <td className="num">{run.lotNo}</td>
-                <td className="num">{run.positionInLot}</td>
-                <td><RunStatus alignment={run.alignment} score={run.score} good={run.good} /></td>
-                <td>{run.score?.firstChannel === undefined || run.score.firstChannel === null ? MISSING : formatChannelName(run.score.firstChannel)}</td>
-                <td className="num">{formatSeconds(run.score?.firstTimeS ?? null)}</td>
-                <td>{run.score !== null && baseline !== null ? <ZMeter z={run.score.persistentZ} k={baseline.k} /> : MISSING}</td>
-                <td className="num">{run.score?.limitFlags ?? MISSING}</td>
-                <td>{formatLabel(run.label)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {runs.length === 0 && <p className="status-line">No runs match these filters.</p>}
-      </div>
+      <h1>{said.lead}</h1>
+      {hasNext && (
+        <p className="answer-next">
+          {said.startStrong !== '' && <strong>{said.startStrong}</strong>}
+          {said.startText}
+          {said.channelText !== null && ` ${said.channelText}`}
+          {said.detail}
+        </p>
+      )}
     </>
   )
 }
 
-function readFilters(params: URLSearchParams): { source: Source; lotId: number | null; flags: FlagFilter; order: Order } {
+function AnswerSkeleton() {
+  return (
+    <>
+      <h1 className="visually-hidden">Runs</h1>
+      <p className="visually-hidden" role="status">Loading runs</p>
+      <span className="skel skel-title" aria-hidden="true" />
+      <span className="skel skel-title short" aria-hidden="true" />
+      <span className="skel skel-text" aria-hidden="true" />
+    </>
+  )
+}
+
+function Tabs({ tab, summary, onChoose }: { tab: Tab; summary: RunsSummary | null; onChoose: (tab: Tab) => void }) {
+  const counts: Record<Tab, number | null> = summary === null
+    ? { attention: null, all: null, in: null }
+    : { attention: summary.out.length, all: summary.runs.length, in: summary.inRange }
+
+  function move(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+    if (step === 0) {
+      return
+    }
+    event.preventDefault()
+    const index = TABS.findIndex((entry) => entry.id === tab)
+    const next = TABS[(index + step + TABS.length) % TABS.length]
+    if (next !== undefined) {
+      onChoose(next.id)
+      document.getElementById(`tab-${next.id}`)?.focus()
+    }
+  }
+
+  return (
+    <div className="tabs" role="tablist" aria-label="Runs to show" onKeyDown={move}>
+      {TABS.map((entry) => (
+        <button
+          key={entry.id}
+          id={`tab-${entry.id}`}
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={entry.id === tab}
+          aria-controls="runs-panel"
+          tabIndex={entry.id === tab ? 0 : -1}
+          onClick={() => onChoose(entry.id)}
+        >
+          <Icon name={entry.icon} />
+          {entry.text}
+          {counts[entry.id] !== null && <span className="count">{counts[entry.id]}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PanelSkeleton() {
+  return (
+    <div className="grid" aria-hidden="true">
+      <span className="skel skel-card" />
+      <span className="skel skel-card" />
+      <span className="skel skel-card" />
+    </div>
+  )
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="state-box" role="alert">
+      <span className="chip out"><Icon name="alert" size={18} /></span>
+      <div>
+        <h2>Could not load the runs</h2>
+        <p>{message}</p>
+        <button type="button" className="button" onClick={onRetry}>
+          <Icon name="refresh" />
+          Try again
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function EmptyState({ source }: { source: Source }) {
+  return (
+    <div className="state-box" role="status">
+      <span className="chip ok"><Icon name="inbox" size={18} /></span>
+      <div>
+        <h2>Nothing to check</h2>
+        <p>
+          {EMPTY_HINTS[source]}
+          {source === 'LIVE' && <>{' '}<Link to="/live">Open the Live page</Link></>}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** A link to one lot's card, `/#lot-6`, scrolls to it once the cards are on the page. */
+function useScrollToHash(shown: boolean) {
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (shown && hash.length > 1) {
+      document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView()
+    }
+  }, [shown, hash])
+}
+
+/**
+ * The view in the URL. A link with a lot, like the run page's "Lot 6", opens the table on that lot. Links from before
+ * the tabs keep working: `flagged=false` opens the runs in range and `flagged=true` opens the table.
+ */
+function readView(params: URLSearchParams): View {
   const lot = params.get('lot')
+  const lotId = lot !== null && /^\d+$/.test(lot) ? Number(lot) : null
+  const show = params.get('show')
   const flagged = params.get('flagged')
+  const tab: Tab = show === 'all' || show === 'in'
+    ? show
+    : flagged === 'false' ? 'in' : lotId !== null || flagged === 'true' ? 'all' : 'attention'
+  const order = params.get('order')
   return {
     source: readSource(params),
-    lotId: lot !== null && /^\d+$/.test(lot) ? Number(lot) : null,
-    flags: flagged === 'true' ? 'flagged' : flagged === 'false' ? 'clean' : 'all',
-    order: params.get('order') === 'z' ? 'z' : params.get('order') === 'lot' ? 'lot' : 'flagged',
+    tab,
+    lotId,
+    order: order === 'z' || order === 'lot' ? order : 'out',
   }
-}
-
-function runsPath(source: Source, lotId: number | null, flags: FlagFilter): string {
-  const query = new URLSearchParams(sourceQuery(source))
-  if (lotId !== null) {
-    query.set('lot', String(lotId))
-  }
-  if (flags !== 'all') {
-    query.set('flagged', String(flags === 'flagged'))
-  }
-  const search = query.toString()
-  return search === '' ? '/api/runs' : `/api/runs?${search}`
-}
-
-function sortRuns(runs: readonly RunRow[], order: Order): RunRow[] {
-  const sorted = [...runs]
-  if (order === 'z') {
-    sorted.sort((a, b) => (b.score?.persistentZ ?? -1) - (a.score?.persistentZ ?? -1))
-  }
-  else if (order === 'flagged') {
-    sorted.sort((a, b) => Number(isFlagged(b.score)) - Number(isFlagged(a.score)))
-  }
-  return sorted
 }

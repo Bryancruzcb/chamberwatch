@@ -463,7 +463,7 @@ function describeRefit(result: RelabelResult): string {
     return 'No good runs are left, so there is no baseline to score against.'
   }
   const summary = `Baseline #${result.baselineId} ${result.fitted ? 'fitted' : 'reused'} from ${result.goodRuns ?? 0} good runs. `
-    + `${result.scored} runs scored, ${result.flagged} flagged.`
+    + `${result.scored} runs scored, ${result.flagged} out of range.`
   return result.current ? summary : `${summary} A relabel that read newer labels finished first, and its baseline is the current one.`
 }
 
