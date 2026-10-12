@@ -1,12 +1,11 @@
 import { type KeyboardEvent, useEffect, useMemo } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
-import { type Baseline, lotsSchema, runsPageSchema, type Source } from '../api/schema'
+import { lotsSchema, runsPageSchema, type Source } from '../api/schema'
 import { readSource, withSource } from '../api/source'
 import { useLotDrifts } from '../api/useLotDrifts'
 import { useResource } from '../api/useResource'
 import { Icon, type IconName } from '../components/Icon'
 import { SourceSwitch } from '../components/SourceSwitch'
-import { formatSource } from '../format'
 import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
 import { AttentionPanel } from './RunsAttention'
 import { RunsTablePanel } from './RunsTable'
@@ -82,10 +81,10 @@ export function RunsPage() {
       <title>Runs · ChamberWatch</title>
       <section className="answer" aria-live="polite" aria-busy={!ready}>
         {page.kind === 'error'
-          ? <AnswerText eyebrow={eyebrow(view.source, null)} lead="The runs did not load." />
+          ? <h1>The runs did not load.</h1>
           : summary === null || !ready
             ? <AnswerSkeleton />
-            : <Answer source={view.source} baseline={page.kind === 'ready' ? page.data.baseline : null} summary={summary} />}
+            : <Answer summary={summary} />}
       </section>
       <div className="runs-bar">
         <Tabs tab={view.tab} summary={ready ? summary : null} onChoose={choose} />
@@ -117,17 +116,11 @@ export function RunsPage() {
   )
 }
 
-function eyebrow(source: Source, baseline: Baseline | null): string {
-  const base = `Runs · ${formatSource(source)} wafers`
-  return baseline === null ? base : `${base} · baseline #${baseline.id}, ${baseline.goodRuns} good runs`
-}
-
-function Answer({ source, baseline, summary }: { source: Source; baseline: Baseline | null; summary: RunsSummary }) {
+function Answer({ summary }: { summary: RunsSummary }) {
   const said = headline(summary)
   const hasNext = said.startText !== '' || said.channelText !== null || said.detail !== null
   return (
     <>
-      <p className="eyebrow">{eyebrow(source, baseline)}</p>
       <h1>{said.lead}</h1>
       {hasNext && (
         <p className="answer-next">
@@ -141,19 +134,9 @@ function Answer({ source, baseline, summary }: { source: Source; baseline: Basel
   )
 }
 
-function AnswerText({ eyebrow: line, lead }: { eyebrow: string; lead: string }) {
-  return (
-    <>
-      <p className="eyebrow">{line}</p>
-      <h1>{lead}</h1>
-    </>
-  )
-}
-
 function AnswerSkeleton() {
   return (
     <>
-      <p className="eyebrow">Runs</p>
       <h1 className="visually-hidden">Runs</h1>
       <p className="visually-hidden" role="status">Loading runs</p>
       <span className="skel skel-title" aria-hidden="true" />

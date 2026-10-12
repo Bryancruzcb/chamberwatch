@@ -6,7 +6,7 @@ import { Icon } from '../components/Icon'
 import { ZMeter } from '../components/ZMeter'
 import { formatChannelName, formatConditioning, formatDate, formatScore, formatSeconds } from '../format'
 import {
-  type ChannelCount, describeLots, type LotDriftAnswer, type LotRuns, type RunsSummary, summarizeDrift,
+  type ChannelCount, describeLots, type DriftSummary, type LotDriftAnswer, type LotRuns, type RunsSummary, summarizeDrift,
 } from '../summary'
 
 const seconds = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
@@ -24,15 +24,16 @@ export function AttentionPanel({ summary, baseline, drifts, source }: {
   drifts: ReadonlyMap<number, LotDriftAnswer>
   source: Source
 }) {
+  const drift = summarizeDrift(summary.lots, drifts)
   return (
     <div className="panel-enter">
       <div className="grid">
         {summary.out.length > 0 && <ChannelCard counts={summary.firstChannels} outCount={summary.out.length} />}
-        {baseline !== null && summary.attention.map((group) => <LotCard key={group.lotId} group={group} k={baseline.k} />)}
-        <DriftCard lots={summary.lots} drifts={drifts} source={source} />
+        {baseline !== null && summary.attention.map((group, index) => <LotCard key={group.lotId} group={group} k={baseline.k} legend={index === 0} />)}
+        <DriftCard drift={drift} source={source} />
         <CleanCard clean={summary.clean} />
       </div>
-      {baseline !== null && <Definitions baseline={baseline} />}
+      {baseline !== null && <Definitions baseline={baseline} bandK={drift.k} />}
     </div>
   )
 }
@@ -41,10 +42,7 @@ function ChannelCard({ counts, outCount }: { counts: readonly ChannelCount[]; ou
   return (
     <article className="card" aria-labelledby="first-channel-title">
       <span className="chip chan"><Icon name="crosshair" size={18} /></span>
-      <h2 id="first-channel-title">
-        {'Which channel left its range first '}
-        <span className="rest">in each out-of-range run</span>
-      </h2>
+      <h2 id="first-channel-title">Which channel left its range first</h2>
       <ul className="bars">
         {counts.map((entry) => (
           <li key={entry.channel ?? 'none'}>
@@ -56,15 +54,11 @@ function ChannelCard({ counts, outCount }: { counts: readonly ChannelCount[]; ou
           </li>
         ))}
       </ul>
-      <p className="card-foot">
-        Counted from each run's first channel, as the app ranks them: the channel that left the good-run range earliest
-        in the record.
-      </p>
     </article>
   )
 }
 
-function LotCard({ group, k }: { group: LotRuns; k: number }) {
+function LotCard({ group, k, legend }: { group: LotRuns; k: number; legend: boolean }) {
   const { lot } = group
   const when = lot === null
     ? []
@@ -80,7 +74,7 @@ function LotCard({ group, k }: { group: LotRuns; k: number }) {
         <span className="rest">{`${group.out.length} of ${group.runs.length} ${group.runs.length === 1 ? 'wafer' : 'wafers'} out of range`}</span>
       </h2>
       {when.length > 0 && <p className="card-meta">{when.join(' · ')}</p>}
-      <LotDotPlot lotNo={group.lotNo} runs={group.runs} k={k} />
+      <LotDotPlot lotNo={group.lotNo} runs={group.runs} k={k} legend={legend} />
       <ul className="wafers" aria-label={`Out-of-range wafers in Lot ${group.lotNo}`}>
         {group.out.map((run) => <WaferRow key={run.id} run={run} k={k} />)}
       </ul>
@@ -106,8 +100,7 @@ function WaferRow({ run, k }: { run: RunRow; k: number }) {
   )
 }
 
-function DriftCard({ lots, drifts, source }: { lots: readonly LotRuns[]; drifts: ReadonlyMap<number, LotDriftAnswer>; source: Source }) {
-  const drift = summarizeDrift(lots, drifts)
+function DriftCard({ drift, source }: { drift: DriftSummary; source: Source }) {
   return (
     <article className="card" aria-labelledby="drift-title" aria-busy={drift.loading.length > 0}>
       <span className="chip drift"><Icon name="trend" size={18} /></span>
@@ -137,8 +130,6 @@ function DriftCard({ lots, drifts, source }: { lots: readonly LotRuns[]; drifts:
         )}
       </ul>
       <p className="card-foot">
-        {drift.k !== null && `Band: the good runs' SF6-phase average, ± ${formatScore(drift.k)} standard deviations. `}
-        A flag says the tool behaved differently; it does not say the wafer etched worse.{' '}
         <Link to={withSource('/lots', source)}>All lots</Link>
       </p>
     </article>
@@ -171,7 +162,7 @@ function CleanCard({ clean }: { clean: readonly LotRuns[] }) {
   )
 }
 
-function Definitions({ baseline }: { baseline: Baseline }) {
+function Definitions({ baseline, bandK }: { baseline: Baseline; bandK: number | null }) {
   const hold = `${baseline.n} samples (${seconds.format(baseline.n * SAMPLE_S)} s)`
   return (
     <dl className="words">
@@ -182,8 +173,12 @@ function Definitions({ baseline }: { baseline: Baseline }) {
       <div>
         <dt>Out of range</dt>
         <dd>
-          {`A detector flagged the run: a channel stayed past the limit of ${formatScore(baseline.k)}, a phase mean or spread sat more than ${formatScore(baseline.runZ)} from the good runs, or a sensor held one value longer than any good run did.`}
+          {`A detector flagged the run: a channel stayed past the limit of ${formatScore(baseline.k)}, a phase mean or spread sat more than ${formatScore(baseline.runZ)} from the good runs, or a sensor held one value longer than any good run did. A flag says the tool behaved differently; it does not say the wafer etched worse.`}
         </dd>
+      </div>
+      <div>
+        <dt>First channel</dt>
+        <dd>The channel that left the good-run range earliest in the run's record.</dd>
       </div>
       <div>
         <dt>Excursion</dt>
@@ -193,6 +188,12 @@ function Definitions({ baseline }: { baseline: Baseline }) {
         <dt>{`Baseline #${baseline.id}`}</dt>
         <dd>{`What good looks like, learned from ${baseline.goodRuns} good runs, marked Baseline run.`}</dd>
       </div>
+      {bandK !== null && (
+        <div>
+          <dt>Band</dt>
+          <dd>{`For drift: the good runs' SF6-phase average, ± ${formatScore(bandK)} standard deviations.`}</dd>
+        </div>
+      )}
     </dl>
   )
 }

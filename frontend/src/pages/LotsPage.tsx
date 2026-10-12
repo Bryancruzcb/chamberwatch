@@ -13,12 +13,6 @@ import { formatConditioning, formatDate, formatDepthFeature, formatDepthMethod, 
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const threeDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
-const SUBTITLES = {
-  PUBLIC: 'The public lots, each started after a chamber clean, and how wafers change with their position in a lot.',
-  SYNTHETIC: 'The simulated lots: the clean training lots the baseline learns from, and the lot with known faults.',
-  LIVE: 'The lots streamed from the chamber simulator. Their first wafers teach the live baseline.',
-} as const satisfies Record<Source, string>
-
 export function LotsPage() {
   const [params, setParams] = useSearchParams()
   const source = readSource(params)
@@ -29,7 +23,6 @@ export function LotsPage() {
       <title>Lots · ChamberWatch</title>
       <header className="page-head">
         <h1>Lots</h1>
-        <p className="subtitle">{SUBTITLES[source]}</p>
       </header>
       <div className="filters">
         <SourceSwitch
@@ -71,11 +64,6 @@ function DepthModelReport({ model }: { model: DepthModel }) {
   return (
     <section className="panel" aria-labelledby="depth-model-title">
       <h2 id="depth-model-title">Depth predicted from the telemetry</h2>
-      <p className="note">
-        {`A ridge regression on ${model.features} phase means and spreads predicts each wafer's mean ${model.set === 'NINE_POINT' ? '9' : '89'}-point
-        depth. Every lot is predicted by a model fitted on the other lots only, with its penalty chosen the same way inside
-        them, so no lot takes part in its own prediction. ${model.wafers} measured wafers in ${model.lots} lots.`}
-      </p>
       <PositionChart
         title="Mean depth, µm"
         label="Measured and predicted mean depth by wafer position"
@@ -104,10 +92,19 @@ function DepthModelReport({ model }: { model: DepthModel }) {
           </tbody>
         </table>
       </div>
-      <p className="note">
-        Root mean square error. The first wafers' guess needs those wafers' own depth, so it only scores the ones after
-        them. The features that weigh most in the model fitted on every lot, per standard deviation:
-      </p>
+      <details className="how">
+        <summary>How this is counted</summary>
+        <p>
+          {`A ridge regression on ${model.features} phase means and spreads predicts each wafer's mean ${model.set === 'NINE_POINT' ? '9' : '89'}-point
+          depth. Every lot is predicted by a model fitted on the other lots only, with its penalty chosen the same way inside
+          them, so no lot takes part in its own prediction. ${model.wafers} measured wafers in ${model.lots} lots.`}
+        </p>
+        <p>
+          The errors are root mean square errors. The first wafers' guess needs those wafers' own depth, so it only scores
+          the ones after them.
+        </p>
+      </details>
+      <p className="note">The features that weigh most in the model fitted on every lot, per standard deviation:</p>
       <ol className="features">
         {model.strongest.slice(0, 5).map((coefficient) => (
           <li key={coefficient.feature}>
@@ -175,12 +172,7 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
   return (
     <section className="panel" aria-labelledby="report-title">
       <h2 id="report-title">Drift and depth by wafer position</h2>
-      <p className="note">
-        {`Each position averages every lot. A run's drift score is the root mean square of its channels' SF6 phase mean
-        z-scores. Depth loss is how much shallower a wafer etched than the mean of the first ${report.referenceWafers}
-        wafers of its lot. The two measurement sets come from different instruments, so each keeps its own line.`}
-        {!measured && ' Simulated wafers have no measured depth, so only the drift score is shown.'}
-      </p>
+      {!measured && <p className="note">Simulated wafers have no measured depth, so only the drift score is shown.</p>}
       <div className="chart-pair">
         <PositionChart
           title="Mean drift score"
@@ -199,6 +191,14 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
           />
         )}
       </div>
+      <details className="how">
+        <summary>How this is counted</summary>
+        <p>
+          {`Each position averages every lot. A run's drift score is the root mean square of its channels' SF6 phase mean
+          z-scores. Depth loss is how much shallower a wafer etched than the mean of the first ${report.referenceWafers}
+          wafers of its lot. The two measurement sets come from different instruments, so each keeps its own line.`}
+        </p>
+      </details>
       <button type="button" className="link-button" aria-expanded={tableShown} onClick={() => setTableShown(!tableShown)}>
         {tableShown ? 'Hide the table' : 'Show as a table'}
       </button>

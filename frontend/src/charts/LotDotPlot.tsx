@@ -12,9 +12,10 @@ const MIN_POSITIONS = 10
 
 /**
  * How unusual each scored wafer of a lot was, by its position, against the limit. Out-of-range wafers are filled red,
- * in-range ones gray, and the baseline runs hollow. The most unusual out-of-range wafer carries its value.
+ * in-range ones gray, and the baseline runs hollow. The most unusual out-of-range wafer carries its value. Only the
+ * first plot on the page carries the key, since every plot uses the same marks.
  */
-export function LotDotPlot({ lotNo, runs, k }: { lotNo: number; runs: readonly RunRow[]; k: number }) {
+export function LotDotPlot({ lotNo, runs, k, legend }: { lotNo: number; runs: readonly RunRow[]; k: number; legend: boolean }) {
   const [measured, measure] = useWidth()
   const width = measured > 0 ? measured : 320
   const scored = runs.flatMap((run) => (run.score === null ? [] : [{ run, z: run.score.persistentZ, out: runState(run) === 'out' }]))
@@ -51,12 +52,13 @@ export function LotDotPlot({ lotNo, runs, k }: { lotNo: number; runs: readonly R
           )}
         </svg>
       </div>
-      <figcaption className="plot-key">
-        <span><i className="key-dot out" aria-hidden="true" />out of range</span>
-        <span><i className="key-dot" aria-hidden="true" />in range</span>
-        <span><i className="key-dot baseline" aria-hidden="true" />baseline run</span>
-        <span>by wafer position</span>
-      </figcaption>
+      {legend && (
+        <figcaption className="plot-key">
+          <span><i className="key-dot out" aria-hidden="true" />out of range</span>
+          <span><i className="key-dot" aria-hidden="true" />in range</span>
+          <span><i className="key-dot baseline" aria-hidden="true" />baseline run</span>
+        </figcaption>
+      )}
     </figure>
   )
 }

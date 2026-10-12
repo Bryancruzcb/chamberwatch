@@ -62,16 +62,11 @@ function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) 
   return (
     <section className="panel" aria-labelledby="predicted-title">
       <h2 id="predicted-title">Predicted from the telemetry</h2>
-      <p className="note">
-        A ridge regression on every channel's phase means and spreads predicts the wafer's mean depth. The model that
-        predicts this wafer was fitted on the other lots only, so it never saw this lot's depths.{' '}
-        <Link to="/lots">The lots page</Link> compares it with two simpler guesses.
-      </p>
       <Loaded resource={depth}>
         {(data) => (
           <dl className="stats">
             <Stat label="Predicted depth" value={formatMicrons(data.predictedUm)} detail={describeResidual(data.residualUm)} />
-            <Stat label="Measured depth" value={formatMicrons(data.measuredUm)} detail="Mean over the measured sites" />
+            <Stat label="Measured depth" value={formatMicrons(data.measuredUm)} />
             <Stat
               label={`Lot ${data.lotNo} error`}
               value={formatMicrons(data.lotRmseUm)}
@@ -80,6 +75,14 @@ function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) 
           </dl>
         )}
       </Loaded>
+      <details className="how">
+        <summary>How this is counted</summary>
+        <p>
+          A ridge regression on every channel's phase means and spreads predicts the wafer's mean depth. The model that
+          predicts this wafer was fitted on the other lots only, so it never saw this lot's depths.{' '}
+          <Link to="/lots">The lots page</Link> compares it with two simpler guesses.
+        </p>
+      </details>
     </section>
   )
 }
@@ -93,18 +96,21 @@ function MeasurementsView({ measurements }: { measurements: Measurements }) {
         <Stat label="Mean depth" value={formatMicrons(measurements.meanDepthUm)} />
         <Stat label="Spread" value={formatMicrons(measurements.sdDepthUm)} detail="Standard deviation across the sites" />
         {depths.length > 0 && (
-          <Stat label="Range" value={formatMicrons(Math.max(...depths) - Math.min(...depths))} detail="Deepest site less shallowest" />
+          <Stat label="Range" value={formatMicrons(Math.max(...depths) - Math.min(...depths))} />
         )}
       </dl>
       <section className="panel" aria-labelledby="wafer-title">
         <h2 id="wafer-title">Etch depth across the wafer</h2>
-        <p className="note">
-          Depth is step height less the oxide left on top. The 9-point and 89-point sets were measured months apart with
-          different instruments, so they are never mixed.
-        </p>
         {measurements.points === 0
           ? <p className="status-line">No measured depth in this set.</p>
           : <WaferMap measurements={measurements} />}
+        <details className="how">
+          <summary>How this is counted</summary>
+          <p>
+            Depth is step height less the oxide left on top. The 9-point and 89-point sets were measured months apart
+            with different instruments, so they are never mixed.
+          </p>
+        </details>
       </section>
     </>
   )
