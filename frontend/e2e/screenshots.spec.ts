@@ -14,6 +14,18 @@ test.beforeAll(() => {
   mkdirSync(OUT, { recursive: true })
 })
 
+// One window's height only: the answer and the first cards. The captured responses hold the drift of lot 6 alone, so a
+// full page would show a drift card the real API never draws.
+test('the runs page opening on its answer', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('15 of 96 runs are out of range, all in lots 6 to 9.')
+  await expect(page.getByRole('img', { name: /^How unusual each wafer of Lot 6 was/ }).locator('[data-kind="dot"]')).toHaveCount(10)
+  await page.evaluate(() => document.fonts.ready)
+  await page.screenshot({ path: join(OUT, 'runs.png') })
+})
+
 test('the run page of a flagged public wafer', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')

@@ -4,13 +4,17 @@ ChamberWatch watches a plasma etch chamber.
 
 It learns what a good wafer looks like from the first few after a chamber clean, then flags later wafers that leave that band and names the sensor that left first. For every flag it puts the sensor next to the measured etch depth on that wafer.
 
-![A flagged public wafer: the load capacitor left the good-run band at 407 s, with later departures shaded on the trace](docs/images/run-55.png)
+![The Runs page opens on its answer: 15 of 96 runs are out of range, all in lots 6 to 9. Start with lot 6, where wafers 4 to 10 are out of range; the platen RF load cap left its range first in 10 of the 15 runs](docs/images/runs.png)
 
 ## What it found
 
 On 96 public wafers it did not find scrap. It found the tool changing through the lot.
 
-15 wafers are flagged, all on the two platen match capacitors, all in lots 6 to 9, starting at wafer 4 or later. Those wafers etched no shallower than unflagged wafers at the same position. Depth *does* follow lot position: mean depth loss grows to 0.90 µm by wafer 10, and the SF6-phase mean of the platen tuning capacitor correlates at −0.80 with measured depth inside lots. By the last wafer of every lot that capacitor is outside the good-run band.
+15 wafers are flagged, all on the two platen match capacitors, all in lots 6 to 9, starting at wafer 4 or later. Those wafers etched no shallower than unflagged wafers at the same position.
+
+![A flagged public wafer: the platen RF load cap left its range first at 407.2 s, with later excursions shaded on the trace, and the wafer measured 0.31 µm shallower than its lot's first wafers](docs/images/run-55.png)
+
+Depth *does* follow lot position: mean depth loss grows to 0.90 µm by wafer 10, and the SF6-phase mean of the platen tuning capacitor correlates at −0.80 with measured depth inside lots. By the last wafer of every lot that capacitor is outside the good-run band.
 
 ![The lots page: flags start at lot 6; drift score and depth loss climb together with wafer position](docs/images/lots.png)
 
