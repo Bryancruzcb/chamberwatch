@@ -63,8 +63,14 @@ test('compares the depth predicted from the telemetry with two simpler guesses',
   await expect(table.getByRole('row', { name: /Position in the lot/ })).toContainText('0.22 µm')
   await expect(table.getByRole('row', { name: /first wafers/ })).toContainText('0.71 µm')
   await expect(panel).toContainText('Foreline pressure, C4F8 spread')
+  await expect(panel.locator('.panel-answer')).toHaveText(
+    'After each lot\'s first wafers, the telemetry misses a wafer\'s depth by 0.16 µm, against 0.21 µm for a guess from its place in the lot and 0.71 µm from the lot\'s first wafers.',
+  )
+  await expect(page.getByRole('region', { name: 'Drift and depth by wafer position' }).locator('.panel-answer'))
+    .toHaveText('By wafer 10, wafers etch 0.90 µm shallower than the first 3 of their lot, on average.')
 
   await page.goto('/lots?source=SYNTHETIC')
   await expect(page.getByRole('heading', { level: 2, name: 'Drift and depth by wafer position' })).toBeVisible()
+  await expect(page.locator('.panel-answer')).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Depth predicted from the telemetry' })).toHaveCount(0)
 })

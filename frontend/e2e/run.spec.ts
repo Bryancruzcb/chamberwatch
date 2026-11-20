@@ -7,8 +7,13 @@ test('shows why a flagged wafer was flagged', async ({ page }) => {
   await page.goto('/runs/55')
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
-  await expect(stat(page, 'Limit flags')).toHaveText('25')
+  await expect(page.locator('.page-head .answer-next')).toHaveText(
+    'Platen RF load cap left its range first at 407.2 s. One other channel was out of range too. '
+    + 'Measured afterwards, the wafer etched 43.69 µm deep, 0.31 µm shallower than wafers 1 to 3 of its lot.',
+  )
+  await expect(stat(page, 'Excursions')).toHaveText('25')
   await expect(stat(page, 'First channel')).toHaveText('Platen RF load cap')
+  await expect(stat(page, 'How unusual')).toHaveText('18.8')
   await expect(page.getByRole('heading', { level: 2, name: 'Platen RF load cap' })).toBeVisible()
   await expect(page.locator('figure.chart svg [data-kind="excursion"]')).toHaveCount(21)
 })
@@ -22,7 +27,8 @@ test('puts the measured depth of a flagged wafer next to its flags', async ({ pa
     .toContainText('0.31 µm shallower than wafers 1 to 3 of its lot, 89-point set')
 
   await page.goto('/runs/133')
-  await expect(stat(page, 'Limit flags')).toHaveText('172')
+  await expect(stat(page, 'Excursions')).toHaveText('172')
+  await expect(stat(page, 'How unusual')).toHaveText('>20')
   await expect(stat(page, 'Measured depth')).toHaveCount(0)
 })
 
@@ -92,6 +98,8 @@ test('marks a good run the detectors left alone', async ({ page }) => {
 
   await expect(page.locator('.page-head')).toContainText('Baseline run')
   await expect(page.locator('.page-head .badge-good')).toHaveText('In range')
+  await expect(page.locator('.page-head .answer-next'))
+    .toContainText('No channel left the good-run range. This run is one of the good runs that range was learned from.')
 })
 
 test('puts the fault the simulator injected next to what the detectors caught', async ({ page }) => {
@@ -113,7 +121,8 @@ test('shows a stuck sensor as a hold next to the fault the simulator injected', 
   const panel = page.getByRole('region', { name: 'Injected fault' })
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('SIM-s7-L901-W10')
-  await expect(stat(page, 'Stuck holds')).toHaveText('1')
+  await expect(page.locator('.page-head .answer-next')).toHaveText('Helium backside pressure got stuck on one value at 498.8 s.')
+  await expect(stat(page, 'Stuck values')).toHaveText('1')
   await expect(stat(page, 'First channel')).toHaveText('Helium backside pressure')
   await expect(panel).toContainText('Sensor stuck')
   await expect(panel).toContainText('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')

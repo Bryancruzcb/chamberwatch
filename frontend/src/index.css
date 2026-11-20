@@ -816,6 +816,13 @@ td .badge {
   font-weight: 600;
 }
 
+/* A report's answer in one sentence, under its heading and above its chart. */
+.panel-answer {
+  max-width: 62ch;
+  font-size: var(--text-lg);
+  color: var(--ink);
+}
+
 .runs-bar {
   display: flex;
   flex-wrap: wrap;

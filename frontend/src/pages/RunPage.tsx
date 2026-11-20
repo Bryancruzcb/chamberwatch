@@ -25,8 +25,8 @@ import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
 import {
-  describeCatch, describeDepthLoss, describeFault, formatChannelName, formatFaultKind, formatLabel, formatMicrons, formatScore,
-  formatSeconds, formatValue,
+  describeCatch, describeDepthLoss, describeFault, describeRun, formatChannelName, formatFaultKind, formatLabel, formatMicrons,
+  formatScore, formatSeconds, formatUnusual, formatValue,
 } from '../format'
 import { NotFound } from './NotFound'
 
@@ -97,6 +97,9 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
         </p>
         <h1 className="key">{run.key}</h1>
         <RunStatus alignment={run.alignment.kind === 'failed' ? 'FAILED' : run.alignment.status} score={assessment} good={run.good} />
+        {assessment !== null && (
+          <p className="answer-next">{describeRun({ assessment, channels: run.channels, good: run.good, depth: measured })}</p>
+        )}
         <p className="head-links">
           {run.source === 'PUBLIC' && <Link to={`/runs/${run.id}/wafer`}>Measured depth</Link>}
           <Link to={`/lots/${run.lotId}`}>{`Lot ${run.lotNo} drift`}</Link>
@@ -106,27 +109,33 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
         ? <p className="status-line">This run has no score under the current baseline.</p>
         : (
           <dl className="stats wide">
-            <Stat label="Limit flags" value={assessment.limitFlags} detail="Excursions held past the limit" />
-            <Stat
-              label="Run-level deviations"
-              value={assessment.deviationFlags}
-              detail={baseline === null ? undefined : `Phase statistics past z ${formatScore(baseline.runZ)}`}
-            />
-            <Stat label="Stuck holds" value={assessment.stuckFlags} detail="One value held longer than any good run held it" />
-            <Stat
-              label="Persistent z"
-              value={formatScore(assessment.persistentZ)}
-              detail={baseline === null ? undefined : `Limit ${formatScore(baseline.k)} held for ${baseline.n} samples`}
-            />
             <Stat
               label="First channel"
               value={assessment.firstChannel === null ? 'None' : formatChannelName(assessment.firstChannel)}
               compact
-              detail={assessment.firstTimeS === null ? undefined : `First departure at ${formatSeconds(assessment.firstTimeS)}`}
+              detail={assessment.firstTimeS === null ? undefined : `Left at ${formatSeconds(assessment.firstTimeS)}`}
+            />
+            <Stat
+              label="How unusual"
+              value={formatUnusual(assessment.persistentZ)}
+              detail={baseline === null
+                ? undefined
+                : `Standard deviations from the good runs, held for ${baseline.n} samples; the limit is ${formatScore(baseline.k)}`}
             />
             {measured !== undefined && (
               <Stat label="Measured depth" value={formatMicrons(measured.meanDepthUm)} detail={describeDepthLoss(measured)} />
             )}
+            <Stat
+              label="Excursions"
+              value={assessment.limitFlags}
+              detail={baseline === null ? undefined : `Stretches past the limit for ${baseline.n} samples or more`}
+            />
+            <Stat
+              label="Phase deviations"
+              value={assessment.deviationFlags}
+              detail={baseline === null ? undefined : `Phase means or spreads more than ${formatScore(baseline.runZ)} from the good runs`}
+            />
+            <Stat label="Stuck values" value={assessment.stuckFlags} detail="One value held longer than any good run held one" />
           </dl>
         )}
       <div className="run-layout">
@@ -164,7 +173,7 @@ function ChannelsTable({ channels, selected, k }: { channels: readonly Channel[]
           <tr>
             <th scope="col" className="num">Rank</th>
             <th scope="col">Channel</th>
-            <th scope="col">Persistent z</th>
+            <th scope="col">How unusual</th>
             <th scope="col" className="num">Excursions</th>
           </tr>
         </thead>
