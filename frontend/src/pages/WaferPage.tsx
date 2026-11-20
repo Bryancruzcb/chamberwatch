@@ -2,11 +2,12 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { type Measurements, type MeasurementSet, measurementsSchema, runDepthSchema, runDetailSchema } from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
+import { PredictionStrip } from '../charts/PredictionStrip'
+import { RadialProfile } from '../charts/RadialProfile'
 import { WaferMap } from '../charts/WaferMap'
 import { Loaded } from '../components/Loaded'
 import { Segmented } from '../components/Segmented'
-import { Stat } from '../components/Stat'
-import { describeResidual, formatMicrons } from '../format'
+import { describePrediction, describeWaferDepth, formatMicrons } from '../format'
 import { NotFound } from './NotFound'
 
 const SETS = [['EIGHTY_NINE_POINT', '89-point'], ['NINE_POINT', '9-point']] as const
@@ -64,23 +65,19 @@ function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) 
       <h2 id="predicted-title">Predicted from the telemetry</h2>
       <Loaded resource={depth}>
         {(data) => (
-          <dl className="stats">
-            <Stat label="Predicted depth" value={formatMicrons(data.predictedUm)} detail={describeResidual(data.residualUm)} />
-            <Stat label="Measured depth" value={formatMicrons(data.measuredUm)} />
-            <Stat
-              label={`Lot ${data.lotNo} error`}
-              value={formatMicrons(data.lotRmseUm)}
-              detail="Root mean square over the lot's measured wafers, all predicted without the lot"
-            />
-          </dl>
+          <>
+            <p className="panel-answer">{describePrediction(data)}</p>
+            <PredictionStrip predictedUm={data.predictedUm} measuredUm={data.measuredUm} missUm={data.lotRmseUm} />
+          </>
         )}
       </Loaded>
       <details className="how">
         <summary>How this is counted</summary>
         <p>
           A ridge regression on every channel's phase means and spreads predicts the wafer's mean depth. The model that
-          predicts this wafer was fitted on the other lots only, so it never saw this lot's depths.{' '}
-          <Link to="/lots">The lots page</Link> compares it with two simpler guesses.
+          predicts this wafer was fitted on the other lots only, so it never saw this lot's depths. The lot's typical miss
+          is the root mean square error over its measured wafers, all predicted the same way.{' '}
+          <Link to="/lots">The lots page</Link> compares the model with two simpler guesses.
         </p>
       </details>
     </section>
@@ -89,29 +86,32 @@ function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) 
 
 function MeasurementsView({ measurements }: { measurements: Measurements }) {
   const depths = measurements.values.map((site) => site.depthUm)
+  const answer = describeWaferDepth(measurements)
   return (
-    <>
-      <dl className="stats">
-        <Stat label="Sites" value={measurements.points} />
-        <Stat label="Mean depth" value={formatMicrons(measurements.meanDepthUm)} />
-        <Stat label="Spread" value={formatMicrons(measurements.sdDepthUm)} detail="Standard deviation across the sites" />
-        {depths.length > 0 && (
-          <Stat label="Range" value={formatMicrons(Math.max(...depths) - Math.min(...depths))} />
+    <section className="panel" aria-labelledby="wafer-title">
+      <h2 id="wafer-title">Etch depth across the wafer</h2>
+      {answer !== null && <p className="panel-answer">{answer}</p>}
+      {measurements.points === 0
+        ? <p className="status-line">No measured depth in this set.</p>
+        : (
+          <WaferMap measurements={measurements}>
+            <dl className="wafer-facts">
+              <div><dt>Mean</dt><dd className="num">{formatMicrons(measurements.meanDepthUm)}</dd></div>
+              <div><dt>Spread (sd)</dt><dd className="num">{formatMicrons(measurements.sdDepthUm)}</dd></div>
+              <div><dt>Range</dt><dd className="num">{formatMicrons(Math.max(...depths) - Math.min(...depths))}</dd></div>
+              <div><dt>Sites</dt><dd className="num">{measurements.points}</dd></div>
+            </dl>
+            <RadialProfile sites={measurements.values} />
+          </WaferMap>
         )}
-      </dl>
-      <section className="panel" aria-labelledby="wafer-title">
-        <h2 id="wafer-title">Etch depth across the wafer</h2>
-        {measurements.points === 0
-          ? <p className="status-line">No measured depth in this set.</p>
-          : <WaferMap measurements={measurements} />}
-        <details className="how">
-          <summary>How this is counted</summary>
-          <p>
-            Depth is step height less the oxide left on top. The 9-point and 89-point sets were measured months apart
-            with different instruments, so they are never mixed.
-          </p>
-        </details>
-      </section>
-    </>
+      <details className="how">
+        <summary>How this is counted</summary>
+        <p>
+          Depth is step height less the oxide left on top. The 9-point and 89-point sets were measured months apart
+          with different instruments, so they are never mixed. Sites near the center and near the edge are the third of
+          the sites closest to the center and the third farthest from it.
+        </p>
+      </details>
+    </section>
   )
 }

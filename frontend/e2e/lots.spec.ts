@@ -11,15 +11,29 @@ test('lists the lots next to drift and depth by wafer position', async ({ page }
   await expect(page.getByRole('img', { name: /^Depth loss by wafer position/ }).locator('[data-kind="dot"]')).toHaveCount(20)
 })
 
+test('opens a lot on its answer: which wafers are out of range, and how its channels end', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots/6')
+
+  await expect(page.locator('.page-head .answer-next')).toHaveText(
+    '7 of 10 wafers are out of range: wafers 4 to 10. By the last wafer, the SF6 mean of 4 channels is outside the band, and none is heading out.',
+  )
+  await expect(page.getByRole('img', { name: /^How unusual each wafer of Lot 6 was/ }).locator('[data-kind="dot"]')).toHaveCount(10)
+  const verdicts = page.getByRole('region', { name: "Each channel's SF6 mean by the last wafer" })
+  await expect(verdicts.locator('.share-key li')).toHaveText([/Out of band\s*4 channels/, /Stays in the band\s*10 channels/, /No trend\s*17 channels/])
+  await expect(verdicts.getByRole('img')).toHaveAttribute('aria-label', 'Out of band: 4, Stays in the band: 10, No trend: 17')
+  await expect(page.getByRole('link', { name: 'Show them in the runs table' })).toHaveAttribute('href', '/?lot=6')
+})
+
 test('opens a lot on the channel that left the band', async ({ page }) => {
   const api = await serveApi(page)
   await page.goto('/lots')
   await page.getByRole('link', { name: 'Lot 6', exact: true }).click()
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lot 6')
-  await expect(page.getByRole('heading', { level: 2, name: 'PlatenRFTuningCapacitor' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Platen RF tuning cap' })).toBeVisible()
   await expect(page.locator('.panel-head .badge-critical')).toHaveText('Out of band')
-  const chart = page.getByRole('img', { name: /^SF6 phase mean of PlatenRFTuningCapacitor by wafer position/ })
+  const chart = page.getByRole('img', { name: /^SF6 phase mean of Platen RF tuning cap by wafer position/ })
   await expect(chart.locator('[data-kind="dot"]')).toHaveCount(10)
 
   await page.getByRole('group', { name: 'Phase' }).getByRole('button', { name: 'C4F8' }).click()

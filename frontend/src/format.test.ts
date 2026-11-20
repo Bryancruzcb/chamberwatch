@@ -5,9 +5,12 @@ import {
   describeDepthLoss,
   describeDepthModel,
   describeDepthTrend,
+  describeEvidence,
   describeFault,
+  describePrediction,
   describeResidual,
   describeRun,
+  describeWaferDepth,
   formatChannelName,
   formatCount,
   formatConditioning,
@@ -169,6 +172,41 @@ describe('format', () => {
       + 'in the lot and 0.71 µm from the lot\'s first wafers.',
     )
     expect(describeDepthModel({ ...model, methods: model.methods.filter((method) => method.method !== 'POSITION') })).toBeNull()
+  })
+
+  it('counts every rule that caught a run in one line, and says nothing for a run none caught', () => {
+    const score = { limitFlags: 25, deviationFlags: 0, stuckFlags: 0, persistentZ: 18.8, firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 407.2 }
+    const two = [channel('PlatenRFLoadCapacitor', { excursions: 21 }), channel('PlatenRFTuningCapacitor', { excursions: 4 })]
+
+    expect(describeEvidence(score, two)).toBe('25 excursions on 2 channels.')
+    expect(describeEvidence({ ...score, limitFlags: 1 }, two.slice(0, 1))).toBe('1 excursion on 1 channel.')
+    expect(describeEvidence({ ...score, deviationFlags: 2 }, [...two, channel('Pressure', { deviation: true }), channel('Gas4Flow', { deviation: true })]))
+      .toBe('25 excursions on 2 channels and a phase mean or spread off the good runs on 2 channels.')
+    expect(describeEvidence({ ...score, deviationFlags: 1, stuckFlags: 1 }, [...two, channel('Pressure', { deviation: true })]))
+      .toBe('25 excursions on 2 channels, a phase mean or spread off the good runs on 1 channel and 1 stuck value.')
+    expect(describeEvidence({ ...score, limitFlags: 0, stuckFlags: 1 }, [channel('HeliumBPPressure', { holds: 1 })])).toBe('1 stuck value.')
+    expect(describeEvidence({ ...score, limitFlags: 0 }, [])).toBeNull()
+  })
+
+  it('answers the depth map with the mean and how the edge compares with the center', () => {
+    const at = (xMm: number, depthUm: number) => ({
+      pointNo: 1, locId: null, xUm: xMm * 1000, yUm: 0, preoxUm: 0, postoxUm: 0, postoxMeasured: true, stepheightUm: depthUm, depthUm,
+    })
+    const sites = [at(0, 44), at(20, 43), at(60, 42), at(90, 41.5)]
+    const measurements = { set: 'NINE_POINT', points: 4, meanDepthUm: 42.63, sdDepthUm: 1.1, values: sites } as const
+
+    expect(describeWaferDepth(measurements)).toBe('42.63 µm deep on average across 4 sites. Sites near the edge etched 2.50 µm shallower than sites near the center.')
+    expect(describeWaferDepth({ ...measurements, points: 2, values: sites.slice(0, 2) })).toBe('42.63 µm deep on average across 2 sites.')
+    expect(describeWaferDepth({ ...measurements, points: 0, meanDepthUm: null, values: [] })).toBeNull()
+  })
+
+  it('answers the prediction with its miss on this wafer and the lot\'s typical miss', () => {
+    const depth = { runId: 55, set: 'EIGHTY_NINE_POINT', lotNo: 6, predictedUm: 43.64, measuredUm: 43.69, residualUm: -0.05, lambda: 31.6, lotRmseUm: 0.148 } as const
+
+    expect(describePrediction(depth)).toBe('The telemetry predicted 43.64 µm, 0.05 µm shallower than measured. Across lot 6 it typically misses by 0.15 µm.')
+    expect(describePrediction({ ...depth, residualUm: 0.12, lotRmseUm: null })).toBe('The telemetry predicted 43.64 µm, 0.12 µm deeper than measured.')
+    expect(describePrediction({ ...depth, measuredUm: null, residualUm: null, lotRmseUm: null }))
+      .toBe('The telemetry predicts 43.64 µm; this wafer was not measured in this set.')
   })
 
   it('marks a missing value', () => {

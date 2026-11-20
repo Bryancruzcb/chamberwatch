@@ -1,7 +1,9 @@
 import {
   type Channel, type ConditioningSurface, type DepthMethod, type DepthModel, type DriftState, type DriftVsDepth, type FaultKind,
-  type InjectedFault, isFlagged, type Label, type MeasuredDepth, type MeasurementSet, type Score, type Source,
+  type InjectedFault, isFlagged, type Label, type MeasuredDepth, type Measurements, type MeasurementSet, type RunDepth, type Score,
+  type Source,
 } from './api/schema'
+import { centerAndEdge } from './wafer'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
 const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 })
@@ -216,6 +218,26 @@ function describeDeparture(channel: Channel | undefined): string {
   return channel.deviation ? 'moved its phase mean or spread away from the good runs\'' : 'left its range'
 }
 
+/**
+ * Every rule that caught the run, counted, in one line under its timeline: excursions and the channels they were on, a
+ * phase mean or spread off the good runs, and stuck values. Null for a run no rule caught.
+ */
+export function describeEvidence(assessment: Score, channels: readonly Channel[]): string | null {
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+  const excursionChannels = channels.filter((channel) => channel.excursions.length > 0).length
+  const deviationChannels = channels.filter((channel) => channel.deviation).length
+  const parts = [
+    ...(assessment.limitFlags > 0 ? [`${plural(assessment.limitFlags, 'excursion')} on ${plural(excursionChannels, 'channel')}`] : []),
+    ...(assessment.deviationFlags > 0 ? [`a phase mean or spread off the good runs on ${plural(deviationChannels, 'channel')}`] : []),
+    ...(assessment.stuckFlags > 0 ? [plural(assessment.stuckFlags, 'stuck value')] : []),
+  ]
+  if (parts.length === 0) {
+    return null
+  }
+  const joined = parts.length === 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts.slice(-1).join('')}`
+  return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`
+}
+
 function describeMeasured(depth: MeasuredDepth): string {
   const etched = `Measured afterwards, the wafer etched ${formatMicrons(depth.meanDepthUm)} deep`
   if (depth.lossUm === null) {
@@ -311,6 +333,34 @@ export function describeResidual(residualUm: number | null): string {
     return 'Not measured in this set'
   }
   return `Predicted ${twoDecimals.format(Math.abs(residualUm))} µm ${residualUm < 0 ? 'shallower' : 'deeper'} than measured`
+}
+
+/**
+ * The depth map's answer: the wafer's mean depth over its sites, and how the third of the sites nearest the edge
+ * compares with the third nearest the center. Null for a set with no measurement.
+ */
+export function describeWaferDepth(measurements: Measurements): string | null {
+  if (measurements.meanDepthUm === null || measurements.points === 0) {
+    return null
+  }
+  const mean = `${formatMicrons(measurements.meanDepthUm)} deep on average across ${measurements.points} ${measurements.points === 1 ? 'site' : 'sites'}.`
+  const sides = centerAndEdge(measurements.values)
+  if (sides === null) {
+    return mean
+  }
+  const difference = sides.edgeUm - sides.centerUm
+  return `${mean} Sites near the edge etched ${twoDecimals.format(Math.abs(difference))} µm ${difference >= 0 ? 'deeper' : 'shallower'} than sites near the center.`
+}
+
+/** The prediction's answer: what the telemetry predicted against what was measured, and the lot's typical miss. */
+export function describePrediction(depth: RunDepth): string {
+  const predicted = formatMicrons(depth.predictedUm)
+  const first = depth.residualUm === null
+    ? `The telemetry predicts ${predicted}; this wafer was not measured in this set.`
+    : `The telemetry predicted ${predicted}, ${twoDecimals.format(Math.abs(depth.residualUm))} µm ${depth.residualUm < 0 ? 'shallower' : 'deeper'} than measured.`
+  return depth.lotRmseUm === null
+    ? first
+    : `${first} Across lot ${depth.lotNo} it typically misses by ${formatMicrons(depth.lotRmseUm)}.`
 }
 
 export function formatMicrons(value: number | null): string {
