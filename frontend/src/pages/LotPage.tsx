@@ -1,13 +1,16 @@
 import { Link, useParams, useSearchParams } from 'react-router'
-import { type DriftChannel, type DriftReference, type DriftRule, type LotDrift, lotDriftSchema, type Phase } from '../api/schema'
+import {
+  type DriftChannel, type DriftReference, type DriftRule, type LotDrift, lotDriftSchema, type Phase, runsPageSchema,
+} from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
+import { LotDotPlot } from '../charts/LotDotPlot'
 import { PositionChart, type PositionFit } from '../charts/PositionChart'
 import { Loaded } from '../components/Loaded'
 import { Segmented } from '../components/Segmented'
-import { Stat } from '../components/Stat'
 import { DriftBadge } from '../components/Status'
-import { formatConditioning, formatDate, formatDriftState, formatScore, formatValue } from '../format'
+import { formatChannelName, formatConditioning, formatDate, formatDriftState, formatScore, formatValue } from '../format'
+import { describeLot, driftCounts } from '../lotSummary'
 import { NotFound } from './NotFound'
 
 const PHASES = [['SF6', 'SF6'], ['C4F8', 'C4F8']] as const
@@ -68,8 +71,7 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
   const [params] = useSearchParams()
   const { lot, rule, channels } = drift
   const selected = channels.find((channel) => channel.channel === params.get('channel')) ?? channels[0]
-  const outOfBand = channels.filter((channel) => channel.state === 'OUT_OF_BAND').length
-  const leaving = channels.filter((channel) => channel.state === 'WILL_EXIT').length
+  const [runs] = useResource(withSource(`/api/runs?lot=${lot.id}`, lot.source), runsPageSchema)
   const conditioning = lot.conditioningCount === null || lot.conditioningSurface === null
     ? null
     : formatConditioning(lot.conditioningCount, lot.conditioningSurface)
@@ -86,13 +88,29 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
         <p className="subtitle">
           {[lot.runDate === null ? null : `Run on ${formatDate(lot.runDate)}`, conditioning].filter((part) => part !== null).join('. ')}
         </p>
+        <p className="answer-next">
+          {runs.kind === 'ready'
+            ? describeLot({ runs: runs.data.runs, channels, phase })
+            : <span className="skel skel-line" aria-hidden="true" />}
+        </p>
       </header>
-      <dl className="stats">
-        <Stat label="Runs" value={lot.runs} detail={<Link to={withSource(`/?lot=${lot.id}`, lot.source)}>Show them in the runs table</Link>} />
-        <Stat label="Out-of-range runs" value={lot.flaggedRuns} />
-        <Stat label="Out of the band" value={outOfBand} detail={`Channels whose ${phase} mean left the good runs' band`} />
-        <Stat label="Projected to leave" value={leaving} detail={`Within ${rule.plannedLotSize} wafers`} />
-      </dl>
+      <div className="lot-overview">
+        <section className="panel" aria-labelledby="lot-wafers-title">
+          <header className="panel-head">
+            <h2 id="lot-wafers-title">How unusual each wafer was</h2>
+            <Link to={withSource(`/?lot=${lot.id}`, lot.source)}>Show them in the runs table</Link>
+          </header>
+          <Loaded resource={runs}>
+            {(page) => (page.baseline === null
+              ? <p className="status-line">No baseline scores these runs yet.</p>
+              : <LotDotPlot lotNo={lot.lotNo} runs={page.runs} k={page.baseline.k} legend />)}
+          </Loaded>
+        </section>
+        <section className="panel" aria-labelledby="lot-verdicts-title">
+          <h2 id="lot-verdicts-title">{`Each channel's ${phase} mean by the last wafer`}</h2>
+          <DriftShare channels={channels} />
+        </section>
+      </div>
       <div className="filters">
         <Segmented label="Phase" value={phase} options={PHASES} onChange={onPhase} />
         <Segmented label="Reference" value={drift.reference} options={REFERENCES} onChange={onReference} />
@@ -106,6 +124,36 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
           ? <section className="panel"><p className="status-line">No channel has a good-run band for this phase.</p></section>
           : <DriftPanel channel={selected} rule={rule} phase={phase} reference={drift.reference} referenceWafers={drift.referenceWafers} />}
       </div>
+    </>
+  )
+}
+
+/**
+ * How the lot's channels end, as one bar split by drift verdict and a key that names each verdict with its shape, so
+ * the share never rests on color alone.
+ */
+function DriftShare({ channels }: { channels: readonly DriftChannel[] }) {
+  const counts = driftCounts(channels)
+  if (counts.length === 0) {
+    return <p className="status-line">No channel has a good-run band for this phase.</p>
+  }
+  return (
+    <>
+      <div
+        className="share-bar"
+        role="img"
+        aria-label={counts.map((entry) => `${formatDriftState(entry.state)}: ${entry.count}`).join(', ')}
+      >
+        {counts.map((entry) => <span key={entry.state} className={`share share-${entry.state}`} style={{ flexGrow: entry.count }} />)}
+      </div>
+      <ul className="share-key">
+        {counts.map((entry) => (
+          <li key={entry.state}>
+            <DriftBadge state={entry.state} />
+            <span className="num">{entry.count === 1 ? '1 channel' : `${entry.count} channels`}</span>
+          </li>
+        ))}
+      </ul>
     </>
   )
 }
@@ -131,7 +179,7 @@ function DriftChannelsTable({ channels, selected }: { channels: readonly DriftCh
                   preventScrollReset
                   aria-current={channel === selected ? 'true' : undefined}
                 >
-                  {channel.channel}
+                  {formatChannelName(channel.channel)}
                 </Link>
               </td>
               <td><DriftBadge state={channel.state} /></td>
@@ -175,13 +223,13 @@ function DriftPanel({ channel, rule, phase, reference, referenceWafers }: {
   return (
     <section className="panel" aria-labelledby="drift-title">
       <header className="panel-head">
-        <h2 id="drift-title">{channel.channel}</h2>
+        <h2 id="drift-title">{formatChannelName(channel.channel)}</h2>
         <DriftBadge state={channel.state} />
       </header>
       <p className="note">{explain(channel, rule, reference)}</p>
       <PositionChart
         title={`${phase} phase mean`}
-        label={`${phase} phase mean of ${channel.channel} by wafer position`}
+        label={`${phase} phase mean of ${formatChannelName(channel.channel)} by wafer position`}
         positions={positions}
         series={[{
           id: 'mean',

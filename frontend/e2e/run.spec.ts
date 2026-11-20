@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
 import { serveApi } from './api.ts'
-import { stat } from './locators.ts'
 
 test('shows why a flagged wafer was flagged', async ({ page }) => {
   await serveApi(page)
@@ -11,25 +10,36 @@ test('shows why a flagged wafer was flagged', async ({ page }) => {
     'Platen RF load cap left its range first at 407.2 s. One other channel was out of range too. '
     + 'Measured afterwards, the wafer etched 43.69 µm deep, 0.31 µm shallower than wafers 1 to 3 of its lot.',
   )
-  await expect(stat(page, 'Excursions')).toHaveText('25')
-  await expect(stat(page, 'First channel')).toHaveText('Platen RF load cap')
-  await expect(stat(page, 'How unusual')).toHaveText('18.8')
+  const timeline = page.getByRole('region', { name: 'When channels left their range' })
+  await expect(timeline.locator('.lane-name')).toHaveText(['Platen RF load cap', 'Platen RF tuning cap'])
+  await expect(timeline.locator('[data-kind="excursion"]')).toHaveCount(25)
+  await expect(timeline.getByRole('meter').first()).toHaveAttribute('aria-valuetext', '18.8')
+  await expect(timeline).toContainText('25 excursions on 2 channels.')
   await expect(page.getByRole('heading', { level: 2, name: 'Platen RF load cap' })).toBeVisible()
   await expect(page.locator('figure.chart svg [data-kind="excursion"]')).toHaveCount(21)
+})
+
+test('opens a lane\'s channel on the trace', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55')
+  await page.getByRole('region', { name: 'When channels left their range' }).getByRole('link', { name: 'Platen RF tuning cap' }).click()
+
+  await expect(page).toHaveURL(/channel=PlatenRFTuningCapacitor/)
+  await expect(page.getByRole('heading', { level: 2, name: 'Platen RF tuning cap' })).toBeVisible()
 })
 
 test('puts the measured depth of a flagged wafer next to its flags', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')
 
-  await expect(stat(page, 'Measured depth')).toHaveText('43.69 µm')
-  await expect(page.locator('.stat').filter({ hasText: 'Measured depth' }))
-    .toContainText('0.31 µm shallower than wafers 1 to 3 of its lot, 89-point set')
+  await expect(page.locator('.page-head .answer-next')).toContainText('the wafer etched 43.69 µm deep, 0.31 µm shallower than wafers 1 to 3 of its lot')
+  await expect(page.locator('.page-head').getByRole('link', { name: 'Measured depth' })).toHaveAttribute('href', '/runs/55/wafer')
 
   await page.goto('/runs/133')
-  await expect(stat(page, 'Excursions')).toHaveText('172')
-  await expect(stat(page, 'How unusual')).toHaveText('>20')
-  await expect(stat(page, 'Measured depth')).toHaveCount(0)
+  const timeline = page.getByRole('region', { name: 'When channels left their range' })
+  await expect(timeline).toContainText('172 excursions on 2 channels and a phase mean or spread off the good runs on 9 channels.')
+  await expect(timeline.getByRole('meter').first()).toHaveAttribute('aria-valuetext', '>20')
+  await expect(page.locator('.page-head .answer-next')).not.toContainText('Measured afterwards')
 })
 
 test('reads one bucket at a time off the chart from the keyboard', async ({ page }) => {
@@ -100,6 +110,10 @@ test('marks a good run the detectors left alone', async ({ page }) => {
   await expect(page.locator('.page-head .badge-good')).toHaveText('In range')
   await expect(page.locator('.page-head .answer-next'))
     .toContainText('No channel left the good-run range. This run is one of the good runs that range was learned from.')
+  const closest = page.getByRole('region', { name: 'Closest to the limit' })
+  await expect(closest.locator('.lane-name')).toHaveText('Platen RF load cap')
+  await expect(closest.getByRole('meter')).toHaveAttribute('aria-valuetext', '5.5')
+  await expect(page.getByRole('region', { name: 'When channels left their range' })).toHaveCount(0)
 })
 
 test('puts the fault the simulator injected next to what the detectors caught', async ({ page }) => {
@@ -112,7 +126,10 @@ test('puts the fault the simulator injected next to what the detectors caught', 
   await expect(panel).toContainText('Gas flow stuck low')
   await expect(panel).toContainText('Gas 5 flow delivers 36% of its flow from 187.9 s to the end of the etch, and the foreline pressure falls with the missing flow.')
   await expect(panel).toContainText('Yes. Gas 5 flow was named first, 1.4 s after the fault began.')
-  await expect(stat(page, 'First channel')).toHaveText('Gas 5 flow')
+  const timeline = page.getByRole('region', { name: 'When channels left their range' })
+  await expect(timeline.locator('.lane-name').first()).toHaveText('Gas 5 flow')
+  await expect(timeline.locator('.lane-fault')).toHaveCount(2)
+  await expect(timeline).toContainText('fault put in, 187.9 s')
 })
 
 test('shows a stuck sensor as a hold next to the fault the simulator injected', async ({ page }) => {
@@ -122,8 +139,10 @@ test('shows a stuck sensor as a hold next to the fault the simulator injected', 
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('SIM-s7-L901-W10')
   await expect(page.locator('.page-head .answer-next')).toHaveText('Helium backside pressure got stuck on one value at 498.8 s.')
-  await expect(stat(page, 'Stuck values')).toHaveText('1')
-  await expect(stat(page, 'First channel')).toHaveText('Helium backside pressure')
+  const timeline = page.getByRole('region', { name: 'When channels left their range' })
+  await expect(timeline.locator('.lane-name')).toHaveText(['Helium backside pressure'])
+  await expect(timeline.locator('[data-kind="hold"]')).toHaveCount(1)
+  await expect(timeline).toContainText('1 stuck value.')
   await expect(panel).toContainText('Sensor stuck')
   await expect(panel).toContainText('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')
   // the hold is timed from the first sample of the value it repeats, which came just before the fault

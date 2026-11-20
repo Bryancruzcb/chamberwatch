@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useState } from 'react'
 import type { MeasurementPoint, Measurements } from '../api/schema'
 import { formatMeasurementSet, formatMicrons, MISSING } from '../format'
 import { type Interval, linearScale } from './scale'
@@ -17,7 +17,7 @@ const READOUT_WIDTH = 240
  * Etch depth at each measured site, placed where it sits on the wafer and shaded by depth on one blue ramp. The
  * pointer or the arrow keys read one site at a time, and the table view lists every site.
  */
-export function WaferMap({ measurements }: { measurements: Measurements }) {
+export function WaferMap({ measurements, children }: { measurements: Measurements; children?: ReactNode }) {
   const [width, measure] = useWidth()
   const [active, setActive] = useState<number | null>(null)
   const [tableShown, setTableShown] = useState(false)
@@ -102,6 +102,7 @@ export function WaferMap({ measurements }: { measurements: Measurements }) {
         )}
       </div>
       <div className="wafer-side">
+        {children}
         <div className="scale-legend" aria-hidden="true">
           <div className="scale-swatches">
             {Array.from({ length: BINS }, (_, index) => <span key={index} className={`seq-${index + 1}`} />)}

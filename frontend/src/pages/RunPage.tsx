@@ -19,14 +19,14 @@ import {
 } from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
+import { EtchTimeline } from '../charts/EtchTimeline'
 import { TraceChart } from '../charts/TraceChart'
 import { Loaded } from '../components/Loaded'
-import { Stat } from '../components/Stat'
 import { RunStatus } from '../components/Status'
 import { ZMeter } from '../components/ZMeter'
 import {
-  describeCatch, describeDepthLoss, describeFault, describeRun, formatChannelName, formatFaultKind, formatLabel, formatMicrons,
-  formatScore, formatSeconds, formatUnusual, formatValue,
+  describeCatch, describeFault, describeRun, formatChannelName, formatFaultKind, formatLabel, formatScore, formatSeconds,
+  formatValue,
 } from '../format'
 import { NotFound } from './NotFound'
 
@@ -107,36 +107,14 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
       </header>
       {assessment === null
         ? <p className="status-line">This run has no score under the current baseline.</p>
-        : (
-          <dl className="stats wide">
-            <Stat
-              label="First channel"
-              value={assessment.firstChannel === null ? 'None' : formatChannelName(assessment.firstChannel)}
-              compact
-              detail={assessment.firstTimeS === null ? undefined : `Left at ${formatSeconds(assessment.firstTimeS)}`}
-            />
-            <Stat
-              label="How unusual"
-              value={formatUnusual(assessment.persistentZ)}
-              detail={baseline === null
-                ? undefined
-                : `Standard deviations from the good runs, held for ${baseline.n} samples; the limit is ${formatScore(baseline.k)}`}
-            />
-            {measured !== undefined && (
-              <Stat label="Measured depth" value={formatMicrons(measured.meanDepthUm)} detail={describeDepthLoss(measured)} />
-            )}
-            <Stat
-              label="Excursions"
-              value={assessment.limitFlags}
-              detail={baseline === null ? undefined : `Stretches past the limit for ${baseline.n} samples or more`}
-            />
-            <Stat
-              label="Phase deviations"
-              value={assessment.deviationFlags}
-              detail={baseline === null ? undefined : `Phase means or spreads more than ${formatScore(baseline.runZ)} from the good runs`}
-            />
-            <Stat label="Stuck values" value={assessment.stuckFlags} detail="One value held longer than any good run held one" />
-          </dl>
+        : run.alignment.kind === 'aligned' && (
+          <EtchTimeline
+            assessment={assessment}
+            channels={run.channels}
+            k={baseline?.k ?? null}
+            etch={{ fromS: run.alignment.etchStartS, toS: run.alignment.etchEndS }}
+            fault={run.injectedFault}
+          />
         )}
       <div className="run-layout">
         <div className="stack">
