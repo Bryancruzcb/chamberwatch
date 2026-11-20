@@ -1,6 +1,6 @@
-import type {
-  ConditioningSurface, DepthMethod, DriftState, FaultKind, InjectedFault, Label, MeasuredDepth, MeasurementSet, Score,
-  Source,
+import {
+  type Channel, type ConditioningSurface, type DepthMethod, type DepthModel, type DriftState, type DriftVsDepth, type FaultKind,
+  type InjectedFault, isFlagged, type Label, type MeasuredDepth, type MeasurementSet, type Score, type Source,
 } from './api/schema'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
@@ -167,6 +167,97 @@ export function describeCatch(fault: InjectedFault, assessment: Score | null): s
   return at <= fault.startS
     ? `Yes. ${formatChannelName(fault.channel)} was named first, as the fault began.`
     : `Yes. ${formatChannelName(fault.channel)} was named first, ${formatSeconds(at - fault.startS)} after the fault began.`
+}
+
+/**
+ * The answer a run's page opens with, before the numbers: which channel left its range first and when, how many others
+ * were out of range with it, and how deep the wafer measured. In the Runs page's words: range, channel, out of range.
+ */
+export function describeRun({ assessment, channels, good, depth }: {
+  assessment: Score
+  channels: readonly Channel[]
+  good: boolean
+  depth: MeasuredDepth | undefined
+}): string {
+  const verdict = isFlagged(assessment) ? describeOut(assessment, channels) : describeIn(good)
+  return depth === undefined ? verdict : `${verdict} ${describeMeasured(depth)}`
+}
+
+function describeIn(good: boolean): string {
+  return good
+    ? 'No channel left the good-run range. This run is one of the good runs that range was learned from.'
+    : 'No channel left the good-run range.'
+}
+
+function describeOut(assessment: Score, channels: readonly Channel[]): string {
+  const first = assessment.firstChannel
+  const others = channels.filter((channel) => channel.channel !== first && isOut(channel)).length
+  const followers = others === 0 ? '' : ` ${others === 1 ? 'One other channel was' : `${others} other channels were`} out of range too.`
+  if (first === null) {
+    return `A detector flagged this run.${followers}`
+  }
+  const departure = describeDeparture(channels.find((channel) => channel.channel === first))
+  const when = assessment.firstTimeS === null ? '' : ` at ${formatSeconds(assessment.firstTimeS)}`
+  return `${formatChannelName(first)} ${departure}${others === 0 ? '' : ' first'}${when}.${followers}`
+}
+
+function isOut(channel: Channel): boolean {
+  return channel.excursions.length > 0 || channel.holds.length > 0 || channel.deviation
+}
+
+/** What the first channel did, by the rule that caught it: an excursion, a stuck value, or a phase mean or spread. */
+function describeDeparture(channel: Channel | undefined): string {
+  if (channel === undefined || channel.excursions.length > 0) {
+    return 'left its range'
+  }
+  if (channel.holds.length > 0) {
+    return 'got stuck on one value'
+  }
+  return channel.deviation ? 'moved its phase mean or spread away from the good runs\'' : 'left its range'
+}
+
+function describeMeasured(depth: MeasuredDepth): string {
+  const etched = `Measured afterwards, the wafer etched ${formatMicrons(depth.meanDepthUm)} deep`
+  if (depth.lossUm === null) {
+    return `${etched}.`
+  }
+  const direction = depth.lossUm >= 0 ? 'shallower' : 'deeper'
+  return `${etched}, ${twoDecimals.format(Math.abs(depth.lossUm))} µm ${direction} than wafers 1 to ${depth.referenceWafers} of its lot.`
+}
+
+/**
+ * The drift report's answer: how much shallower the last wafer position etched than its lot's first wafers, on the
+ * 89-point set when it was measured there. Null when no position has a measured loss, as for simulated wafers.
+ */
+export function describeDepthTrend(report: DriftVsDepth): string | null {
+  const losses = report.positions.flatMap((position) => {
+    const depth = position.depth.find((entry) => entry.set === 'EIGHTY_NINE_POINT')
+      ?? position.depth.find((entry) => entry.set === 'NINE_POINT')
+    return depth === undefined || depth.meanDepthLossUm === null ? [] : [{ position: position.position, lossUm: depth.meanDepthLossUm }]
+  })
+  const last = losses.at(-1)
+  if (last === undefined) {
+    return null
+  }
+  const direction = last.lossUm >= 0 ? 'shallower' : 'deeper'
+  return `By wafer ${last.position}, wafers etch ${twoDecimals.format(Math.abs(last.lossUm))} µm ${direction} than the first `
+    + `${report.referenceWafers} of their lot, on average.`
+}
+
+/**
+ * The depth model's answer: its typical miss on the wafers every guess can score, next to the two simpler guesses.
+ * Null when the report lacks any of the three.
+ */
+export function describeDepthModel(model: DepthModel): string | null {
+  const miss = (method: DepthMethod) => model.methods.find((entry) => entry.method === method)?.late.rmseUm
+  const telemetry = miss('TELEMETRY')
+  const position = miss('POSITION')
+  const firstWafers = miss('FIRST_WAFERS')
+  if (telemetry === undefined || position === undefined || firstWafers === undefined) {
+    return null
+  }
+  return `After each lot's first wafers, the telemetry misses a wafer's depth by ${formatMicrons(telemetry)}, against `
+    + `${formatMicrons(position)} for a guess from its place in the lot and ${formatMicrons(firstWafers)} from the lot's first wafers.`
 }
 
 /** A z-score or a t-statistic, to one decimal. */

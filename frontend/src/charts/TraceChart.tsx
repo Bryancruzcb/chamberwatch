@@ -98,7 +98,7 @@ export function TraceChart({ trace }: { trace: Trace }) {
     <figure className="chart">
       <ul className="chart-key" aria-label="Key">
         <li><span className="key-line" />Reading, lowest and highest per bucket</li>
-        {trace.k !== null && <li><span className="key-swatch key-band" />{`Good-run band, mean ± ${formatScore(trace.k)} sd`}</li>}
+        {trace.k !== null && <li><span className="key-swatch key-band" />{`Good-run range, mean ± ${formatScore(trace.k)} sd`}</li>}
         {spans.length > 0 && <li><span className="key-swatch key-excursion" />{`Excursions (${spans.length})`}</li>}
       </ul>
       <div className="chart-frame" ref={measure}>

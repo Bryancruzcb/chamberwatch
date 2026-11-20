@@ -8,7 +8,10 @@ import { useResource } from '../api/useResource'
 import { PositionChart, type PositionPoint, type PositionSeries } from '../charts/PositionChart'
 import { Loaded } from '../components/Loaded'
 import { SourceSwitch } from '../components/SourceSwitch'
-import { formatConditioning, formatDate, formatDepthFeature, formatDepthMethod, formatMicrons, MISSING } from '../format'
+import {
+  describeDepthModel, describeDepthTrend, formatConditioning, formatDate, formatDepthFeature, formatDepthMethod, formatMicrons,
+  MISSING,
+} from '../format'
 
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const threeDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
@@ -30,8 +33,9 @@ export function LotsPage() {
           onChange={(next) => setParams(next === 'PUBLIC' ? {} : { source: next }, { replace: true })}
         />
       </div>
-      <Loaded resource={lots}>{(data) => <LotsTable lots={data.filter((lot) => lot.source === source)} source={source} />}</Loaded>
+      {/* the drift is the finding, so it comes before the list of lots */}
       <Loaded resource={report}>{(data) => <DriftReport report={data} />}</Loaded>
+      <Loaded resource={lots}>{(data) => <LotsTable lots={data.filter((lot) => lot.source === source)} source={source} />}</Loaded>
       {source === 'PUBLIC' && <DepthModelPanel />}
     </>
   )
@@ -44,6 +48,7 @@ function DepthModelPanel() {
 }
 
 function DepthModelReport({ model }: { model: DepthModel }) {
+  const answer = describeDepthModel(model)
   const positions = Math.max(0, ...model.byPosition.map((position) => position.position))
   const series: PositionSeries[] = [
     {
@@ -64,6 +69,7 @@ function DepthModelReport({ model }: { model: DepthModel }) {
   return (
     <section className="panel" aria-labelledby="depth-model-title">
       <h2 id="depth-model-title">Depth predicted from the telemetry</h2>
+      {answer !== null && <p className="panel-answer">{answer}</p>}
       <PositionChart
         title="Mean depth, µm"
         label="Measured and predicted mean depth by wafer position"
@@ -169,9 +175,11 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
     { id: 'EIGHTY_NINE_POINT', name: '89-point', slot: 1, connect: true, points: lossPoints(report, 'EIGHTY_NINE_POINT') },
     { id: 'NINE_POINT', name: '9-point', slot: 2, connect: true, points: lossPoints(report, 'NINE_POINT') },
   ]
+  const answer = describeDepthTrend(report)
   return (
     <section className="panel" aria-labelledby="report-title">
       <h2 id="report-title">Drift and depth by wafer position</h2>
+      {answer !== null && <p className="panel-answer">{answer}</p>}
       {!measured && <p className="note">Simulated wafers have no measured depth, so only the drift score is shown.</p>}
       <div className="chart-pair">
         <PositionChart

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import { type Channel, depthModelSchema, driftVsDepthSchema } from './api/schema'
 import {
   describeCatch,
   describeDepthLoss,
+  describeDepthModel,
+  describeDepthTrend,
   describeFault,
   describeResidual,
+  describeRun,
   formatChannelName,
   formatCount,
   formatConditioning,
@@ -105,9 +109,97 @@ describe('format', () => {
     expect(describeCatch(fault, null)).toBe('Not scored under the current baseline.')
   })
 
+  it('opens an out-of-range run with the channel that left first, the others, and the measured depth', () => {
+    const score = { limitFlags: 25, deviationFlags: 0, stuckFlags: 0, persistentZ: 18.8, firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 407.2 }
+    const channels = [channel('PlatenRFLoadCapacitor', { excursions: 21 }), channel('PlatenRFTuningCapacitor', { excursions: 4 }), channel('Gas1Flow')]
+    const depth = { set: 'EIGHTY_NINE_POINT', points: 89, meanDepthUm: 43.69, lossUm: 0.31, referenceWafers: 3 } as const
+
+    expect(describeRun({ assessment: score, channels, good: false, depth })).toBe(
+      'Platen RF load cap left its range first at 407.2 s. One other channel was out of range too. '
+      + 'Measured afterwards, the wafer etched 43.69 µm deep, 0.31 µm shallower than wafers 1 to 3 of its lot.',
+    )
+    expect(describeRun({ assessment: score, channels: [...channels, channel('ForeLinePressure', { deviation: true })], good: false, depth: undefined }))
+      .toBe('Platen RF load cap left its range first at 407.2 s. 2 other channels were out of range too.')
+    expect(describeRun({ assessment: score, channels: channels.slice(0, 1), good: false, depth: undefined }))
+      .toBe('Platen RF load cap left its range at 407.2 s.')
+    expect(describeRun({ assessment: score, channels, good: false, depth: { ...depth, lossUm: -0.12 } }))
+      .toContain('0.12 µm deeper than wafers 1 to 3 of its lot.')
+    expect(describeRun({ assessment: score, channels, good: false, depth: { ...depth, lossUm: null } }))
+      .toContain('Measured afterwards, the wafer etched 43.69 µm deep.')
+  })
+
+  it('says how the first channel gave a run away: an excursion, a stuck value, or a phase mean or spread', () => {
+    const score = { limitFlags: 0, deviationFlags: 0, stuckFlags: 1, persistentZ: 3.6, firstChannel: 'HeliumBPPressure', firstTimeS: 498.8 }
+
+    expect(describeRun({ assessment: score, channels: [channel('HeliumBPPressure', { holds: 1 })], good: false, depth: undefined }))
+      .toBe('Helium backside pressure got stuck on one value at 498.8 s.')
+    expect(describeRun({
+      assessment: { ...score, stuckFlags: 0, deviationFlags: 1, firstTimeS: null },
+      channels: [channel('HeliumBPPressure', { deviation: true })],
+      good: false,
+      depth: undefined,
+    })).toBe('Helium backside pressure moved its phase mean or spread away from the good runs\'.')
+    expect(describeRun({ assessment: { ...score, firstChannel: null, firstTimeS: null }, channels: [], good: false, depth: undefined }))
+      .toBe('A detector flagged this run.')
+  })
+
+  it('opens an in-range run plainly, and says when it taught the range', () => {
+    const score = { limitFlags: 0, deviationFlags: 0, stuckFlags: 0, persistentZ: 5.5, firstChannel: null, firstTimeS: null }
+
+    expect(describeRun({ assessment: score, channels: [channel('Gas1Flow')], good: false, depth: undefined })).toBe('No channel left the good-run range.')
+    expect(describeRun({ assessment: score, channels: [], good: true, depth: undefined }))
+      .toBe('No channel left the good-run range. This run is one of the good runs that range was learned from.')
+  })
+
+  it('answers the drift report with the last position\'s depth loss, and says nothing without a measurement', () => {
+    const report = driftVsDepthSchema.parse(fixture('drift-vs-depth.json'))
+
+    expect(describeDepthTrend(report)).toBe('By wafer 10, wafers etch 0.90 µm shallower than the first 3 of their lot, on average.')
+    expect(describeDepthTrend(driftVsDepthSchema.parse(fixture('drift-vs-depth-synthetic.json')))).toBeNull()
+    // the 9-point set stands in where the 89-point set has no measurement
+    const nineOnly = { ...report, positions: report.positions.map((position) => ({ ...position, depth: position.depth.filter((depth) => depth.set === 'NINE_POINT') })) }
+    expect(describeDepthTrend(nineOnly)).toBe('By wafer 10, wafers etch 0.84 µm shallower than the first 3 of their lot, on average.')
+  })
+
+  it('answers the depth model with its miss next to the two simpler guesses', () => {
+    const model = depthModelSchema.parse(fixture('depth-model.json'))
+
+    expect(describeDepthModel(model)).toBe(
+      'After each lot\'s first wafers, the telemetry misses a wafer\'s depth by 0.16 µm, against 0.21 µm for a guess from its place '
+      + 'in the lot and 0.71 µm from the lot\'s first wafers.',
+    )
+    expect(describeDepthModel({ ...model, methods: model.methods.filter((method) => method.method !== 'POSITION') })).toBeNull()
+  })
+
   it('marks a missing value', () => {
     expect(formatValue(null)).toBe(MISSING)
     expect(formatScore(null)).toBe(MISSING)
     expect(formatSeconds(null)).toBe(MISSING)
   })
 })
+
+const fixtures = import.meta.glob('../e2e/fixtures/*.json', { eager: true, import: 'default' })
+
+function fixture(name: string): unknown {
+  const key = `../e2e/fixtures/${name}`
+  if (!(key in fixtures)) {
+    throw new Error(`no fixture ${name}`)
+  }
+  return fixtures[key]
+}
+
+/** A scored channel with as many excursions and holds as asked for, and nothing else of note. */
+function channel(name: string, { excursions = 0, holds = 0, deviation = false } = {}): Channel {
+  const span = { channel: name, startSlot: 0, confirmSlot: 4, endSlot: 9, cycle: 1, phase: 'SF6', offset: 0, startTimeS: 1, confirmTimeS: 1.8, endTimeS: 2.8 } as const
+  return {
+    channel: name,
+    rank: 1,
+    persistentZ: 0,
+    deviation,
+    maxAbsSummaryZ: 0,
+    longestHold: 0,
+    phases: [],
+    excursions: Array.from({ length: excursions }, () => ({ ...span, outSamples: 10, peakZ: 7 })),
+    holds: Array.from({ length: holds }, () => ({ ...span, samples: 10, value: 1 })),
+  }
+}
