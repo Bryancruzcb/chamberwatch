@@ -90,7 +90,7 @@ test('shows every wafer as a disc in a cassette of lots by position, and opens o
 
   // run 55 is the flagged wafer the captured responses hold a page for
   await out.click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 is out of range.')
 })
 
 test('the map follows the source, and prints a step change short enough to fit its disc', async ({ page }) => {
@@ -455,7 +455,7 @@ test('orders the runs by persistent z and opens one', async ({ page }) => {
   await expect(page.locator('table.runs-table tbody tr').first()).toContainText('Day_2024_08_01_Wafer_06')
   await page.getByRole('link', { name: 'Lot 6 · Wafer 5' }).click()
 
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 is out of range.')
 })
 
 test('a link from before the tabs still opens the table', async ({ page }) => {
@@ -487,7 +487,7 @@ test('switches to the simulated lots and opens a wafer with a known fault', asyn
   await expect(rows).toHaveCount(10)
   await page.getByRole('link', { name: 'Lot 901 · Wafer 7' }).click()
 
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('SIM-s7-L901-W07')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 7 of Lot 901 is out of range.')
   await expect(page.locator('.breadcrumb').getByRole('link', { name: 'Runs' })).toHaveAttribute('href', '/?source=SYNTHETIC')
   await expect(page.getByRole('link', { name: 'Measured depth' })).toHaveCount(0)
 })

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { getJson, putJson } from '../api/client'
 import {
@@ -10,24 +10,32 @@ import {
   type Label,
   type PhaseEvidence,
   refreshSchema,
-  settingsSchema,
   type RelabelResult,
   runDetailSchema,
   type RunDetail,
+  runsPageSchema,
   type Score,
+  settingsSchema,
   traceSchema,
 } from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { ChannelLineup } from '../charts/ChannelLineup'
 import { EtchTimeline } from '../charts/EtchTimeline'
+import { verdictEnd } from '../charts/scale'
 import { TraceChart } from '../charts/TraceChart'
+import { Disc } from '../components/Disc'
+import { Figure } from '../components/Figure'
+import { Icon } from '../components/Icon'
 import { Loaded } from '../components/Loaded'
-import { RunStatus } from '../components/Status'
+import { ScoreLine } from '../components/ScoreLine'
 import {
-  describeCatch, describeFault, describeRun, formatChannelName, formatFaultKind, formatLabel, formatScore, formatSeconds,
-  formatValue,
+  describeCatch, describeChannelTrace, describeFault, describeRun, formatBigScore, formatChannelName, formatDate, formatFaultKind,
+  formatLabel, formatScore, formatSeconds, formatShortAgainstLimit, formatValue,
 } from '../format'
+import {
+  describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle, type StripSlot,
+} from '../run'
 import { NotFound } from './NotFound'
 
 /** Etch cycles on the recipe grid. */
@@ -72,7 +80,48 @@ export function RunPage() {
 
 function RunView({ runId }: { runId: number }) {
   const [run, reload] = useResource(`/api/runs/${runId}`, runDetailSchema)
-  return <Loaded resource={run}>{(detail) => <RunDetails run={detail} onRelabeled={reload} />}</Loaded>
+  switch (run.kind) {
+    case 'loading':
+      return <RunSkeleton />
+    case 'error':
+      return (
+        <div className="state run-state">
+          <p className="state-title">This run did not load</p>
+          <p role="alert">{run.error.message}</p>
+          <button type="button" className="button" onClick={reload}>
+            <Icon name="refresh" />
+            Try again
+          </button>
+        </div>
+      )
+    case 'ready':
+      return (
+        <div className={run.refreshing ? 'run-page refreshing' : 'run-page'} aria-busy={run.refreshing || undefined}>
+          <RunDetails run={run.data} onRelabeled={reload} />
+        </div>
+      )
+    default: {
+      const exhaustive: never = run
+      return exhaustive
+    }
+  }
+}
+
+/** The page's shape while the run loads: the breadcrumb, the lot strip, two lines of headline, the lead, a figure. */
+function RunSkeleton() {
+  return (
+    <div className="run-page" role="status">
+      <span className="visually-hidden">Loading…</span>
+      <div className="run-head" aria-hidden="true">
+        <span className="skel skel-crumb" />
+        <div className="lot-strip placeholder"><span className="skel skel-strip" /></div>
+        <span className="skel skel-title" />
+        <span className="skel skel-title short" />
+        <span className="skel skel-lead" />
+      </div>
+      <span className="skel skel-panel" aria-hidden="true" />
+    </div>
+  )
 }
 
 function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => void }) {
@@ -82,67 +131,183 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
   const [settings] = useResource('/api/settings', settingsSchema)
   // until the settings arrive the buttons wait; if they never do, the server still refuses a read-only relabel
   const readOnly = settings.kind === 'ready' ? settings.data.readOnly : settings.kind === 'loading'
+  return (
+    <>
+      <title>{runTitle(run)}</title>
+      <RunHead run={run} />
+      {assessment !== null && run.alignment.kind === 'aligned' && (
+        <EtchTimeline
+          assessment={assessment}
+          channels={run.channels}
+          k={baseline?.k ?? null}
+          etch={{ fromS: run.alignment.etchStartS, toS: run.alignment.etchEndS }}
+          fault={run.injectedFault}
+        />
+      )}
+      {run.injectedFault !== null && (
+        <InjectedFaultFigure fault={run.injectedFault} assessment={assessment} scoredChannels={run.channels} />
+      )}
+      <div className="run-cols">
+        {/* a run with no scored channel shows neither: the trace's figure already says so */}
+        {run.channels.length > 0 && (baseline !== null
+          ? <ChannelLineup channels={run.channels} selected={selected} k={baseline.k} n={baseline.n} />
+          : (
+            // with no baseline there is no limit to line the channels up against, so the plain ranked list stands in
+            <Figure id="channels" title="Channels by rank" answer="There is no baseline, so there is no limit to line them up against." className="channels">
+              <ChannelsTable channels={run.channels} selected={selected} />
+            </Figure>
+          ))}
+        {selected === undefined
+          ? (
+            <Figure id="trace" title="Trace">
+              <p className="state">No channel of this run was scored.</p>
+            </Figure>
+          )
+          // a relabel's refit moves the band, so a new baseline mounts the chart afresh and fetches its trace again
+          : <ChannelFigure key={run.baseline?.id ?? 0} runId={run.id} channel={selected} />}
+      </div>
+      <div className="run-panels">
+        <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={onRelabeled} />
+        <Figure id="alignment" title="Alignment" numbered={false} className="panel-small">
+          <AlignmentFacts alignment={run.alignment} />
+        </Figure>
+      </div>
+    </>
+  )
+}
+
+/** The head: the lot strip, the sentence that says how the run did, its lead and meta line, and the verdict beside them. */
+function RunHead({ run }: { run: RunDetail }) {
+  const { assessment, baseline } = run
   // the 89-point set comes first when the wafer is in both
   const measured = run.measuredDepth[0]
   return (
-    <>
-      <title>{`${run.key} · ChamberWatch`}</title>
-      <header className="page-head">
-        <p className="breadcrumb">
-          <Link to={withSource('/', run.source)}>Runs</Link>
-          <span aria-hidden="true"> / </span>
-          <Link to={withSource(`/?lot=${run.lotId}`, run.source)}>Lot {run.lotNo}</Link>
-          <span aria-hidden="true"> / </span>
-          Wafer {run.positionInLot}
-        </p>
-        <h1 className="key">{run.key}</h1>
-        <RunStatus alignment={run.alignment.kind === 'failed' ? 'FAILED' : run.alignment.status} score={assessment} good={run.good} />
-        {assessment !== null && (
-          <p className="answer-next">{describeRun({ assessment, channels: run.channels, good: run.good, depth: measured })}</p>
-        )}
-        <p className="head-links">
-          {run.source === 'PUBLIC' && <Link to={`/runs/${run.id}/wafer`}>Measured depth</Link>}
-          <Link to={`/lots/${run.lotId}`}>{`Lot ${run.lotNo} drift`}</Link>
-        </p>
-      </header>
-      {assessment === null
-        ? <p className="status-line">This run has no score under the current baseline.</p>
-        : run.alignment.kind === 'aligned' && (
-          <EtchTimeline
-            assessment={assessment}
-            channels={run.channels}
-            k={baseline?.k ?? null}
-            etch={{ fromS: run.alignment.etchStartS, toS: run.alignment.etchEndS }}
-            fault={run.injectedFault}
-          />
-        )}
-      <div className="run-layout">
-        <div className="stack">
-          {run.injectedFault !== null && (
-            <InjectedFaultPanel fault={run.injectedFault} assessment={assessment} scoredChannels={run.channels} />
-          )}
-          {/* a run with no scored channel shows neither: the trace's column already says so */}
-          {run.channels.length > 0 && (baseline !== null
-            ? <ChannelLineup channels={run.channels} selected={selected} k={baseline.k} n={baseline.n} />
-            : (
-              // with no baseline there is no limit to line the channels up against, so the plain ranked list stands in
-              <section className="panel" aria-labelledby="channels-title">
-                <h2 id="channels-title">Channels by rank</h2>
-                <ChannelsTable channels={run.channels} selected={selected} />
-              </section>
-            ))}
-          <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={onRelabeled} />
-          <section className="panel" aria-labelledby="alignment-title">
-            <h2 id="alignment-title">Alignment</h2>
-            <AlignmentFacts alignment={run.alignment} />
-          </section>
+    <header className="run-head">
+      <p className="breadcrumb">
+        <Link to={withSource('/', run.source)}>Runs</Link>
+        <span aria-hidden="true"> / </span>
+        <Link to={withSource(`/?lot=${run.lotId}`, run.source)}>Lot {run.lotNo}</Link>
+        <span aria-hidden="true"> / </span>
+        Wafer {run.positionInLot}
+      </p>
+      <div className="run-head-grid">
+        <div className="run-head-main">
+          <LotStripView run={run} />
+          {/* "Lot 6" and "Wafer 5" never break across lines */}
+          <h1>{runHeadline(run).replace(/(Wafer|Lot) (\d+)/g, '$1\u00a0$2')}</h1>
+          <p className="run-lead">
+            {assessment === null
+              ? describeUnscored(run)
+              : <Lead text={describeRun({ assessment, channels: run.channels, good: run.good, depth: measured })} first={assessment.firstChannel} />}
+          </p>
+          <p className="run-meta">
+            {run.runDate !== null && <span>{formatDate(run.runDate)}</span>}
+            <span className="run-key">{run.key}</span>
+            {run.good && <span className="word">Baseline run</span>}
+            {run.alignment.kind === 'aligned' && run.alignment.status === 'DEGRADED' && <span className="word warn">Alignment degraded</span>}
+            {(assessment?.stuckFlags ?? 0) > 0 && <span className="word warn">Stuck sensor</span>}
+            {run.source === 'PUBLIC' && <Link to={`/runs/${run.id}/wafer`}>Measured depth</Link>}
+            <Link to={`/lots/${run.lotId}`}>{`Lot ${run.lotNo} drift`}</Link>
+          </p>
         </div>
-        {selected === undefined
-          ? <section className="panel"><p className="status-line">No channel of this run was scored.</p></section>
-          // a relabel's refit moves the band, so a new baseline mounts the chart afresh and fetches its trace again
-          : <ChannelPanel key={run.baseline?.id ?? 0} runId={run.id} channel={selected} />}
+        {assessment !== null && baseline !== null && <Verdict run={run} score={assessment} k={baseline.k} />}
       </div>
+    </header>
+  )
+}
+
+/** The lead, with the channel it opens on set in bold when it opens on one. */
+function Lead({ text, first }: { text: string; first: string | null }) {
+  const name = first === null ? null : formatChannelName(first)
+  if (name === null || !text.startsWith(name)) {
+    return text
+  }
+  return (
+    <>
+      <strong>{name}</strong>
+      {text.slice(name.length)}
     </>
+  )
+}
+
+/** How unusual the run was: its score as a big numeral beside its disc, one sentence, and the score on its line. */
+function Verdict({ run, score, k }: { run: RunDetail; score: Score; k: number }) {
+  const state = runDetailState(run)
+  const end = verdictEnd(score.persistentZ, k)
+  const z = formatBigScore(score.persistentZ)
+  return (
+    <section className="run-verdict" aria-labelledby="verdict-title">
+      <h2 id="verdict-title" className="verdict-label">How unusual</h2>
+      <p className="verdict-big">
+        <Disc state={state} size="ledger" />
+        <span className="verdict-num">{z}</span>
+      </p>
+      <p className="verdict-state">{describeVerdict(score, k)}</p>
+      <ScoreLine
+        z={score.persistentZ}
+        k={k}
+        end={end}
+        out={state === 'out'}
+        size="verdict"
+        ticks
+        label={`${z} on a scale from 0 to ${end}, with the limit at ${formatScore(k)}${score.persistentZ > end ? '; the score runs past the end' : ''}`}
+      />
+    </section>
+  )
+}
+
+/**
+ * The run's lot as a row of discs above the `h1`, each a link to its run, this one larger with its score inside. The
+ * lot's wafers come from the runs list, since the run's own answer does not carry them; the strip holds its height while
+ * that loads and is left out if it fails.
+ */
+function LotStripView({ run }: { run: RunDetail }) {
+  const [runs] = useResource(withSource(`/api/runs?lot=${run.lotId}`, run.source), runsPageSchema)
+  if (runs.kind === 'error') {
+    return null
+  }
+  if (runs.kind === 'loading') {
+    return <div className="lot-strip placeholder" aria-hidden="true"><span className="skel skel-strip" /></div>
+  }
+  const strip = lotStrip(runs.data.runs, run)
+  const n = strip.baseline
+  const baseline = n === null ? [] : strip.slots.filter((slot) => slot.position <= n)
+  const rest = n === null ? strip.slots : strip.slots.filter((slot) => slot.position > n)
+  // the "this wafer" label goes under its disc when the baseline bracket already holds the space above it
+  const hereInBaseline = baseline.some((slot) => slot.current)
+  return (
+    <div className={hereInBaseline ? 'lot-strip label-below' : 'lot-strip'} role="group" aria-label={`Lot ${run.lotNo}, wafer by wafer`}>
+      {baseline.length > 0 && (
+        <span className="strip-baseline">
+          <span className="strip-bracket" aria-hidden="true">Baseline</span>
+          {baseline.map((slot) => <StripDisc key={slot.id} slot={slot} marked={false} />)}
+        </span>
+      )}
+      {rest.map((slot) => <StripDisc key={slot.id} slot={slot} marked={n === null && slot.good} />)}
+    </div>
+  )
+}
+
+function StripDisc({ slot, marked }: { slot: StripSlot; marked: boolean }) {
+  const disc = (
+    <Disc
+      state={slot.state}
+      size={slot.current ? 'here' : 'strip'}
+      text={slot.text}
+      to={`/runs/${slot.id}`}
+      label={slot.label}
+      current={slot.current}
+      baseline={marked}
+    />
+  )
+  if (!slot.current) {
+    return disc
+  }
+  return (
+    <span className="strip-here">
+      <span className="strip-here-label" aria-hidden="true">This wafer</span>
+      {disc}
+    </span>
   )
 }
 
@@ -154,7 +319,7 @@ function ChannelsTable({ channels, selected }: { channels: readonly Channel[]; s
           <tr>
             <th scope="col" className="num">Rank</th>
             <th scope="col">Channel</th>
-            <th scope="col">How unusual</th>
+            <th scope="col" className="num">How unusual</th>
             <th scope="col" className="num">Excursions</th>
           </tr>
         </thead>
@@ -171,10 +336,10 @@ function ChannelsTable({ channels, selected }: { channels: readonly Channel[]; s
                 >
                   {formatChannelName(channel.channel)}
                 </Link>
-                {channel.deviation && <span className="tag">Deviates</span>}
-                {channel.holds.length > 0 && <span className="tag">Stuck</span>}
+                {channel.deviation && <span className="word">Deviates</span>}
+                {channel.holds.length > 0 && <span className="word warn">Stuck</span>}
               </td>
-              <td>{formatScore(channel.persistentZ)}</td>
+              <td className="num">{formatScore(channel.persistentZ)}</td>
               <td className="num">{channel.excursions.length}</td>
             </tr>
           ))}
@@ -184,7 +349,8 @@ function ChannelsTable({ channels, selected }: { channels: readonly Channel[]; s
   )
 }
 
-function ChannelPanel({ runId, channel }: { runId: number; channel: Channel }) {
+/** The picked channel's trace, with its phase statistics, holds and excursions under it. */
+function ChannelFigure({ runId, channel }: { runId: number; channel: Channel }) {
   const [params, setParams] = useSearchParams()
   const view = readView(params)
   const first = channel.excursions[0]
@@ -210,33 +376,36 @@ function ChannelPanel({ runId, channel }: { runId: number; channel: Channel }) {
     setParams(search, { replace: true, preventScrollReset: true })
   }
 
+  const views: ReadonlyArray<readonly [View, string]> = [
+    [ETCH, 'Etch'],
+    ...(zoom === null ? [] : [[zoom, `Cycles ${zoom.from} to ${zoom.to}`] as const]),
+    [{ kind: 'record' }, 'Whole record'],
+  ]
   return (
-    <section className="panel" aria-labelledby="trace-title">
-      <header className="panel-head">
-        <h2 id="trace-title">{formatChannelName(channel.channel)}</h2>
+    <Figure
+      id="trace"
+      title={formatChannelName(channel.channel)}
+      className="trace-figure"
+      answer={describeChannelTrace(channel)}
+      control={(
         <div className="segmented" role="group" aria-label="Part of the record shown">
-          <button type="button" aria-pressed={sameView(view, ETCH)} onClick={() => show(ETCH)}>Etch</button>
-          {zoom !== null && (
-            <button type="button" aria-pressed={sameView(view, zoom)} onClick={() => show(zoom)}>
-              {`Cycles ${zoom.from} to ${zoom.to}`}
-            </button>
-          )}
-          <button type="button" aria-pressed={view.kind === 'record'} onClick={() => show({ kind: 'record' })}>
-            Whole record
-          </button>
+          {views.map(([option, text]) => (
+            <button key={text} type="button" aria-pressed={sameView(view, option)} onClick={() => show(option)}>{text}</button>
+          ))}
         </div>
-      </header>
-      <Loaded resource={trace}>{(data) => <TraceChart trace={data} />}</Loaded>
+      )}
+    >
+      <Loaded resource={trace}>{(data) => <TraceChart trace={data} holds={channel.holds} />}</Loaded>
       <EvidenceTable phases={channel.phases} />
-      {channel.excursions.length > 0 && <ExcursionsTable excursions={channel.excursions} />}
       {channel.holds.length > 0 && <HoldsTable holds={channel.holds} longestHold={channel.longestHold} />}
-    </section>
+      {channel.excursions.length > 0 && <ExcursionsTable excursions={channel.excursions} />}
+    </Figure>
   )
 }
 
 function HoldsTable({ holds, longestHold }: { holds: readonly Hold[]; longestHold: number }) {
   return (
-    <div className="table-wrap">
+    <div className="table-wrap figure-table">
       <table>
         <caption>{`Holds: one value reported longer than any good run held one on this channel (longest ${longestHold} samples)`}</caption>
         <thead>
@@ -268,9 +437,10 @@ function HoldsTable({ holds, longestHold }: { holds: readonly Hold[]; longestHol
   )
 }
 
+/** Each phase's mean and spread against the good runs', with the z of each; a z past the limit is set in red. */
 function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
   return (
-    <div className="table-wrap">
+    <div className="table-wrap figure-table">
       <table>
         <caption>Phase statistics against the good runs</caption>
         <thead>
@@ -290,10 +460,10 @@ function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
               <th scope="row">{phase.phase}</th>
               <td className="num">{formatValue(phase.mean)}</td>
               <td className="num">{formatValue(phase.goodMean)}</td>
-              <td className="num">{formatScore(phase.meanZ)}</td>
+              <td className="num strong">{formatScore(phase.meanZ)}</td>
               <td className="num">{formatValue(phase.sd)}</td>
               <td className="num">{formatValue(phase.goodSd)}</td>
-              <td className="num">{formatScore(phase.sdZ)}</td>
+              <td className="num strong">{formatScore(phase.sdZ)}</td>
             </tr>
           ))}
         </tbody>
@@ -302,37 +472,41 @@ function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
   )
 }
 
+/** Every excursion, closed until asked for: a step change can have nearly a hundred. */
 function ExcursionsTable({ excursions }: { excursions: readonly Excursion[] }) {
   return (
-    <div className="table-wrap">
-      <table>
-        <caption>Excursions</caption>
-        <thead>
-          <tr>
-            <th scope="col" className="num">Cycle</th>
-            <th scope="col">Phase</th>
-            <th scope="col" className="num">Starts</th>
-            <th scope="col" className="num">Confirmed</th>
-            <th scope="col" className="num">Ends</th>
-            <th scope="col" className="num">Samples out</th>
-            <th scope="col" className="num">Peak z</th>
-          </tr>
-        </thead>
-        <tbody>
-          {excursions.map((excursion) => (
-            <tr key={excursion.startSlot}>
-              <td className="num">{excursion.cycle}</td>
-              <td>{excursion.phase}</td>
-              <td className="num">{formatSeconds(excursion.startTimeS)}</td>
-              <td className="num">{formatSeconds(excursion.confirmTimeS)}</td>
-              <td className="num">{formatSeconds(excursion.endTimeS)}</td>
-              <td className="num">{excursion.outSamples}</td>
-              <td className="num">{formatScore(excursion.peakZ)}</td>
+    <details className="how figure-table">
+      <summary>{`Every excursion (${excursions.length})`}</summary>
+      <div className="table-wrap table-scroll">
+        <table>
+          <caption className="visually-hidden">Excursions</caption>
+          <thead>
+            <tr>
+              <th scope="col" className="num">Cycle</th>
+              <th scope="col">Phase</th>
+              <th scope="col" className="num">Starts</th>
+              <th scope="col" className="num">Confirmed</th>
+              <th scope="col" className="num">Ends</th>
+              <th scope="col" className="num">Samples out</th>
+              <th scope="col" className="num">Peak z</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {excursions.map((excursion) => (
+              <tr key={excursion.startSlot}>
+                <td className="num">{excursion.cycle}</td>
+                <td>{excursion.phase}</td>
+                <td className="num">{formatSeconds(excursion.startTimeS)}</td>
+                <td className="num">{formatSeconds(excursion.confirmTimeS)}</td>
+                <td className="num">{formatSeconds(excursion.endTimeS)}</td>
+                <td className="num">{excursion.outSamples}</td>
+                <td className="num">{formatScore(excursion.peakZ)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   )
 }
 
@@ -393,15 +567,14 @@ function RelabelPanel({ runId, label, readOnly, onRelabeled }: {
   }
 
   return (
-    <section className="panel" aria-labelledby="label-title">
-      <h2 id="label-title">Label</h2>
+    <Figure id="label" title="Label" numbered={false} className="panel-small">
       <p className="note">
         Good runs teach the baseline. This run is labeled {formatLabel(label)}, so it {LABEL_MEANINGS[label]}
       </p>
       {readOnly
         ? <p className="note">Labels cannot be changed on this ChamberWatch, a read-only demo.</p>
         : (
-          <div className="segmented" role="group" aria-label="Label">
+          <div className="segmented label-switch" role="group" aria-label="Label">
             {LABEL_ORDER.map((option) => (
               <button
                 key={option}
@@ -416,7 +589,7 @@ function RelabelPanel({ runId, label, readOnly, onRelabeled }: {
           </div>
         )}
       <RelabelStatus state={state} />
-    </section>
+    </Figure>
   )
 }
 
@@ -457,71 +630,76 @@ function describeRefit(result: RelabelResult): string {
   return result.current ? summary : `${summary} A relabel that read newer labels finished first, and its baseline is the current one.`
 }
 
-/** What the simulator put into a synthetic run, next to what the detectors made of it. The detectors never see this. */
-function InjectedFaultPanel({ fault, assessment, scoredChannels }: {
+/**
+ * What the simulator put into a synthetic run, next to what the detectors made of it. The detectors never see this.
+ * The answer line is whether they caught it; the rows say what was put in.
+ */
+function InjectedFaultFigure({ fault, assessment, scoredChannels }: {
   fault: InjectedFault
   assessment: Score | null
   scoredChannels: readonly Channel[]
 }) {
-  const scored = scoredChannels.some((channel) => channel.channel === fault.channel)
+  const channel = scoredChannels.find((candidate) => candidate.channel === fault.channel)
   return (
-    <section className="panel" aria-labelledby="fault-title">
-      <h2 id="fault-title">Injected fault</h2>
-      <p className="note">
+    <Figure id="fault" title="Injected fault" answer={describeCatch(fault, assessment)} className="fault">
+      <p className="figure-note">
         This is a simulated run. The simulator put one fault into it, and the detectors scored the run without knowing.
       </p>
-      <dl className="facts">
-        <dt>Kind</dt>
-        <dd>{formatFaultKind(fault.kind)}</dd>
-        <dt>Channel</dt>
-        <dd>
-          {scored
-            ? (
-                <Link to={{ search: `?channel=${encodeURIComponent(fault.channel)}` }} replace preventScrollReset>
-                  {formatChannelName(fault.channel)}
-                </Link>
-              )
-            : formatChannelName(fault.channel)}
-        </dd>
-        <dt>What it did</dt>
-        <dd>{describeFault(fault)}</dd>
-        <dt>Caught</dt>
-        <dd>{describeCatch(fault, assessment)}</dd>
-      </dl>
-    </section>
+      <Facts
+        rows={[
+          ['Kind', formatFaultKind(fault.kind)],
+          ['Channel', channel === undefined
+            ? formatChannelName(fault.channel)
+            : (
+                <>
+                  <Link to={{ search: `?channel=${encodeURIComponent(fault.channel)}` }} replace preventScrollReset>
+                    {formatChannelName(fault.channel)}
+                  </Link>
+                  <span className="facts-aside">{`how unusual ${formatShortAgainstLimit(channel.persistentZ, null)}`}</span>
+                </>
+              )],
+          ['What it did', describeFault(fault)],
+        ]}
+      />
+    </Figure>
+  )
+}
+
+/** A ruled list of facts: a mono label over each value on a phone, beside it on a wider page. */
+function Facts({ rows }: { rows: ReadonlyArray<readonly [string, ReactNode]> }) {
+  return (
+    <dl className="facts">
+      {rows.map(([term, value]) => (
+        <Fragment key={term}>
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
   )
 }
 
 function AlignmentFacts({ alignment }: { alignment: Alignment }) {
   if (alignment.kind === 'failed') {
-    return <p>The aligner could not place this run on the recipe grid: {alignment.note ?? 'no reason was recorded'}.</p>
+    return <p className="note">The aligner could not place this run on the recipe grid: {alignment.note ?? 'no reason was recorded'}.</p>
   }
   const { gap } = alignment
   return (
-    <dl className="facts">
-      <dt>Status</dt>
-      <dd>{alignment.status === 'ALIGNED' ? 'Aligned cleanly' : `Degraded${alignment.note === null ? '' : `: ${alignment.note}`}`}</dd>
-      <dt>Etch</dt>
-      <dd>{`${formatSeconds(alignment.etchStartS)} to ${formatSeconds(alignment.etchEndS)}`}</dd>
-      <dt>Cycles</dt>
-      <dd>{`${alignment.c4f8Phases} C4F8 phases, last cycle ${alignment.lastCycle}`}</dd>
-      <dt>Cycle 1</dt>
-      <dd>{alignment.cycle1Sf6 ? 'Starts with SF6' : 'Starts with C4F8'}</dd>
-      <dt>Phase onsets</dt>
-      <dd>{`${alignment.onsetsDetected} found, ${alignment.onsetsPredicted} predicted`}</dd>
-      <dt>Largest gap</dt>
-      <dd>
-        {gap === null
+    <Facts
+      rows={[
+        ['Status', alignment.status === 'ALIGNED'
+          ? 'Aligned cleanly'
+          : <><span className="word warn">Degraded</span>{alignment.note === null ? '' : ` ${alignment.note}`}</>],
+        ['Etch', `${formatSeconds(alignment.etchStartS)} to ${formatSeconds(alignment.etchEndS)}`],
+        ['Cycles', `${alignment.c4f8Phases} C4F8 phases, last cycle ${alignment.lastCycle}`],
+        ['Cycle 1', alignment.cycle1Sf6 ? 'Starts with SF6' : 'Starts with C4F8'],
+        ['Phase onsets', `${alignment.onsetsDetected} found, ${alignment.onsetsPredicted} predicted`],
+        ['Largest gap', gap === null
           ? 'None'
-          : `${formatSeconds(gap.lengthS)} at ${formatSeconds(gap.startS)}, ${gap.insideEtch ? 'inside' : 'outside'} the etch`}
-      </dd>
-      {alignment.irregularCycles.length > 0 && (
-        <>
-          <dt>Irregular cycles</dt>
-          <dd>{alignment.irregularCycles.join(', ')}</dd>
-        </>
-      )}
-    </dl>
+          : `${formatSeconds(gap.lengthS)} at ${formatSeconds(gap.startS)}, ${gap.insideEtch ? 'inside' : 'outside'} the etch`],
+        ...(alignment.irregularCycles.length > 0 ? [['Irregular cycles', alignment.irregularCycles.join(', ')] as const] : []),
+      ]}
+    />
   )
 }
 

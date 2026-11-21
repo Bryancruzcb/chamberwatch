@@ -1,28 +1,90 @@
 import { describe, expect, it } from 'vitest'
 import type { Excursion, TracePoint } from '../api/schema'
-import { bandSegments, envelopeSegments, excursionSpans, nearestIndex, traceExtent } from './trace'
+import { bandSegments, bucketsIn, clips, envelopeOutlines, excursionSpans, fitTraceDomain, nearestIndex, traceExtent } from './trace'
 
 function bucket({ at, min, max = min, band = null }: { at: number; min: number; max?: number; band?: TracePoint['band'] }): TracePoint {
   return { startS: at, endS: at, samples: min === max ? 1 : 2, min, max, position: null, band }
 }
 
-describe('envelopeSegments', () => {
-  it('keeps the full height of a one-sample spike', () => {
-    const segments = envelopeSegments([bucket({ at: 0, min: 10 }), bucket({ at: 0.2, min: 10, max: 50 }), bucket({ at: 0.4, min: 11 })])
+describe('envelopeOutlines', () => {
+  it("runs along each bucket's highest value and back along its lowest, so a one-sample spike keeps its height", () => {
+    const outlines = envelopeOutlines([bucket({ at: 0, min: 10 }), bucket({ at: 0.2, min: 10, max: 50 }), bucket({ at: 0.4, min: 11 })])
 
-    expect(segments).toEqual([[[0, 10], [0.2, 10], [0.2, 50], [0.4, 11]]])
+    expect(outlines).toEqual([[[0, 10], [0.2, 50], [0.4, 11], [0.4, 11], [0.2, 10], [0, 10]]])
   })
 
-  it('enters a bucket from whichever end is nearer', () => {
-    const segments = envelopeSegments([bucket({ at: 0, min: 60 }), bucket({ at: 0.2, min: 10, max: 50 })])
+  it('breaks the outline at a recording gap', () => {
+    const outlines = envelopeOutlines([bucket({ at: 0, min: 1 }), bucket({ at: 0.2, min: 1 }), bucket({ at: 41.3, min: 2, max: 3 })])
 
-    expect(segments).toEqual([[[0, 60], [0.2, 50], [0.2, 10]]])
+    expect(outlines).toEqual([[[0, 1], [0.2, 1], [0.2, 1], [0, 1]], [[41.3, 3], [41.3, 2]]])
+    expect(envelopeOutlines([])).toEqual([])
+  })
+})
+
+describe('bucketsIn', () => {
+  it('keeps the buckets an excursion touches, edges included', () => {
+    const points = [0, 0.2, 0.4, 0.6].map((at) => bucket({ at, min: at }))
+
+    expect(bucketsIn(points, { start: 0.2, end: 0.4 }).map((point) => point.startS)).toEqual([0.2, 0.4])
+    expect(bucketsIn(points, { start: 0.25, end: 0.3 })).toEqual([])
+  })
+})
+
+describe('fitTraceDomain', () => {
+  // a start-up ramp: the reading climbs from 5 while the good runs disagree so much the band is 120 wide, then it
+  // settles near 90 inside a band 12 wide
+  const ramp = [
+    bucket({ at: 0, min: 5, band: { mean: 10, sd: 10 } }),
+    bucket({ at: 0.2, min: 40, band: { mean: 45, sd: 10 } }),
+    ...[0.4, 0.6, 0.8, 1, 1.2, 1.4].map((at) => bucket({ at, min: 88, max: 92, band: { mean: 90, sd: 1 } })),
+  ]
+
+  it('fits the reading and the band from where the reading sits inside a settled band', () => {
+    const fit = fitTraceDomain(ramp, 6)
+
+    expect(fit.from).toBe(2)
+    // 84 to 96, padded 5 percent and rounded out to tidy ticks
+    expect(fit.domain).toEqual([82, 98])
   })
 
-  it('breaks the line at a recording gap', () => {
-    const segments = envelopeSegments([bucket({ at: 0, min: 1 }), bucket({ at: 0.2, min: 1 }), bucket({ at: 41.3, min: 2 })])
+  it('fits everything when the reading never enters the band', () => {
+    const away = ramp.map((point) => ({ ...point, min: point.min + 200, max: point.max + 200 }))
+    const fit = fitTraceDomain(away, 6)
 
-    expect(segments).toEqual([[[0, 1], [0.2, 1]], [[41.3, 2]]])
+    expect(fit.from).toBe(0)
+    expect(fit.domain[0]).toBeLessThanOrEqual(84)
+    expect(fit.domain[1]).toBeGreaterThanOrEqual(292)
+  })
+
+  it('leaves a ballooning band out of the fit wherever it comes', () => {
+    const switching = [...ramp, bucket({ at: 1.6, min: 90, band: { mean: 90, sd: 500 } })]
+
+    expect(fitTraceDomain(switching, 6).domain).toEqual([82, 98])
+  })
+
+  it('fits the reading alone when there is no band, and copes with no buckets', () => {
+    const plain = [bucket({ at: 0, min: 10 }), bucket({ at: 0.2, min: 20 })]
+
+    expect(fitTraceDomain(plain, null)).toEqual({ domain: [8, 22], from: 0 })
+    expect(fitTraceDomain([], 6)).toEqual({ domain: [0, 1], from: null })
+  })
+})
+
+describe('clips', () => {
+  it('names a ramp cut off at the start by where it ends and where it began', () => {
+    const points = [bucket({ at: 0, min: 6.9 }), bucket({ at: 0.2, min: 40 }), bucket({ at: 0.4, min: 70 }), bucket({ at: 0.6, min: 90 })]
+
+    expect(clips(points, [60, 100])).toEqual([{ side: 'below', edge: 60, atStart: true, untilS: 0.2, value: 6.9, atS: 0, stretches: 1 }])
+  })
+
+  it('counts separate stretches past an edge and finds the most extreme value', () => {
+    const points = [bucket({ at: 0, min: 90 }), bucket({ at: 0.2, min: 90, max: 105 }), bucket({ at: 0.4, min: 90 }), bucket({ at: 0.6, min: 90, max: 112 })]
+
+    expect(clips(points, [60, 100])).toEqual([{ side: 'above', edge: 100, atStart: false, untilS: 0.6, value: 112, atS: 0.6, stretches: 2 }])
+  })
+
+  it('finds nothing to note when the reading fits', () => {
+    expect(clips([bucket({ at: 0, min: 70, max: 80 })], [60, 100])).toEqual([])
   })
 })
 

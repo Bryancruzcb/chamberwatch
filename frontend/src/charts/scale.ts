@@ -89,3 +89,18 @@ export function scoreLineEnd(scores: readonly number[], k: number | null): { end
 export function timeLineEnd(seconds: readonly number[]): number {
   return roundUpTo(Math.max(0, ...seconds), 100)
 }
+
+/** The verdict's line runs to at least this many limits, so the limit tick sits a quarter of the way along or nearer 0. */
+const VERDICT_LIMITS = 4
+
+/**
+ * Where the run page's verdict line ends: the larger of four times the limit and the score, rounded up to the next 5.
+ * Like every score line it stops at ten times the limit, so a step change ends on an arrow instead of pinning the limit
+ * against 0.
+ */
+export function verdictEnd(z: number, k: number): number {
+  if (k <= 0) {
+    return roundUpTo(Math.max(z, 0), 5)
+  }
+  return Math.min(roundUpTo(Math.max(VERDICT_LIMITS * k, z), 5), roundUpTo(SCORE_LINE_LIMITS * k, 5))
+}

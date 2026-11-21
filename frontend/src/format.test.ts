@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { type Channel, depthModelSchema, driftVsDepthSchema } from './api/schema'
 import {
   describeCatch,
+  describeChannelTrace,
+  describeClip,
   describeDepthLoss,
   describeDepthModel,
   describeDepthTrend,
@@ -13,6 +15,7 @@ import {
   describeRun,
   describeWaferDepth,
   formatAgainstLimit,
+  formatBigScore,
   formatChannelName,
   formatCount,
   formatConditioning,
@@ -23,6 +26,7 @@ import {
   formatMicrons,
   formatScore,
   formatSeconds,
+  formatShortAgainstLimit,
   formatShortScore,
   formatValue,
   MISSING,
@@ -265,7 +269,7 @@ describe('format', () => {
 
     expect(describeLineup(channels, 6)).toBe('2 of 3 channels went past the limit of 6.0. Platen RF load cap went furthest, to 18.8.')
     expect(describeLineup([scored('Gas5Flow', 97795.1), scored('Gas1Flow', 2.2)], 6))
-      .toBe('1 of 2 channels went past the limit of 6.0. Gas 5 flow went furthest, to >20.')
+      .toBe('1 of 2 channels went past the limit of 6.0. Gas 5 flow went furthest, to 97,795.')
     // exactly at the limit is not past it
     expect(describeLineup([scored('Gas7Flow', 3.56), scored('Gas1Flow', 6)], 6))
       .toBe('No channel went past the limit of 6.0. The closest was Gas 1 flow, at 6.0.')
@@ -305,6 +309,44 @@ function fixture(name: string): unknown {
 }
 
 /** A scored channel with as many excursions and holds as asked for, and nothing else of note. */
+describe("the run page's numbers and notes", () => {
+  it("prints the verdict's numeral in full, one decimal under 100", () => {
+    expect(formatBigScore(18.81)).toBe('18.8')
+    expect(formatBigScore(99.96)).toBe('100.0')
+    expect(formatBigScore(100)).toBe('100')
+    expect(formatBigScore(97795.12)).toBe('97,795')
+  })
+
+  it('prints a short score against the limit with a second decimal only where one would read as the limit', () => {
+    expect(formatShortAgainstLimit(18.81, 6)).toBe('18.8')
+    expect(formatShortAgainstLimit(6.04, 6)).toBe('6.04')
+    expect(formatShortAgainstLimit(5.96, 6)).toBe('5.96')
+    expect(formatShortAgainstLimit(6, 6)).toBe('6.0')
+    expect(formatShortAgainstLimit(97795, 6)).toBe('98K')
+    expect(formatShortAgainstLimit(6.04, null)).toBe('6.0')
+  })
+
+  it("says what a channel's reading did, for the trace's answer", () => {
+    expect(describeChannelTrace(channel('Gas5Flow', { excursions: 3 }))).toBe('The reading left the good-run range 3 times, first at 1.0 s.')
+    expect(describeChannelTrace(channel('Gas5Flow', { excursions: 1 }))).toBe('The reading left the good-run range once, first at 1.0 s.')
+    expect(describeChannelTrace(channel('Pressure', { holds: 1 }))).toBe('The reading held one value longer than any good run once, first at 1.0 s.')
+    expect(describeChannelTrace(channel('Pressure', { excursions: 2, holds: 2 })))
+      .toBe('The reading left the good-run range 2 times, first at 1.0 s. It held one value longer than any good run 2 times, first at 1.0 s.')
+    expect(describeChannelTrace(channel('Pressure', { deviation: true })))
+      .toBe('The reading stayed in the good-run range, but a phase mean or spread moved off the good runs.')
+    expect(describeChannelTrace(channel('Pressure'))).toBe('The reading stayed in the good-run range.')
+  })
+
+  it('notes what a fitted trace clips, a ramp at the start or stretches elsewhere', () => {
+    expect(describeClip({ side: 'below', edge: 60, atStart: true, untilS: 39.8, value: 6.891, atS: 30.4, stretches: 1 }))
+      .toBe('Below 60 until 39.8 s; starts at 6.9')
+    expect(describeClip({ side: 'above', edge: 100, atStart: false, untilS: 500, value: 112.4, atS: 407.2, stretches: 3 }))
+      .toBe('Above 100 in 3 stretches; highest 112 at 407.2 s')
+    expect(describeClip({ side: 'below', edge: 0.5, atStart: false, untilS: 500, value: 0.12, atS: 9, stretches: 1 }))
+      .toBe('Below 0.5 in 1 stretch; lowest 0.1 at 9.0 s')
+  })
+})
+
 function channel(name: string, { excursions = 0, holds = 0, deviation = false } = {}): Channel {
   const span = { channel: name, startSlot: 0, confirmSlot: 4, endSlot: 9, cycle: 1, phase: 'SF6', offset: 0, startTimeS: 1, confirmTimeS: 1.8, endTimeS: 2.8 } as const
   return {

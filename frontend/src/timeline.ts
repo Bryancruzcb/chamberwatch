@@ -21,8 +21,17 @@ export interface Tick {
   readonly at: number
 }
 
+/** The first moment any lane leaves its range, which the timeline labels with a leader. */
+export interface FirstDeparture {
+  readonly kind: Span['kind']
+  readonly s: number
+  readonly at: number
+}
+
 export interface Timeline {
   readonly lanes: readonly Lane[]
+  /** The earliest excursion or stuck value on any lane; on a tie the excursion, as the detectors time it. */
+  readonly first: FirstDeparture | null
   /** Channels that left their range but did not fit on the page. */
   readonly hidden: number
   readonly ticks: readonly Tick[]
@@ -60,8 +69,17 @@ export function etchTimeline(channels: readonly Channel[], fromS: number, toS: n
       ]
       return spans.length === 0 ? [] : [{ channel, spans }]
     })
+  const starts = lanes.flatMap(({ channel }) => [
+    ...channel.excursions.flatMap((excursion) => (excursion.startTimeS === null ? [] : [{ kind: 'excursion' as const, s: excursion.startTimeS }])),
+    ...channel.holds.flatMap((hold) => (hold.startTimeS === null ? [] : [{ kind: 'hold' as const, s: hold.startTimeS }])),
+  ])
+  const earliest = starts.reduce<(typeof starts)[number] | null>(
+    (best, start) => (best === null || start.s < best.s || (start.s === best.s && start.kind === 'excursion') ? start : best),
+    null,
+  )
   return {
     lanes: lanes.slice(0, MAX_LANES),
+    first: earliest === null ? null : { ...earliest, at: positionIn(fromS, toS, earliest.s) },
     hidden: Math.max(0, lanes.length - MAX_LANES),
     ticks: ticksBetween(fromS, toS).map((s) => ({ s, at: positionIn(fromS, toS, s) })),
   }

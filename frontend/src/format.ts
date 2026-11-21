@@ -3,6 +3,7 @@ import {
   type InjectedFault, isFlagged, type Label, type MeasuredDepth, type Measurements, type MeasurementSet, type RunDepth, type Score,
   type Source,
 } from './api/schema'
+import type { Clip } from './charts/trace'
 import { centerAndEdge } from './wafer'
 
 const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
@@ -252,8 +253,10 @@ export function describeLineup(channels: readonly Channel[], k: number): string 
   if (over.length === 0) {
     return `No channel went past the limit of ${formatScore(k)}. The closest was ${formatChannelName(furthest.channel)}, at ${formatAgainstLimit(furthest.persistentZ, k)}.`
   }
+  // a step change is named in full here, as the verdict prints it, rather than as the bound a short label uses
+  const to = furthest.persistentZ >= 100 ? formatBigScore(furthest.persistentZ) : formatAgainstLimit(furthest.persistentZ, k)
   return `${over.length} of ${channels.length} channels went past the limit of ${formatScore(k)}. `
-    + `${formatChannelName(furthest.channel)} went furthest, to ${formatAgainstLimit(furthest.persistentZ, k)}.`
+    + `${formatChannelName(furthest.channel)} went furthest, to ${to}.`
 }
 
 /**
@@ -328,6 +331,23 @@ export function describeDepthModel(model: DepthModel): string | null {
 /** A z-score or a t-statistic, to one decimal. */
 export function formatScore(value: number | null): string {
   return value === null ? MISSING : oneDecimal.format(value)
+}
+
+/**
+ * The verdict's big numeral: one decimal under 100, whole and grouped from there, so a step change prints as 97,795
+ * rather than as a bound or a compact 98K.
+ */
+export function formatBigScore(value: number): string {
+  return Math.abs(value) >= 100 ? whole.format(value) : oneDecimal.format(value)
+}
+
+/**
+ * A short score printed at the end of a lane or row against the limit k: as `formatShortScore`, but with two decimals
+ * where one would print it as the limit itself, so 6.04 and 5.96 never both read "6.0".
+ */
+export function formatShortAgainstLimit(value: number, k: number | null): string {
+  const text = formatShortScore(value)
+  return k !== null && value !== k && text === formatScore(k) ? twoDecimals.format(value) : text
 }
 
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 2 })
@@ -466,4 +486,43 @@ export function describeFault(fault: InjectedFault): string {
       return exhaustive
     }
   }
+}
+
+/**
+ * What one channel's reading did, for the trace's answer line: how often it left the good-run range and when it first
+ * did, how often it held one value, or that it stayed inside, and whether a phase mean or spread moved anyway.
+ */
+export function describeChannelTrace(channel: Channel): string {
+  const times = (count: number) => (count === 1 ? 'once' : `${count} times`)
+  const firstAt = (stretches: readonly { startTimeS: number | null }[]) => {
+    const starts = stretches.flatMap((stretch) => (stretch.startTimeS === null ? [] : [stretch.startTimeS]))
+    return starts.length === 0 ? '' : `, first at ${formatSeconds(Math.min(...starts))}`
+  }
+  const { excursions, holds } = channel
+  const left = excursions.length === 0 ? null : `The reading left the good-run range ${times(excursions.length)}${firstAt(excursions)}.`
+  const held = holds.length === 0
+    ? null
+    : `${left === null ? 'The reading' : 'It'} held one value longer than any good run ${times(holds.length)}${firstAt(holds)}.`
+  if (left !== null || held !== null) {
+    return [left, held].filter((part) => part !== null).join(' ')
+  }
+  return channel.deviation
+    ? 'The reading stayed in the good-run range, but a phase mean or spread moved off the good runs.'
+    : 'The reading stayed in the good-run range.'
+}
+
+/**
+ * The note a fitted trace prints where it clips the reading: "Below 60 until 39.8 s; starts at 6.9" for a start-up
+ * ramp, or "Above 100 in 3 stretches; highest 112 at 407.2 s" elsewhere.
+ */
+export function describeClip(clip: Clip): string {
+  // the edge is a round tick value; the reading gets one decimal, enough to say how far past it went
+  const reading = (value: number) => (Math.abs(value) >= 100 ? whole.format(value) : oneDecimal.format(value))
+  const side = clip.side === 'below' ? 'Below' : 'Above'
+  if (clip.atStart) {
+    return `${side} ${formatValue(clip.edge)} until ${formatSeconds(clip.untilS)}; starts at ${reading(clip.value)}`
+  }
+  const where = clip.stretches === 1 ? 'in 1 stretch' : `in ${clip.stretches} stretches`
+  const extreme = clip.side === 'below' ? 'lowest' : 'highest'
+  return `${side} ${formatValue(clip.edge)} ${where}; ${extreme} ${reading(clip.value)} at ${formatSeconds(clip.atS)}`
 }
