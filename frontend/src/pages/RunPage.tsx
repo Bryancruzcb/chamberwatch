@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { getJson, putJson } from '../api/client'
 import {
@@ -13,31 +13,31 @@ import {
   type RelabelResult,
   runDetailSchema,
   type RunDetail,
+  type RunsPage,
   runsPageSchema,
   type Score,
   settingsSchema,
   traceSchema,
 } from '../api/schema'
 import { withSource } from '../api/source'
-import { useResource } from '../api/useResource'
+import { type Resource, useResource } from '../api/useResource'
 import { ChannelLineup } from '../charts/ChannelLineup'
 import { EtchTimeline } from '../charts/EtchTimeline'
 import { verdictEnd } from '../charts/scale'
 import { TraceChart } from '../charts/TraceChart'
 import { Disc } from '../components/Disc'
 import { Figure } from '../components/Figure'
-import { Icon } from '../components/Icon'
 import { Loaded } from '../components/Loaded'
 import { LotStrip, LotStripPlaceholder } from '../components/LotStrip'
 import { ScoreLine } from '../components/ScoreLine'
 import {
   describeCatch, describeChannelTrace, describeFault, describeRun, formatBigScore, formatChannelName, formatDate, formatFaultKind,
-  formatLabel, formatScore, formatSeconds, formatShortAgainstLimit, formatValue,
+  formatLabel, formatScore, formatSeconds, formatShortAgainstLimit, formatValue, formatZ, tieUnits,
 } from '../format'
 import {
   describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle,
 } from '../run'
-import { NotFound } from './NotFound'
+import { NotFound, PageFailure } from './NotFound'
 
 /** Etch cycles on the recipe grid. */
 const CYCLES = 100
@@ -86,14 +86,15 @@ function RunView({ runId }: { runId: number }) {
       return <RunSkeleton />
     case 'error':
       return (
-        <div className="state run-state">
-          <p className="state-title">This run did not load</p>
-          <p role="alert">{run.error.message}</p>
-          <button type="button" className="button" onClick={reload}>
-            <Icon name="refresh" />
-            Try again
-          </button>
-        </div>
+        <PageFailure
+          error={run.error}
+          onRetry={reload}
+          missing={`There is no run ${runId}.`}
+          back={{ to: '/', label: 'Back to the runs' }}
+          name={`Run ${runId}`}
+          failed="This run did not load"
+          title={`Run ${runId} · ChamberWatch`}
+        />
       )
     case 'ready':
       return (
@@ -132,10 +133,16 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
   const [settings] = useResource('/api/settings', settingsSchema)
   // until the settings arrive the buttons wait; if they never do, the server still refuses a read-only relabel
   const readOnly = settings.kind === 'ready' ? settings.data.readOnly : settings.kind === 'loading'
+  // the lot strip's wafers; a relabel's refit rescores every run, so it asks for them again along with the run
+  const [lotRuns, reloadLotRuns] = useResource(withSource(`/api/runs?lot=${run.lotId}`, run.source), runsPageSchema)
+  function relabeled() {
+    onRelabeled()
+    reloadLotRuns()
+  }
   return (
     <>
       <title>{runTitle(run)}</title>
-      <RunHead run={run} />
+      <RunHead run={run} lotRuns={lotRuns} />
       {assessment !== null && run.alignment.kind === 'aligned' && (
         <EtchTimeline
           assessment={assessment}
@@ -151,7 +158,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
       <div className="run-cols">
         {/* a run with no scored channel shows neither: the trace's figure already says so */}
         {run.channels.length > 0 && (baseline !== null
-          ? <ChannelLineup channels={run.channels} selected={selected} k={baseline.k} n={baseline.n} />
+          ? <ChannelLineup channels={run.channels} selected={selected} k={baseline.k} n={baseline.n} runZ={baseline.runZ} />
           : (
             // with no baseline there is no limit to line the channels up against, so the plain ranked list stands in
             <Figure id="channels" title="Channels by rank" answer="There is no baseline, so there is no limit to line them up against." className="channels">
@@ -168,7 +175,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
           : <ChannelFigure key={run.baseline?.id ?? 0} runId={run.id} channel={selected} />}
       </div>
       <div className="run-panels">
-        <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={onRelabeled} />
+        <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={relabeled} />
         <Figure id="alignment" title="Alignment" numbered={false} className="panel-small">
           <AlignmentFacts alignment={run.alignment} />
         </Figure>
@@ -178,7 +185,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
 }
 
 /** The head: the lot strip, the sentence that says how the run did, its lead and meta line, and the verdict beside them. */
-function RunHead({ run }: { run: RunDetail }) {
+function RunHead({ run, lotRuns }: { run: RunDetail; lotRuns: Resource<RunsPage> }) {
   const { assessment, baseline } = run
   // the 89-point set comes first when the wafer is in both
   const measured = run.measuredDepth[0]
@@ -193,13 +200,13 @@ function RunHead({ run }: { run: RunDetail }) {
       </p>
       <div className="run-head-grid">
         <div className="run-head-main">
-          <LotStripView run={run} />
+          <LotStripView run={run} runs={lotRuns} />
           {/* "Lot 6" and "Wafer 5" never break across lines */}
-          <h1>{runHeadline(run).replace(/(Wafer|Lot) (\d+)/g, '$1\u00a0$2')}</h1>
+          <h1>{tieUnits(runHeadline(run).replace(/(Wafer|Lot) (\d+)/g, '$1\u00a0$2'))}</h1>
           <p className="run-lead">
             {assessment === null
-              ? describeUnscored(run)
-              : <Lead text={describeRun({ assessment, channels: run.channels, good: run.good, depth: measured })} first={assessment.firstChannel} />}
+              ? tieUnits(describeUnscored(run))
+              : <Lead text={tieUnits(describeRun({ assessment, channels: run.channels, good: run.good, depth: measured }))} first={assessment.firstChannel} />}
           </p>
           <p className="run-meta">
             {run.runDate !== null && <span>{formatDate(run.runDate)}</span>}
@@ -260,17 +267,14 @@ function Verdict({ run, score, k }: { run: RunDetail; score: Score; k: number })
 /**
  * The run's lot as a row of discs above the `h1`, each a link to its run, this one larger with its score inside. The
  * lot's wafers come from the runs list, since the run's own answer does not carry them; the strip holds its height while
- * that loads and is left out if it fails.
+ * that loads and is left out if it fails, unless an earlier answer can stand in.
  */
-function LotStripView({ run }: { run: RunDetail }) {
-  const [runs] = useResource(withSource(`/api/runs?lot=${run.lotId}`, run.source), runsPageSchema)
-  if (runs.kind === 'error') {
-    return null
-  }
+function LotStripView({ run, runs }: { run: RunDetail; runs: Resource<RunsPage> }) {
   if (runs.kind === 'loading') {
     return <LotStripPlaceholder />
   }
-  return <LotStrip strip={lotStrip(runs.data.runs, run)} lotNo={run.lotNo} />
+  const rows = runs.kind === 'ready' ? runs.data.runs : runs.last?.runs
+  return rows === undefined ? null : <LotStrip strip={lotStrip(rows, run)} lotNo={run.lotNo} />
 }
 
 function ChannelsTable({ channels, selected }: { channels: readonly Channel[]; selected: Channel | undefined }) {
@@ -366,10 +370,10 @@ function ChannelFigure({ runId, channel }: { runId: number; channel: Channel }) 
 }
 
 function HoldsTable({ holds, longestHold }: { holds: readonly Hold[]; longestHold: number }) {
+  const titleId = useId()
   return (
-    <div className="table-wrap figure-table">
-      <table>
-        <caption>{`Holds: one value reported longer than any good run held one on this channel (longest ${longestHold} samples)`}</caption>
+    <TitledTable id={titleId} title={`Holds: one value reported longer than any good run held one on this channel (longest ${longestHold} samples)`}>
+      <table aria-labelledby={titleId}>
         <thead>
           <tr>
             <th scope="col" className="num">Cycle</th>
@@ -395,16 +399,29 @@ function HoldsTable({ holds, longestHold }: { holds: readonly Hold[]; longestHol
           ))}
         </tbody>
       </table>
+    </TitledTable>
+  )
+}
+
+/**
+ * A table under the trace with its title above the box that scrolls sideways, so on a phone the title wraps to the
+ * screen rather than running out with the table's width. The table names itself by the title's id.
+ */
+function TitledTable({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <div className="figure-table">
+      <p className="table-title" id={id}>{title}</p>
+      <div className="table-wrap">{children}</div>
     </div>
   )
 }
 
 /** Each phase's mean and spread against the good runs', with the z of each; a z past the limit is set in red. */
 function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
+  const titleId = useId()
   return (
-    <div className="table-wrap figure-table">
-      <table>
-        <caption>Phase statistics against the good runs</caption>
+    <TitledTable id={titleId} title="Phase statistics against the good runs">
+      <table aria-labelledby={titleId}>
         <thead>
           <tr>
             <th scope="col">Phase</th>
@@ -422,15 +439,15 @@ function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
               <th scope="row">{phase.phase}</th>
               <td className="num">{formatValue(phase.mean)}</td>
               <td className="num">{formatValue(phase.goodMean)}</td>
-              <td className="num strong">{formatScore(phase.meanZ)}</td>
+              <td className="num strong">{formatZ(phase.meanZ)}</td>
               <td className="num">{formatValue(phase.sd)}</td>
               <td className="num">{formatValue(phase.goodSd)}</td>
-              <td className="num strong">{formatScore(phase.sdZ)}</td>
+              <td className="num strong">{formatZ(phase.sdZ)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </TitledTable>
   )
 }
 

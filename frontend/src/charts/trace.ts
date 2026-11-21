@@ -1,5 +1,5 @@
 import type { Excursion, TracePoint } from '../api/schema'
-import { type Interval, niceInterval } from './scale'
+import { type Interval, type LinearScale, niceInterval } from './scale'
 
 /** A step between buckets longer than this is a recording gap: two sample periods, as the aligner counts gaps. */
 export const GAP_S = 0.4
@@ -80,6 +80,26 @@ export function excursionSpans(excursions: readonly Excursion[]): ExcursionSpan[
   return excursions.flatMap((excursion) => (excursion.startTimeS === null || excursion.endTimeS === null
     ? []
     : [{ start: excursion.startTimeS, end: excursion.endTimeS, excursion }]))
+}
+
+/**
+ * The spans that overlap a drawn time range, in their order. A zoomed view comes with every excursion of the channel,
+ * so it counts and draws only these.
+ */
+export function spansIn<T extends { readonly start: number; readonly end: number }>(spans: readonly T[], [from, to]: Interval): T[] {
+  return spans.filter((span) => span.end >= from && span.start <= to)
+}
+
+/**
+ * A span's mark on the rail above the plot, in pixels: cut at the plot's edges (the x scale's range), and at least
+ * `min` wide so one sample still shows, without leaving the plot.
+ */
+export function railMark(span: { readonly start: number; readonly end: number }, x: LinearScale, min: number): { x: number; width: number } {
+  const [left, right] = x.range
+  const from = Math.min(Math.max(x.map(span.start), left), right)
+  const to = Math.min(Math.max(x.map(span.end), left), right)
+  const width = Math.max(min, to - from)
+  return { x: Math.min(from, right - width), width }
 }
 
 /** The index of the bucket nearest a time, by binary search over buckets in time order, or null when there are none. */

@@ -5,10 +5,11 @@ import { getJson } from './client'
 export type Resource<T> =
   | { kind: 'loading' }
   | { kind: 'ready'; data: T; refreshing: boolean }
-  | { kind: 'error'; error: Error }
+  /** `last` is the newest answer this path had before it failed, for a view that would rather keep it than go blank. */
+  | { kind: 'error'; error: Error; last: T | null }
 
-/** The last answer that arrived, tagged with the request it answered. */
-type Settled<T> = { request: string } & ({ kind: 'ready'; data: T } | { kind: 'error'; error: Error })
+/** The last answer that arrived, tagged with the request and the path it answered. */
+type Settled<T> = { request: string; path: string } & ({ kind: 'ready'; data: T } | { kind: 'error'; error: Error; last: T | null })
 
 /**
  * Loads a path and keeps it loaded. A new path or a reload keeps the previous answer on screen, marked refreshing,
@@ -24,12 +25,13 @@ export function useResource<T>(path: string, schema: z.ZodType<T>): [Resource<T>
     getJson(path, schema, controller.signal).then(
       (data) => {
         if (!controller.signal.aborted) {
-          setSettled({ request, kind: 'ready', data })
+          setSettled({ request, path, kind: 'ready', data })
         }
       },
       (error: unknown) => {
         if (!controller.signal.aborted) {
-          setSettled({ request, kind: 'error', error: error instanceof Error ? error : new Error(String(error)) })
+          const failure = error instanceof Error ? error : new Error(String(error))
+          setSettled((previous) => ({ request, path, kind: 'error', error: failure, last: lastAnswer(previous, path) }))
         }
       },
     )
@@ -40,12 +42,20 @@ export function useResource<T>(path: string, schema: z.ZodType<T>): [Resource<T>
   return [resourceFor(settled, request), reload]
 }
 
+/** The newest answer the same path had, carried through any failures since. */
+function lastAnswer<T>(previous: Settled<T> | null, path: string): T | null {
+  if (previous === null || previous.path !== path) {
+    return null
+  }
+  return previous.kind === 'ready' ? previous.data : previous.last
+}
+
 function resourceFor<T>(settled: Settled<T> | null, request: string): Resource<T> {
   if (settled === null) {
     return { kind: 'loading' }
   }
   if (settled.kind === 'error') {
-    return settled.request === request ? { kind: 'error', error: settled.error } : { kind: 'loading' }
+    return settled.request === request ? { kind: 'error', error: settled.error, last: settled.last } : { kind: 'loading' }
   }
   return { kind: 'ready', data: settled.data, refreshing: settled.request !== request }
 }

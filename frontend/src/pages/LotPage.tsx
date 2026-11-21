@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import {
   type DriftChannel, type DriftReference, type DriftRule, type DriftState, type LotDrift, lotDriftSchema, type Phase, type RunRow,
@@ -14,12 +15,15 @@ import { ScoreLine } from '../components/ScoreLine'
 import { Segmented } from '../components/Segmented'
 import { ErrorState } from '../components/States'
 import {
-  formatChannelName, formatConditioning, formatDate, formatDriftState, formatScore, formatSeconds, formatShortScore, formatValue, MISSING,
+  columnFormat, formatChannelName, formatConditioning, formatDate, formatDriftState, formatScore, formatSeconds, formatShortScore, formatValue, formatZ,
+  MISSING, tieUnits,
 } from '../format'
-import { describeLotScores, driftCounts, driftWarns, lotHeadline, lotLead } from '../lotSummary'
+import {
+  describeHiddenDriftChannels, describeLotScores, driftCounts, driftWarns, fittedZ, lotHeadline, lotLead, splitDriftChannels,
+} from '../lotSummary'
 import { lotWafers } from '../run'
-import { runState } from '../summary'
-import { NotFound } from './NotFound'
+import { leftNoRange, runState } from '../summary'
+import { NotFound, PageFailure } from './NotFound'
 import { Words } from './RunsAttention'
 
 const PHASES = [['SF6', 'SF6'], ['C4F8', 'C4F8']] as const
@@ -63,10 +67,16 @@ function LotView({ lotId }: { lotId: number }) {
       return <LotSkeleton />
     case 'error':
       return (
-        <div className="sheet">
-          <title>Lot · ChamberWatch</title>
-          <ErrorState title="This lot did not load" message={drift.error.message} onRetry={reload} />
-        </div>
+        <PageFailure
+          error={drift.error}
+          onRetry={reload}
+          missing={`There is no lot ${lotId}.`}
+          back={{ to: '/lots', label: 'Back to the lots' }}
+          // the address holds the lot's id, which is not always its number, so the page names no number until it loads
+          name="Lot"
+          failed="This lot did not load"
+          title="Lot · ChamberWatch"
+        />
       )
     case 'ready':
       return (
@@ -143,7 +153,7 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
           <p className="answer-next">
             {runs.kind === 'ready'
               // the lead's phase is the one the counts were made for, not the one just clicked and still loading
-              ? lotLead({ runs: runs.data.runs, channels, phase: drift.phase })
+              ? tieUnits(lotLead({ runs: runs.data.runs, channels, phase: drift.phase }))
               : <span className="skel skel-text" aria-hidden="true" />}
           </p>
         )}
@@ -169,7 +179,7 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
         </div>
         <div className="lot-cols">
           <Figure id="lot-verdicts" title={`${drift.phase} mean by the last wafer`} className="drift-channels">
-            <DriftChannels channels={channels} selected={selected} />
+            <DriftChannels channels={channels} selected={selected} rule={rule} phase={drift.phase} />
           </Figure>
           {selected === undefined
             ? (
@@ -213,6 +223,7 @@ function LotRunsTable({ lotNo, runs, k }: { lotNo: number; runs: readonly RunRow
         <tbody>
           {ordered.map((run) => {
             const state = runState(run)
+            const empty = leftNoRange(run)
             return (
               <tr key={run.id} data-kind="lot-run">
                 <td className="c-wafer">
@@ -238,10 +249,10 @@ function LotRunsTable({ lotNo, runs, k }: { lotNo: number; runs: readonly RunRow
                         </span>
                       )}
                 </td>
-                <td className="c-chan" data-label="First channel">
+                <td className="c-chan" data-label="First channel" data-empty={empty || undefined}>
                   {run.score?.firstChannel === undefined || run.score.firstChannel === null ? MISSING : formatChannelName(run.score.firstChannel)}
                 </td>
-                <td className="num c-at" data-label="Left at">{formatSeconds(run.score?.firstTimeS ?? null)}</td>
+                <td className="num c-at" data-label="Left at" data-empty={empty || undefined}>{formatSeconds(run.score?.firstTimeS ?? null)}</td>
                 <td className="num c-out" data-label="Excursions">{run.score?.limitFlags ?? MISSING}</td>
               </tr>
             )
@@ -257,9 +268,26 @@ function DriftWord({ state }: { state: DriftState }) {
   return <span className={driftWarns(state) ? 'word warn' : 'word'}>{formatDriftState(state)}</span>
 }
 
-/** How the lot's channels end, as a count per verdict, then every channel with its verdict and last z. */
-function DriftChannels({ channels, selected }: { channels: readonly DriftChannel[]; selected: DriftChannel | undefined }) {
+/**
+ * How the lot's channels end, as a count per verdict, then each channel with a trend verdict, its verdict and its fitted
+ * line's z. The channels with no trend or too few wafers fold behind a button, which opens when the picked channel is
+ * one of them.
+ */
+function DriftChannels({ channels, selected, rule, phase }: {
+  channels: readonly DriftChannel[]
+  selected: DriftChannel | undefined
+  rule: DriftRule
+  phase: Phase
+}) {
   const counts = driftCounts(channels)
+  const { shown, hidden } = splitDriftChannels(channels, selected)
+  // Only the reader's last click is state, with the channel picked when they made it. A folded channel picked since
+  // opens the list so its row shows; otherwise the click stands.
+  const [click, setClick] = useState<{ readonly open: boolean; readonly under: string | undefined } | null>(null)
+  const pickedFolded = selected !== undefined && !splitDriftChannels(channels, undefined).shown.includes(selected)
+  const open = pickedFolded && click?.under !== selected.channel ? true : (click?.open ?? false)
+  // open, every channel shows in rank order; folded, the picked one keeps its place among the shown
+  const rows = open ? channels : shown
   if (counts.length === 0) {
     return <p className="state">No channel has a good-run band for this phase.</p>
   }
@@ -280,11 +308,11 @@ function DriftChannels({ channels, selected }: { channels: readonly DriftChannel
             <tr>
               <th scope="col">Channel</th>
               <th scope="col">By the last wafer</th>
-              <th scope="col" className="num">z</th>
+              <th scope="col" className="num">Fitted z</th>
             </tr>
           </thead>
           <tbody>
-            {channels.map((channel) => (
+            {rows.map((channel) => (
               <tr key={channel.channel} className={channel === selected ? 'selected' : undefined}>
                 <td>
                   <Link
@@ -297,12 +325,18 @@ function DriftChannels({ channels, selected }: { channels: readonly DriftChannel
                   </Link>
                 </td>
                 <td><DriftWord state={channel.state} /></td>
-                <td className="num">{formatScore(channel.points.at(-1)?.z ?? null)}</td>
+                <td className="num">{formatZ(fittedZ(channel))}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {hidden.length > 0 && (
+        <button type="button" className="link-button lineup-more" aria-expanded={open} onClick={() => setClick({ open: !open, under: selected?.channel })}>
+          {describeHiddenDriftChannels(hidden, open)}
+        </button>
+      )}
+      <DriftWords rule={rule} phase={phase} />
     </>
   )
 
@@ -311,6 +345,40 @@ function DriftChannels({ channels, selected }: { channels: readonly DriftChannel
     search.set('channel', name)
     return search.toString()
   }
+}
+
+/** The words the lot page's drift figures use, closed until asked for, with the numbers of the lot's drift rule. */
+function DriftWords({ rule, phase }: { rule: DriftRule; phase: Phase }) {
+  const t = formatScore(rule.minAbsT)
+  return (
+    <details className="how words-how">
+      <summary>The words this page uses</summary>
+      <dl className="words">
+        <div>
+          <dt>SF6 and C4F8</dt>
+          <dd>The two steps of every etch cycle: SF6 etches the silicon, and C4F8 coats the walls to protect them. A wafer's phase mean is a channel's average reading over one of those steps, across its run.</dd>
+        </div>
+        <div>
+          <dt>Fitted z</dt>
+          <dd>{`Where the fitted line sits at the last wafer: how many of the good runs' standard deviations it is from the band's centre. The band reaches ${formatScore(rule.k)} of them either side. This is the number the verdict judges.`}</dd>
+        </div>
+        <div>
+          <dt>z</dt>
+          <dd>{`The same measure for one wafer's own ${phase} mean, in the wafer-by-wafer table. One unusual wafer can sit far out while the fitted line stays in, or the reverse.`}</dd>
+        </div>
+        <div>
+          <dt>Fitted line, slope and t</dt>
+          <dd>{`A straight line through the lot's wafers so far, fitted again at each wafer. The slope is its change per wafer; t says how clearly it trends, and under ${t} counts as no trend.`}</dd>
+        </div>
+        <div>
+          <dt>Verdicts</dt>
+          <dd>
+            {`${formatDriftState('OUT_OF_BAND')}: the fitted line is outside the band at the last wafer. ${formatDriftState('WILL_EXIT')}: it crosses the band's edge inside a lot of ${rule.plannedLotSize}. ${formatDriftState('STAYS_IN')}: it trends, but stays inside through wafer ${rule.plannedLotSize}. ${formatDriftState('NO_TREND')}: t is under ${t}. ${formatDriftState('INSUFFICIENT_RUNS')}: fewer than ${rule.minRuns} wafers, too few to fit a line worth judging.`}
+          </dd>
+        </div>
+      </dl>
+    </details>
+  )
 }
 
 function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
@@ -325,6 +393,8 @@ function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
     ? `This lot's first ${referenceWafers} wafers ± ${formatScore(rule.k)} sd of the good runs`
     : `Good-run band, mean ± ${formatScore(rule.k)} sd`
   const positions = Math.max(rule.plannedLotSize, last?.position ?? 0)
+  // one count of decimals down the whole mean column, so the decimal points line up
+  const formatMean = columnFormat(channel.points.map((point) => point.value))
   const projecting = last !== undefined && (last.state === 'WILL_EXIT' || last.state === 'STAYS_IN')
   const fit: PositionFit | null = last === undefined || last.fit === null
     ? null
@@ -354,14 +424,7 @@ function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
         formatValue={formatValue}
         details={(position) => {
           const point = channel.points.find((candidate) => candidate.position === position)
-          return point === undefined
-            ? null
-            : (
-              <>
-                <div><dt>z</dt><dd>{formatScore(point.z)}</dd></div>
-                <div><dt>Verdict then</dt><dd>{formatDriftState(point.state)}</dd></div>
-              </>
-            )
+          return point === undefined ? [] : [['z', formatZ(point.z)], ['Verdict then', formatDriftState(point.state)]]
         }}
       />
       <div className="table-wrap figure-table">
@@ -381,8 +444,8 @@ function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
             {channel.points.map((point) => (
               <tr key={point.runId}>
                 <td><Link to={`/runs/${point.runId}`}>{`Wafer ${point.position}`}</Link></td>
-                <td className="num">{formatValue(point.value)}</td>
-                <td className="num">{formatScore(point.z)}</td>
+                <td className="num">{formatMean(point.value)}</td>
+                <td className="num">{formatZ(point.z)}</td>
                 <td className="num c-slope">{formatValue(point.fit?.slope ?? null)}</td>
                 <td className="num c-t">{formatScore(point.fit?.tStat ?? null)}</td>
                 <td><DriftWord state={point.state} /></td>

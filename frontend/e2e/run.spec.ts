@@ -183,15 +183,29 @@ test('lists the channels of a run caught only on a phase mean or spread, with no
 test('reads one bucket at a time off the chart from the keyboard', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')
-  const chart = page.getByRole('img', { name: /^PlatenRFLoadCapacitor across cycles 1 to 100\./ })
+  const trace = page.getByRole('region', { name: 'Platen RF load cap' })
+  const chart = trace.getByRole('img', { name: /^Platen RF load cap across cycles 1 to 100\./ })
   const readout = page.locator('.readout')
+  // a live region mounted with the chart, empty until a bucket is read, so a screen reader announces each one
+  const status = trace.getByRole('status')
+  await expect(status).toHaveCount(1)
+  await expect(status).toHaveText('')
 
   await chart.focus()
   await expect(readout).toContainText('Cycle')
   const time = await readout.locator('dd').first().textContent()
+  await expect(status).toContainText(`at ${time ?? 'no time'}, cycle`)
+  const said = await status.textContent()
   await page.keyboard.press('ArrowRight')
 
   await expect(readout.locator('dd').first()).not.toHaveText(time ?? '')
+  await expect(status).not.toHaveText(said ?? '')
+  await expect(status).toContainText(await readout.locator('dd').first().textContent() ?? 'no time')
+  await page.keyboard.press('Escape')
+  await expect(status).toHaveText('')
+
+  await trace.getByRole('button', { name: 'Show as a table' }).click()
+  await expect(trace.getByRole('table', { name: 'Platen RF load cap, one row per bucket' })).toBeVisible()
 })
 
 test('fits the trace past the start-up ramp and says what it clips; the whole record shows everything', async ({ page }) => {
@@ -224,6 +238,31 @@ test('zooms to the cycles around the first excursion', async ({ page }) => {
   await expect(page).toHaveURL(/from=63&to=65/)
   await expect(page.getByRole('button', { name: 'Cycles 63 to 65' })).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => api.requests.some((path) => path.includes('fromCycle=63') && path.includes('toCycle=65'))).toBe(true)
+  // the API sends every excursion of the channel with a zoomed view's points; the rail counts and draws only those in view
+  const trace = page.getByRole('region', { name: 'Platen RF load cap' })
+  const svg = trace.locator('figure.chart svg')
+  await expect(trace.getByRole('img', { name: /across cycles 63 to 65/ })).toBeVisible()
+  await expect(svg.locator('.rail .chart-note')).toHaveText('2 excursions')
+  await expect(svg.locator('.rail rect')).toHaveCount(2)
+  await expect(svg.locator('.chart-ann')).toHaveText('First, 407.2 s')
+  const plot = await svg.locator('rect.hit').boundingBox()
+  const marks = await svg.locator('.rail rect').evaluateAll((rects) => rects.map((rect) => {
+    const box = rect.getBoundingClientRect()
+    return { left: box.left, right: box.right }
+  }))
+  for (const mark of marks) {
+    expect(mark.left).toBeGreaterThanOrEqual((plot?.x ?? 0) - 0.5)
+    expect(mark.right).toBeLessThanOrEqual((plot?.x ?? 0) + (plot?.width ?? 0) + 0.5)
+  }
+  // the first moment's label and the band's never print on each other
+  const first = await svg.locator('.chart-ann').boundingBox()
+  const band = svg.locator('text.chart-note').filter({ hasText: /^Good-run range/ })
+  if (await band.count() > 0) {
+    const box = await band.boundingBox()
+    const apart = (first?.x ?? 0) >= (box?.x ?? 0) + (box?.width ?? 0) || (box?.x ?? 0) >= (first?.x ?? 0) + (first?.width ?? 0)
+      || (first?.y ?? 0) >= (box?.y ?? 0) + (box?.height ?? 0) || (box?.y ?? 0) >= (first?.y ?? 0) + (first?.height ?? 0)
+    expect(apart).toBe(true)
+  }
 })
 
 test('relabels a run and says what the refit did', async ({ page }) => {
@@ -235,6 +274,31 @@ test('relabels a run and says what the refit did', async ({ page }) => {
   expect(api.relabels).toEqual([{ label: 'GOOD' }])
   // the PUT answered with the refit still running, so the page asked until it was done
   expect(api.requests.filter((path) => path === '/api/refreshes/7')).toHaveLength(2)
+  // the refit rescored every run, so the lot strip asks for its lot again along with the run
+  await expect.poll(() => api.requests.filter((path) => path.startsWith('/api/runs?lot=6')).length).toBe(2)
+  await expect(page.getByRole('group', { name: 'Lot 6, wafer by wafer' }).getByRole('link')).toHaveCount(10)
+})
+
+test('keeps the lot strip it has when asking for the lot again fails after a relabel', async ({ page }) => {
+  const api = await serveApi(page)
+  let asked = 0
+  await page.route((url) => url.pathname === '/api/runs', async (route) => {
+    asked += 1
+    if (asked === 1) {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({ status: 500, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Server error', status: 500 }) })
+  })
+  await page.goto('/runs/55')
+  const strip = page.getByRole('group', { name: 'Lot 6, wafer by wafer' })
+  await expect(strip.getByRole('link')).toHaveCount(10)
+  await page.getByRole('group', { name: 'Label' }).getByRole('button', { name: 'Good' }).click()
+
+  await expect(page.getByRole('status').filter({ hasText: 'Baseline #2 fitted from 31 good runs' })).toBeVisible()
+  await expect.poll(() => asked).toBe(2)
+  await expect.poll(() => api.requests.filter((path) => path === '/api/runs/55').length).toBe(2)
+  await expect(strip.getByRole('link')).toHaveCount(10)
 })
 
 test('says the label is saved when the refit fails, and shows the run again', async ({ page }) => {
@@ -259,13 +323,29 @@ test('shows the label without the buttons on a read-only server', async ({ page 
   await expect(panel.locator('.fig-no')).toHaveCount(0)
 })
 
-test('says when a run does not exist, with a way to ask again', async ({ page }) => {
+test('says when a run does not exist, with the way back to the runs', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/9999')
 
-  await expect(page.getByRole('alert')).toHaveText('no run 9999')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('There is no run 9999.')
+  await expect(page).toHaveTitle('Not found · ChamberWatch')
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Back to the runs' }).click()
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('says why a run that exists did not load, with a way to ask again under a heading', async ({ page }) => {
+  await serveApi(page)
+  await page.route((url) => url.pathname === '/api/runs/55', (route) => route.fulfill({
+    status: 503, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Service Unavailable', detail: 'the database is starting' }),
+  }))
+  await page.goto('/runs/55')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Run 55')
   await expect(page.locator('.state-title')).toHaveText('This run did not load')
+  await expect(page.getByRole('alert')).toContainText('the database is starting')
   await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  await expect(page).toHaveTitle('Run 55 · ChamberWatch')
 })
 
 test('marks a good run the detectors left alone', async ({ page }) => {
@@ -287,6 +367,19 @@ test('marks a good run the detectors left alone', async ({ page }) => {
   const strip = page.getByRole('group', { name: 'Lot 2, wafer by wafer' })
   await expect(strip).toHaveClass(/label-below/)
   await expect(strip.locator('.strip-baseline [aria-current="page"]')).toHaveText('5.5')
+})
+
+test('keeps the first wafer\'s THIS WAFER label inside the strip on a phone', async ({ page }) => {
+  await serveApi(page)
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto('/runs/11')
+    const strip = page.getByRole('group', { name: 'Lot 2, wafer by wafer' })
+    await expect(strip.locator('.strip-here-label')).toHaveText('This wafer')
+    const label = await strip.locator('.strip-here-label').boundingBox()
+    const box = await strip.boundingBox()
+    expect(label?.x ?? 0, `at ${width}`).toBeGreaterThanOrEqual((box?.x ?? 0) - 0.5)
+  }
 })
 
 test('says when a run was not scored, with no verdict and no timeline', async ({ page }) => {
@@ -338,7 +431,16 @@ test('puts the fault the simulator injected next to what the detectors caught', 
   // the step change runs past the end of every scale, so it stops on an arrow and the verdict prints it in full
   await expect(page.locator('.verdict-num')).toHaveText('97,795')
   await expect(page.getByRole('region', { name: 'How unusual' }).getByRole('img')).toHaveAttribute('aria-label', /from 0 to 60.*runs past the end/)
+  // its end tick says so too, as the lineup's does
+  await expect(page.locator('.verdict .sl-tick.end')).toHaveText('60+')
+  // a step change's phase z prints whole, not to a tenth of a million
+  const phases = page.getByRole('table', { name: 'Phase statistics against the good runs' })
+  await expect(phases.locator('tbody tr').nth(0).locator('td.strong')).toHaveText(['-660', '9.0'])
+  await expect(phases.locator('tbody tr').nth(1).locator('td.strong')).toHaveText(['403,672', '1,118,161'])
   await expect(lineup.locator('.lineup-row.past')).toHaveCount(2)
+  // nine rows carry DEVIATES, and the method says what the word means, with the detector's own threshold
+  await expect(lineup.locator('details.how .figure-source'))
+    .toContainText("Deviates: a phase's mean or spread sat more than 5.0 standard deviations from the good runs'.")
   // a limit near 0 takes the 0's place on the scale, so their labels never overlap
   await expect(lineup.locator('.lineup-tick')).toHaveText(['limit 6.0', '60+'])
 })
@@ -394,7 +496,8 @@ test('lines the first ten channels up against the limit, shows the rest in place
   await expect(lineup.locator('.lineup-row.over')).toHaveCount(2)
   await expect(lineup.getByRole('listitem').first()).toContainText('Platen RF load cap')
   await expect(lineup.getByRole('listitem').first()).toContainText('18.8, past the limit')
-  await expect(lineup.locator('.lineup-tick')).toHaveText(['0', 'limit 6.0', '20'])
+  // beside the trace the scale is too short for the 0 to clear the limit's label by 8px, so the 0 is left off
+  await expect(lineup.locator('.lineup-tick')).toHaveText(['limit 6.0', '20'])
   await expect(more).toHaveAttribute('aria-expanded', 'false')
   await more.click()
   await expect(lineup.getByRole('listitem')).toHaveCount(31)
@@ -414,6 +517,32 @@ test('starts the lineup open when the channel in the address is one it folds awa
   await expect(lineup.getByRole('listitem')).toHaveCount(31)
   await expect(lineup.getByRole('link', { name: 'Carbon C2 516.5 nm' })).toHaveAttribute('aria-current', 'true')
   await expect(page.getByRole('heading', { level: 2, name: 'Carbon C2 516.5 nm' })).toBeVisible()
+})
+
+test('opens the lineup when a channel it folds away is picked from another figure', async ({ page }) => {
+  await serveApi(page)
+  // a fault the detectors missed, on a channel the lineup folds away (rank 19)
+  const run = fixture('run-133.json')
+  await page.route((url) => url.pathname === '/api/runs/133', (route) => route.fulfill({
+    json: { ...run, injectedFault: { ...run.injectedFault, channel: 'HeliumBPFlow' } },
+  }))
+  await page.goto('/runs/133')
+  const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
+  await expect(lineup.locator('.lineup-more')).toHaveAttribute('aria-expanded', 'false')
+
+  await page.getByRole('region', { name: 'Injected fault' }).getByRole('link', { name: 'Helium backside flow' }).click()
+  await expect(page).toHaveURL(/channel=HeliumBPFlow/)
+  await expect(page.getByRole('heading', { level: 2, name: 'Helium backside flow' })).toBeVisible()
+  await expect(lineup.locator('li.selected')).toHaveCount(1)
+  await expect(lineup.getByRole('link', { name: 'Helium backside flow' })).toHaveAttribute('aria-current', 'true')
+  await expect(lineup.locator('.lineup-more')).toHaveAttribute('aria-expanded', 'true')
+
+  // the reader's own click still folds it, and picking a channel that always shows leaves it as the reader set it
+  await lineup.locator('.lineup-more').click()
+  await expect(lineup.locator('.lineup-more')).toHaveAttribute('aria-expanded', 'false')
+  await lineup.getByRole('link', { name: 'Gas 5 flow' }).click()
+  await expect(lineup.locator('.lineup-more')).toHaveAttribute('aria-expanded', 'false')
+  await expect(lineup.locator('li.selected')).toHaveCount(1)
 })
 
 test("ranks the plasma's own light among the channels it scores", async ({ page }) => {
@@ -442,8 +571,16 @@ test('lines an in-range run up in the detectors\' rank, with the open channel on
   await expect(lineup.locator('.figure-answer')).toHaveText('No channel went past the limit of 6.0. The closest was Platen RF load cap, at 5.5.')
   await expect(lineup.getByRole('listitem').first()).toContainText('Gas 1 flow')
   await expect(lineup.getByRole('listitem').first().getByRole('link')).toHaveAttribute('aria-current', 'true')
+  // the channel the answer names is drawn, in its rank, though it ranks past the first ten
+  await expect(lineup.getByRole('listitem')).toHaveCount(11)
+  await expect(lineup.getByRole('listitem').last()).toContainText('Platen RF load cap')
+  await expect(lineup.getByRole('button', { name: '20 more channels, all under 3.0' })).toBeVisible()
   await expect(lineup.locator('.figure-source')).toContainText('In the detectors\' rank')
   await expect(lineup.locator('.figure-source')).toContainText('so the dots need not fall in order')
+  // with the limit further along the scale, the 0 clears its label and keeps its place, and the end gives way instead
+  await expect(lineup.locator('.lineup-tick')).toHaveText(['0', 'limit 6.0'])
+  const [zero, limit] = await lineup.locator('.lineup-tick').evaluateAll((labels) => labels.map((label) => label.getBoundingClientRect()))
+  expect((limit?.left ?? 0) - (zero?.right ?? 0)).toBeGreaterThanOrEqual(8)
   // the method sits in a closed disclosure
   await expect(lineup.locator('details.how')).not.toHaveAttribute('open')
 })
@@ -481,6 +618,45 @@ test('never scrolls sideways on a phone, and fits a lot of ten in its strip', as
   }
 })
 
+test('keeps the trace\'s clip note inside the plot and the time axis\'s unit clear of its last tick on a phone', async ({ page }) => {
+  await serveApi(page)
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto('/runs/55')
+    const svg = page.locator('figure.chart svg')
+    const note = svg.locator('.chart-note').filter({ hasText: /^Below/ })
+    await expect(note).toHaveText('Below 70 until 41.4 s; starts at 6.9')
+    const noteBox = await note.boundingBox()
+    const plot = await svg.locator('rect.hit').boundingBox()
+    const ticks = await svg.locator('text.tick[text-anchor="end"]').evaluateAll((labels) => Math.max(...labels.map((label) => label.getBoundingClientRect().right)))
+    expect(noteBox?.x ?? 0, `note at ${width}`).toBeGreaterThanOrEqual(ticks)
+    expect(noteBox?.x ?? 0, `note at ${width}`).toBeGreaterThanOrEqual(plot?.x ?? 0)
+    expect((noteBox?.x ?? 0) + (noteBox?.width ?? 0), `note at ${width}`).toBeLessThanOrEqual((plot?.x ?? 0) + (plot?.width ?? 0))
+
+    await page.goto('/runs/133')
+    const axis = page.getByRole('region', { name: 'When channels left their range' })
+    const last = await axis.locator('.lane-tick:not(.unit)').last().boundingBox()
+    const unit = await axis.locator('.lane-tick.unit').boundingBox()
+    expect((unit?.x ?? 0) - ((last?.x ?? 0) + (last?.width ?? 0)), `unit at ${width}`).toBeGreaterThanOrEqual(2)
+  }
+})
+
+test('titles the phase and holds tables above their scrolling boxes, so a title wraps to the phone, not the table', async ({ page }) => {
+  await serveApi(page)
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto('/runs/136')
+  for (const name of [/^Holds: one value reported longer/, /^Phase statistics against the good runs$/]) {
+    const table = page.getByRole('table', { name })
+    await expect(table).toBeVisible()
+    const title = page.locator(`#${await table.getAttribute('aria-labelledby')}`)
+    await expect(title).toHaveClass(/table-title/)
+    // the title sits outside the box that scrolls sideways, and inside the screen
+    expect(await title.evaluate((node) => node.closest('.table-wrap') === null)).toBe(true)
+    const box = await title.boundingBox()
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(375 - 16 + 0.5)
+  }
+})
+
 test('starts every figure of the run on the phone\'s gutter and keeps the scale readable', async ({ page }) => {
   await serveApi(page)
   await page.setViewportSize({ width: 375, height: 800 })
@@ -494,15 +670,14 @@ test('starts every figure of the run on the phone\'s gutter and keeps the scale 
   expect(Math.abs((heading?.x ?? 0) - 16)).toBeLessThan(1)
   // the verdict's numeral steps down a size on a phone
   await expect(page.locator('.verdict-num')).toHaveCSS('font-size', '60px')
-  // at this width the three labels of the scale fit side by side
+  // at this width the 0 would touch the limit's label, so it is left off and the other two sit apart
   const ticks = lineup.locator('.lineup-tick')
-  await expect(ticks).toHaveText(['0', 'limit 6.0', '20'])
+  await expect(ticks).toHaveText(['limit 6.0', '20'])
   const boxes = await ticks.evaluateAll((labels) => labels.map((label) => {
     const box = label.getBoundingClientRect()
     return { left: box.left, right: box.right }
   }))
-  expect(boxes[0]?.right ?? 0).toBeLessThanOrEqual(boxes[1]?.left ?? 0)
-  expect(boxes[1]?.right ?? 0).toBeLessThanOrEqual(boxes[2]?.left ?? 0)
+  expect(boxes[0]?.right ?? 0).toBeLessThanOrEqual((boxes[1]?.left ?? 0) - 8)
 
   // on the narrowest phones only the limit keeps its label, which is the one every dot is read against
   await page.setViewportSize({ width: 320, height: 800 })

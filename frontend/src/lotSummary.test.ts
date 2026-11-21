@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { type DriftChannel, type DriftState, type Lot, lotDriftSchema, lotsSchema, type RunRow, runsPageSchema } from './api/schema'
-import { describeLotScores, describeWaferKey, driftCounts, driftWarns, lotHeadline, lotLead, lotsAnswer } from './lotSummary'
+import { type DriftChannel, type DriftState, driftVsDepthSchema, type Lot, lotDriftSchema, lotsSchema, type RunRow, runsPageSchema } from './api/schema'
+import {
+  describeHiddenDriftChannels, describeLotScores, describeRunsByPosition, describeWaferKey, driftCounts, driftWarns, fittedZ, lotHeadline, lotLead,
+  lotsAnswer, splitDriftChannels, thinPositions,
+} from './lotSummary'
 
 const fixtures = import.meta.glob('../e2e/fixtures/*.json', { eager: true, import: 'default' })
 
@@ -68,9 +71,42 @@ describe('the Lots page answer', () => {
       title: 'None of the 10 lots has been scored yet.',
       lead: 'There is no baseline yet, so no run has a score.',
     })
-    expect(lotsAnswer([lotOf(1, 3, 0)], false).title).toBe('Lot 1 has not been scored yet.')
+    expect(lotsAnswer([lotOf(1, 3, 0)], false)?.title).toBe('Lot 1 has not been scored yet.')
     expect(lotsAnswer([], true)).toEqual({ title: 'No lots yet.', lead: null })
     expect(lotsAnswer([], false)).toEqual({ title: 'No lots yet.', lead: null })
+  })
+
+  it('waits for the runs before calling clean lots clean, and claims nothing about scoring if they fail', () => {
+    const clean = publicLots.map((lot) => ({ ...lot, flaggedRuns: 0 }))
+
+    expect(lotsAnswer(clean, 'loading')).toBeNull()
+    expect(lotsAnswer(clean, 'failed')).toEqual({ title: 'No lot has an out-of-range run on record.', lead: null })
+    // a flagged lot was scored, whatever the runs are doing
+    expect(lotsAnswer(publicLots, 'loading')?.title).toBe('Lots 6 to 9 hold all 15 out-of-range runs.')
+    expect(lotsAnswer(publicLots, 'failed')?.title).toBe('Lots 6 to 9 hold all 15 out-of-range runs.')
+    expect(lotsAnswer([], 'loading')).toEqual({ title: 'No lots yet.', lead: null })
+  })
+})
+
+describe('how many lots each position holds', () => {
+  const simulated = driftVsDepthSchema.parse(fixture('drift-vs-depth-synthetic.json')).positions
+  const published = driftVsDepthSchema.parse(fixture('drift-vs-depth.json')).positions
+  const at = (runs: readonly number[]) => runs.map((count, index) => ({ position: index + 1, runs: count }))
+
+  it('says which positions come from far fewer lots than the fullest, on the simulated wafers', () => {
+    expect(thinPositions(simulated)).toEqual([4, 5, 6, 7, 8, 9, 10])
+    expect(describeRunsByPosition(simulated)).toBe('Wafers 4 to 10 come from one lot; wafers 1 to 3 average 11 lots.')
+  })
+
+  it('leaves a position one lot short alone, as lot 7 leaves the public wafers', () => {
+    expect(thinPositions(published)).toEqual([])
+    expect(describeRunsByPosition(published)).toBeNull()
+  })
+
+  it('speaks of one position, and of thin positions that hold different counts', () => {
+    expect(describeRunsByPosition(at([8, 8, 8, 2]))).toBe('Wafer 4 comes from 2 lots; wafers 1 to 3 average 8 lots.')
+    expect(describeRunsByPosition(at([9, 3, 1]))).toBe('Wafers 2 and 3 come from 1 to 3 lots each; wafer 1 averages 9 lots.')
+    expect(describeRunsByPosition([])).toBeNull()
   })
 })
 
@@ -104,24 +140,47 @@ describe('a lot page answer', () => {
     expect(one({ ...clean, alignment: 'FAILED' })).toBe('Wafer 1 of Lot 1 could not be aligned.')
   })
 
-  it('leads with the channels outside the band or heading out by the last wafer', () => {
+  it('leads with the channels whose fitted line is outside the band or heading out by the last wafer', () => {
     expect(lotLead({ runs: lot6Runs, channels: lot6.channels, phase: 'SF6' }))
-      .toBe('By the last wafer, the SF6 mean of 4 channels is outside the band, and none is heading out.')
+      .toBe("By the last wafer, the line fitted through the lot's SF6 means is outside the band for 4 channels, and none is heading out.")
     expect(lotLead({ runs: lot6Runs, channels: withStates(['OUT_OF_BAND', 'WILL_EXIT', 'WILL_EXIT']), phase: 'C4F8' }))
-      .toBe('By the last wafer, the C4F8 mean of 1 channel is outside the band, and 2 more are heading out.')
+      .toBe("By the last wafer, the line fitted through the lot's C4F8 means is outside the band for 1 channel, and 2 more are heading out.")
     expect(lotLead({ runs: lot6Runs, channels: withStates(['OUT_OF_BAND', 'WILL_EXIT']), phase: 'SF6' }))
-      .toBe('By the last wafer, the SF6 mean of 1 channel is outside the band, and 1 more is heading out.')
+      .toBe("By the last wafer, the line fitted through the lot's SF6 means is outside the band for 1 channel, and 1 more is heading out.")
     expect(lotLead({ runs: lot6Runs, channels: withStates(['WILL_EXIT', 'NO_TREND']), phase: 'SF6' }))
-      .toBe("No channel's SF6 mean is outside the band yet; 1 channel is heading out.")
+      .toBe("The line fitted through the lot's SF6 means is heading out of the band for 1 channel, and is outside it for none yet.")
+    expect(lotLead({ runs: lot6Runs, channels: withStates(['WILL_EXIT', 'WILL_EXIT', 'NO_TREND']), phase: 'SF6' }))
+      .toBe("The line fitted through the lot's SF6 means is heading out of the band for 2 channels, and is outside it for none yet.")
     expect(lotLead({ runs: lot1Runs, channels: withStates(['NO_TREND', 'STAYS_IN']), phase: 'SF6' }))
-      .toBe("No channel's SF6 mean has left the band or is heading out.")
+      .toBe("The line fitted through the lot's SF6 means is inside the band for every channel, and none is heading out.")
     expect(lotLead({ runs: lot1Runs, channels: [], phase: 'C4F8' })).toBe('No channel has a good-run band for this phase yet.')
+  })
+
+  it('names the fitted line on a lot whose wafers sit inside the band while the line does not', () => {
+    // Lot 901's last wafers sit inside the band for 5 of these 6 channels; one faulted wafer tilts the fitted line out
+    const lot901 = lotDriftSchema.parse(fixture('drift-21.json'))
+
+    expect(lotLead({ runs: [], channels: lot901.channels, phase: 'SF6' }))
+      .toBe("By the last wafer, the line fitted through the lot's SF6 means is outside the band for 6 channels, and none is heading out.")
+  })
+
+  it('says a lot too short to judge is too short, and how many channels it could not judge', () => {
+    const few: DriftState = 'INSUFFICIENT_RUNS'
+
+    expect(lotLead({ runs: lot1Runs, channels: withStates(Array.from({ length: 31 }, () => few)), phase: 'SF6' }))
+      .toBe('Too few wafers to judge a trend in the SF6 mean yet.')
+    expect(lotLead({ runs: lot1Runs, channels: withStates([few, few, few, 'NO_TREND', 'STAYS_IN']), phase: 'SF6' }))
+      .toBe("There are too few wafers to judge 3 channels. For the other 2, the line fitted through the lot's SF6 means is inside the band, and none is heading out.")
+    expect(lotLead({ runs: lot1Runs, channels: withStates([few, 'OUT_OF_BAND', 'NO_TREND']), phase: 'C4F8' }))
+      .toBe("By the last wafer, the line fitted through the lot's C4F8 means is outside the band for 1 channel, and none is heading out. There are too few wafers to judge 1 channel.")
+    expect(lotLead({ runs: lot1Runs, channels: withStates([few, 'NO_TREND']), phase: 'SF6' }))
+      .toBe("There are too few wafers to judge 1 channel. For the other channel, the line fitted through the lot's SF6 means is inside the band, and none is heading out.")
   })
 
   it('says how the rest divide when some wafers were not scored or could not be aligned', () => {
     const unscored = (positions: readonly number[]) => (run: RunRow): RunRow => (positions.includes(run.positionInLot) ? { ...run, score: null } : run)
     const channels = withStates(['NO_TREND'])
-    const quiet = " No channel's SF6 mean has left the band or is heading out."
+    const quiet = " The line fitted through the lot's SF6 means is inside the band for every channel, and none is heading out."
 
     expect(lotLead({ runs: lot6Runs.map(unscored([1, 2])), channels, phase: 'SF6' }))
       .toBe(`Of the rest, 1 is in range and 2 were not scored.${quiet}`)
@@ -143,6 +202,23 @@ describe('drift verdicts', () => {
     expect(driftCounts([])).toEqual([])
   })
 
+  it("measures the fitted line's z at the last wafer, the number the verdict is about", () => {
+    const lot901 = lotDriftSchema.parse(fixture('drift-21.json'))
+    const gas5 = lot901.channels[0]
+    const tuning = lot6.channels[0]
+    if (gas5 === undefined || tuning === undefined) {
+      throw new Error('the fixtures lack a channel')
+    }
+
+    // Gas 5 flow's last wafer is dead centre (z -0.0035), but the line a faulted wafer tilted sits 120 sd below
+    expect(fittedZ(gas5)).toBeCloseTo(-119.99, 2)
+    expect(fittedZ(tuning)).toBeCloseTo(4.62, 2)
+    const unfitted = { ...tuning, points: tuning.points.map((point) => ({ ...point, fit: null })) }
+    expect(fittedZ(unfitted)).toBeNull()
+    expect(fittedZ({ ...tuning, points: [] })).toBeNull()
+    expect(fittedZ({ ...tuning, bandSd: 0 })).toBeNull()
+  })
+
   it('warns only for a channel past the band or heading out of it', () => {
     const states: readonly DriftState[] = ['OUT_OF_BAND', 'WILL_EXIT', 'STAYS_IN', 'NO_TREND', 'INSUFFICIENT_RUNS']
 
@@ -150,14 +226,60 @@ describe('drift verdicts', () => {
   })
 })
 
+describe("the lot's channel table fold", () => {
+  const names = (channels: readonly DriftChannel[]) => channels.map((channel) => channel.channel)
+
+  it('shows the channels with a trend verdict and the picked one, in rank order, and folds the rest', () => {
+    const { shown, hidden } = splitDriftChannels(lot6.channels, lot6.channels[0])
+
+    expect(shown).toHaveLength(14)
+    expect(hidden).toHaveLength(17)
+    expect(hidden.every((channel) => channel.state === 'NO_TREND')).toBe(true)
+    expect([...names(shown)].sort()).toEqual(names(lot6.channels.filter((channel) => channel.state !== 'NO_TREND')).sort())
+    expect(describeHiddenDriftChannels(hidden)).toBe('17 more channels, no trend')
+  })
+
+  it('keeps a picked channel that would fold in its rank place', () => {
+    const picked = lot6.channels[12]
+    const { shown, hidden } = splitDriftChannels(lot6.channels, picked)
+
+    expect(names(shown)).toEqual(names(lot6.channels.filter((channel) => channel.state !== 'NO_TREND' || channel === picked)))
+    expect(hidden).toHaveLength(16)
+    expect(hidden).not.toContain(picked)
+  })
+
+  it('folds every channel but the picked one when none has a trend, and none when every one does', () => {
+    const quiet = withStates(Array.from({ length: 5 }, () => 'NO_TREND' as const))
+    const all = splitDriftChannels(quiet, quiet[2])
+    expect(all.shown).toEqual([quiet[2]])
+    expect(describeHiddenDriftChannels(all.hidden)).toBe('4 more channels, no trend')
+
+    const out = withStates(['OUT_OF_BAND', 'WILL_EXIT', 'STAYS_IN'])
+    expect(splitDriftChannels(out, undefined)).toEqual({ shown: out, hidden: [] })
+    expect(describeHiddenDriftChannels([])).toBe('')
+  })
+
+  it('says what the folded channels are: no trend, too few wafers, or both', () => {
+    const few = withStates(['INSUFFICIENT_RUNS'])
+    const mixed = withStates(['NO_TREND', 'INSUFFICIENT_RUNS', 'INSUFFICIENT_RUNS'])
+
+    expect(describeHiddenDriftChannels(few)).toBe('1 more channel, too few wafers to judge')
+    expect(describeHiddenDriftChannels(withStates(['NO_TREND']))).toBe('1 more channel, no trend')
+    expect(describeHiddenDriftChannels(mixed)).toBe('3 more channels: 1 no trend, 2 too few wafers to judge')
+    expect(describeHiddenDriftChannels(withStates(['NO_TREND', 'NO_TREND']), true)).toBe('Hide the 2 channels with no trend')
+    expect(describeHiddenDriftChannels(few, true)).toBe('Hide the channel with too few wafers to judge')
+    expect(describeHiddenDriftChannels(mixed, true)).toBe('Hide the 3 channels with no trend or too few wafers to judge')
+  })
+})
+
 describe('the lot table key', () => {
   const kinds = { inRange: true, outOfRange: true, unmeasured: false, missing: true, baseline: true }
 
   it('names only the marks the table holds, and how it marks the baseline', () => {
-    expect(describeWaferKey(kinds, 3)).toBe('Filled: out of range. Ring: in range. Dash: not run. The bracket marks wafers 1 to 3, the baseline runs.')
+    expect(describeWaferKey(kinds, 3)).toBe('Filled: out of range. Ring: in range. Dash: not run. Wafers 1 to 3, left of the dotted line, are the baseline runs.')
     expect(describeWaferKey({ ...kinds, missing: false, unmeasured: true }, null))
       .toBe('Filled: out of range. Ring: in range. Dashed ring: not scored or not aligned. A centre dot marks a baseline run.')
-    expect(describeWaferKey({ ...kinds, outOfRange: false, missing: false }, 1)).toBe('Ring: in range. The bracket marks wafer 1, the baseline runs.')
+    expect(describeWaferKey({ ...kinds, outOfRange: false, missing: false }, 1)).toBe('Ring: in range. Wafer 1, left of the dotted line, is the baseline run.')
     expect(describeWaferKey({ inRange: false, outOfRange: false, unmeasured: true, missing: false, baseline: false }, null))
       .toBe('Dashed ring: not scored or not aligned.')
   })

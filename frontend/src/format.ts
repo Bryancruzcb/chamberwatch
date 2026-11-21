@@ -6,11 +6,12 @@ import {
 import type { Clip } from './charts/trace'
 import { centerAndEdge } from './wafer'
 
-const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 })
+// signDisplay 'negative' prints a value that rounds to zero as 0.0, never -0.0: a z of -0.003 is dead centre
+const significant = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4, signDisplay: 'negative' })
 const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 })
-const oneDecimal = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const whole = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+const oneDecimal = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'negative' })
+const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'negative' })
+const whole = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0, signDisplay: 'negative' })
 
 /**
  * How far before a fault's recorded start an alarm on the fault's own channel still counts as catching it. An
@@ -106,9 +107,6 @@ const CHANNEL_NAMES: Record<string, string> = {
   attenuatorRatio: 'Attenuator ratio',
 }
 
-/** A z-score this large is a step change, not a useful number on a card. */
-const UNUSUAL_CAP = 20
-
 /** Shown where a value is missing. */
 export const MISSING = '—'
 
@@ -137,6 +135,16 @@ export function formatChannelName(channel: string): string {
 /** A reading or a band value: four significant digits, grouped. */
 export function formatValue(value: number | null): string {
   return value === null ? MISSING : significant.format(value)
+}
+
+/**
+ * A formatter for one table column of readings: every value with as many decimals as the most precise of them needs at
+ * four significant digits, so 27.3 prints 27.30 under 27.22 and the decimal points line up.
+ */
+export function columnFormat(values: readonly number[]): (value: number | null) => string {
+  const decimals = Math.max(0, ...values.map((value) => significant.format(value).split('.')[1]?.length ?? 0))
+  const fixed = new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals, signDisplay: 'negative' })
+  return (value) => (value === null ? MISSING : fixed.format(value))
 }
 
 /** A count of things, grouped and without decimals: 2,400, not 2,400.0. */
@@ -253,10 +261,11 @@ export function describeLineup(channels: readonly Channel[], k: number): string 
   if (over.length === 0) {
     return `No channel went past the limit of ${formatScore(k)}. The closest was ${formatChannelName(furthest.channel)}, at ${formatAgainstLimit(furthest.persistentZ, k)}.`
   }
-  // a step change is named in full here, as the verdict prints it, rather than as the bound a short label uses
-  const to = furthest.persistentZ >= 100 ? formatBigScore(furthest.persistentZ) : formatAgainstLimit(furthest.persistentZ, k)
+  if (channels.length === 1) {
+    return `The one channel, ${formatChannelName(furthest.channel)}, went past the limit of ${formatScore(k)}, to ${formatAgainstLimit(furthest.persistentZ, k)}.`
+  }
   return `${over.length} of ${channels.length} channels went past the limit of ${formatScore(k)}. `
-    + `${formatChannelName(furthest.channel)} went furthest, to ${to}.`
+    + `${formatChannelName(furthest.channel)} went furthest, to ${formatAgainstLimit(furthest.persistentZ, k)}.`
 }
 
 /**
@@ -343,6 +352,14 @@ export function describeEveryWafer(model: DepthModel): string | null {
   return `Over every measured wafer: ${list}.`
 }
 
+/**
+ * A sentence with a no-break space between each number and its unit (s, µm, sd, sccm), so a narrow line never leaves
+ * "537.0" at one line's end and "s" at the next one's start. For text set as prose; formatters keep plain spaces.
+ */
+export function tieUnits(text: string): string {
+  return text.replace(/(\d) (s|µm|sd|sccm)(?![\p{L}\p{N}_])/gu, '$1\u00a0$2')
+}
+
 /** A z-score or a t-statistic, to one decimal. */
 export function formatScore(value: number | null): string {
   return value === null ? MISSING : oneDecimal.format(value)
@@ -365,41 +382,34 @@ export function formatShortAgainstLimit(value: number, k: number | null): string
   return k !== null && value !== k && text === formatScore(k) ? twoDecimals.format(value) : text
 }
 
-const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 2 })
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 2, signDisplay: 'negative' })
 
 /**
  * A score short enough to print inside a wafer's disc, four characters at most, and the same everywhere else the disc's
- * score is read: one decimal under 100, whole under 10,000, then compact, so a step change of 97,795 prints as 98K.
+ * score is read: one decimal under 100, whole under 1,000, then compact, so 9,806 prints as 9.8K beside a step change
+ * of 97,795 as 98K. The bracket is picked from the value as rounded for print, so 99.95 prints 100, not 100.0.
  */
 export function formatShortScore(value: number): string {
   const size = Math.abs(value)
-  if (size >= 10_000) {
+  if (Math.round(size) >= 1_000) {
     return compact.format(value)
   }
-  return size >= 100 ? String(Math.round(value)) : oneDecimal.format(value)
-}
-
-/** A z-score for a card or meter: values past 20 print as a bound, not 97,812.4. */
-export function formatUnusual(value: number | null): string {
-  if (value === null) {
-    return MISSING
-  }
-  if (value > UNUSUAL_CAP) {
-    return `>${UNUSUAL_CAP}`
-  }
-  if (value < -UNUSUAL_CAP) {
-    return `<-${UNUSUAL_CAP}`
-  }
-  return formatScore(value)
+  return Math.round(size * 10) / 10 >= 100 ? String(Math.round(value)) : oneDecimal.format(value)
 }
 
 /**
- * A how-unusual value printed beside the limit k: one decimal, or two when one would print it as the limit itself. A
- * channel at 6.04 is past a limit of 6.0 and one at 5.96 is under it, and "6.0" would say neither.
+ * A how-unusual value printed beside the limit k, as `formatBigScore` prints it, or with two decimals when one would
+ * print it as the limit itself. A channel at 6.04 is past a limit of 6.0 and one at 5.96 is under it, and "6.0" would
+ * say neither.
  */
 export function formatAgainstLimit(value: number, k: number): string {
-  const text = formatUnusual(value)
+  const text = formatBigScore(value)
   return value !== k && text === formatScore(k) ? twoDecimals.format(value) : text
+}
+
+/** A z in a table: as `formatBigScore`, so a step change's z of 403,671.9 prints whole. */
+export function formatZ(value: number | null): string {
+  return value === null ? MISSING : formatBigScore(value)
 }
 
 /** A record time, in seconds to one decimal. */
@@ -435,8 +445,9 @@ export function describeWaferDepth(measurements: Measurements): string | null {
 }
 
 /**
- * The depth page's `h1`: where the wafer etched deepest, its edge or its center, in the run page's words ("Wafer 5 of
- * Lot 6 ..."). Without enough sites to compare it states the mean, and without measurements it says so.
+ * The depth page's `h1`: which of the sites near its edge and near its center etched deeper, in the run page's words
+ * ("Wafer 5 of Lot 6 ..."). It compares only those two groups (see `centerAndEdge`), so it never claims where the
+ * deepest site is. Without enough sites to compare it states the mean, and without measurements it says so.
  */
 export function waferHeadline(run: { positionInLot: number; lotNo: number }, measurements: Measurements): string {
   const wafer = `Wafer ${run.positionInLot} of Lot\u00a0${run.lotNo}`
@@ -447,13 +458,13 @@ export function waferHeadline(run: { positionInLot: number; lotNo: number }, mea
   if (sides === null) {
     return `${wafer} etched ${formatMicrons(measurements.meanDepthUm)} deep on average.`
   }
-  // the two sides print the same to two decimals: no side is deeper that the page could show
-  if (twoDecimals.format(sides.edgeUm) === twoDecimals.format(sides.centerUm)) {
+  // the difference the figure's answer prints rounds to 0.00: no side is deeper that the page could show
+  if (twoDecimals.format(Math.abs(sides.edgeUm - sides.centerUm)) === '0.00') {
     return `${wafer} etched evenly from center to edge.`
   }
   return sides.edgeUm > sides.centerUm
-    ? `${wafer} etched deepest at its edge.`
-    : `${wafer} etched deepest at its center.`
+    ? `${wafer} etched deeper at its edge than at its center.`
+    : `${wafer} etched deeper at its center than at its edge.`
 }
 
 /** The prediction's answer: what the telemetry predicted against what was measured, and the lot's typical miss. */

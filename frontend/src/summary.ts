@@ -18,6 +18,11 @@ export function runState(run: RunRow): RunState {
   return isFlagged(run.score) ? 'out' : 'in'
 }
 
+/** A run that names no first channel and no time it left its range: every run in range, and every unscored one. */
+export function leftNoRange(run: RunRow): boolean {
+  return (run.score?.firstChannel ?? null) === null && (run.score?.firstTimeS ?? null) === null
+}
+
 /** The runs of one lot, by wafer position. `lot` is null when the lot list did not include it. */
 export interface LotRuns {
   readonly lotId: number
@@ -162,19 +167,44 @@ export function headline(summary: RunsSummary): Headline {
   if (total === 0) {
     return { ...QUIET, lead: 'No runs stored for this source yet.' }
   }
+  if (outCount === 0 && summary.inRange === 0) {
+    return unscoredHeadline(summary)
+  }
   if (outCount === 0) {
-    return summary.inRange === total
-      ? { ...QUIET, lead: `All ${total} runs are in range.` }
-      : { ...QUIET, lead: `None of the ${total} runs are out of range.`, detail: describeSplit(summary) }
+    if (summary.inRange === total) {
+      return { ...QUIET, lead: total === 1 ? 'The one run is in range.' : `All ${total} runs are in range.` }
+    }
+    return { ...QUIET, lead: `None of the ${total} runs are out of range.`, detail: describeSplit(summary) }
+  }
+  const lots = describeLots(summary.attention.map((group) => group.lotNo))
+  if (total === 1) {
+    return { ...QUIET, lead: `The one run is out of range, in ${lots}.` }
   }
   const start = startOf(summary.attention)
-  const lots = describeLots(summary.attention.map((group) => group.lotNo))
   return {
-    lead: `${outCount} of ${total} runs are out of range, all in ${lots}.`,
+    lead: outCount === 1
+      ? `1 of ${total} runs is out of range, in ${lots}.`
+      : `${outCount} of ${total} runs are out of range, all in ${lots}.`,
     signal: String(outCount),
     start,
     ...startSentence(start),
     detail: null,
+  }
+}
+
+/**
+ * No run of the source is scored, so "none out of range" would claim more than is known. The detail line is kept only
+ * for the runs that could not be aligned, since "not scored" would repeat the lead.
+ */
+function unscoredHeadline(summary: RunsSummary): Headline {
+  const total = summary.runs.length
+  if (total === 1) {
+    return { ...QUIET, lead: 'The run has not been scored yet.', detail: summary.failed === 0 ? null : 'It could not be aligned.' }
+  }
+  return {
+    ...QUIET,
+    lead: `None of the ${total} runs has been scored yet.`,
+    detail: summary.failed === 0 ? null : describeSplit(summary),
   }
 }
 
@@ -190,9 +220,11 @@ function startOf(attention: readonly LotRuns[]): Start {
 
 function startSentence(start: Start): { startStrong: string; startText: string } {
   if (start.kind === 'one') {
+    // a lot that skipped slots can have wafer 5 among 2 runs; "wafers 4 and 5 of 2" would read as a slip
+    const of = Math.max(...start.wafers) > start.of ? '' : ` of ${start.of}`
     return {
       startStrong: `Start with Lot ${start.lotNo}:`,
-      startText: ` ${describeWafers(start.wafers)} of ${start.of} ${start.wafers.length === 1 ? 'is' : 'are'} out.`,
+      startText: ` ${describeWafers(start.wafers)}${of} ${start.wafers.length === 1 ? 'is' : 'are'} out.`,
     }
   }
   return { startStrong: '', startText: `Lots ${listWords(start.lotNos.map(String))} tie for the most: ${start.count} out each.` }
@@ -229,14 +261,24 @@ export function describeFirstChannels(counts: ReadonlyArray<Pick<ChannelCount, '
   return `${listWords([first, ...several, ...tail])}.${none}`
 }
 
-/** The lots with nothing out of range, in one line: "Lots 1 to 5 and 10: 60 wafers, none out of range." */
+/**
+ * The lots with nothing out of range, in one line: "Lots 1 to 5 and 10: 60 wafers, none out of range." A lot with no
+ * scored run is not called clean: it gets "none scored" in a sentence of its own.
+ */
 export function describeClean(clean: readonly LotRuns[]): string | null {
-  if (clean.length === 0) {
+  const scored = clean.filter((group) => group.runs.some((run) => runState(run) === 'in'))
+  const unscored = clean.filter((group) => !scored.includes(group))
+  const sentences = [cleanSentence(scored, 'none out of range'), cleanSentence(unscored, 'none scored')].filter((line) => line !== null)
+  return sentences.length === 0 ? null : sentences.join(' ')
+}
+
+function cleanSentence(groups: readonly LotRuns[], words: string): string | null {
+  if (groups.length === 0) {
     return null
   }
-  const wafers = clean.reduce((total, group) => total + group.runs.length, 0)
-  const lots = describeLots(clean.map((group) => group.lotNo))
-  return `${capitalize(lots)}: ${wafers} ${wafers === 1 ? 'wafer' : 'wafers'}, none out of range.`
+  const wafers = groups.reduce((total, group) => total + group.runs.length, 0)
+  const lots = describeLots(groups.map((group) => group.lotNo))
+  return `${capitalize(lots)}: ${wafers} ${wafers === 1 ? 'wafer' : 'wafers'}, ${words}.`
 }
 
 /** "lots 6 to 9" at the start of a sentence. */

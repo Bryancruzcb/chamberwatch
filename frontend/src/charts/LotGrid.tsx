@@ -36,7 +36,8 @@ export function LotGrid({ runs, lots, k, source }: { runs: readonly RunRow[]; lo
   const current = hasStop(grid, stop) ? stop : FIRST
   const table = useRef<HTMLTableElement>(null)
   const tabIndexAt = (row: number, col: number) => (row === current.row && col === current.col ? 0 : -1)
-  // the stylesheet sizes the table from these, so a lot longer than ten wafers scrolls rather than shrinks its discs
+  // the stylesheet sizes the map from these: a phone fits its pitch to the slots, and a lot longer than ten wafers
+  // scrolls rather than shrink its discs past a floor
   const style: MapStyle = {
     '--positions': grid.positions,
     '--base': bracket ?? 0,
@@ -66,9 +67,9 @@ export function LotGrid({ runs, lots, k, source }: { runs: readonly RunRow[]; lo
   }
 
   return (
-    <div className="lot-map-body">
+    <div className="lot-map-body" style={style}>
       <div className="map-scroll">
-        <table className="lot-map" style={style} ref={table} onKeyDown={move} onFocus={remember}>
+        <table className="lot-map" ref={table} onKeyDown={move} onFocus={remember}>
           <caption className="visually-hidden">
             Every wafer by lot and position. A solid disc is out of range and carries its score. Arrow keys move between wafers.
           </caption>
@@ -93,8 +94,10 @@ export function LotGrid({ runs, lots, k, source }: { runs: readonly RunRow[]; lo
               return (
                 <tr key={row.lotId}>
                   <th scope="row" className="map-lot">
-                    <Link to={`/lots/${row.lotId}`} tabIndex={tabIndexAt(rowIndex, 0)} data-row={rowIndex} data-col={0}>
-                      {`Lot ${row.lotNo}`}
+                    {/* a phone prints the number alone under the LOT head; the link keeps its whole name */}
+                    <Link to={`/lots/${row.lotId}`} aria-label={`Lot ${row.lotNo}`} tabIndex={tabIndexAt(rowIndex, 0)} data-row={rowIndex} data-col={0}>
+                      <span className="map-lot-word">Lot </span>
+                      {row.lotNo}
                     </Link>
                     {row.lot?.runDate !== null && row.lot?.runDate !== undefined && (
                       <span className="map-date">{formatDate(row.lot.runDate)}</span>
@@ -135,7 +138,12 @@ export function LotGrid({ runs, lots, k, source }: { runs: readonly RunRow[]; lo
           {kinds.outOfRange && (
             <li>
               <Disc state="out" size="key" text={sample === null ? undefined : formatShortScore(sample)} />
-              <span><b>Out of range</b>{`, with its how-unusual score.${k === null ? '' : ` The limit is ${formatScore(k)}.`}`}</span>
+              {/* the limit is one way in; a stuck sensor or a phase mean far from the good runs flags a run under it */}
+              <span>
+                <b>Out of range</b>
+                <span className="key-score-words">, with its how-unusual score</span>
+                {`.${k === null ? '' : ` The limit is ${formatScore(k)}; a stuck sensor or a phase far from the good runs also counts.`}`}
+              </span>
             </li>
           )}
           {kinds.unmeasured && (

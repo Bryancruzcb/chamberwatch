@@ -135,7 +135,7 @@ test('keys the map with what it holds and nothing else, and brackets the baselin
   // the public wafers: in range, out of range, the baseline in wafers 1 to 3, and lot 7's missing slots
   await expect(key.locator('li')).toHaveCount(4)
   await expect(key).toContainText('In range')
-  await expect(key).toContainText('Out of range, with its how-unusual score. The limit is 6.0.')
+  await expect(key).toContainText('Out of range, with its how-unusual score. The limit is 6.0; a stuck sensor or a phase far from the good runs also counts.')
   await expect(key).toContainText('Baseline: wafers 1 to 3, the 30 good runs behind every score.')
   await expect(key).toContainText('Not run: Lot 7 ran 6 wafers.')
   await expect(key).not.toContainText('Not scored')
@@ -298,8 +298,8 @@ test('marks the page in view in the masthead by weight and aria-current, on the 
   await expect(nav.getByRole('link', { name: 'Lots' })).toHaveAttribute('aria-current', 'page')
 })
 
-for (const width of [320, 375, 700]) {
-  test(`fits the map on a ${width}px page with discs still big enough to tap`, async ({ page }) => {
+for (const width of [320, 360, 375, 700]) {
+  test(`fits the map on a ${width}px page, all ten wafers and the Out count in view`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 })
     await page.goto('/')
     const grid = page.getByRole('region', { name: 'Every wafer, lot by lot' })
@@ -310,22 +310,33 @@ for (const width of [320, 375, 700]) {
     const figure = await grid.boundingBox()
     const firstLot = await grid.getByRole('link', { name: 'Lot 1', exact: true }).boundingBox()
     expect(Math.abs((figure?.x ?? 0) - (firstLot?.x ?? -1))).toBeLessThan(1)
-    const sizes = await grid.locator('[data-kind="grid-cell"]').evaluateAll((cells) => cells.map((cell) => {
+    const boxes = await grid.locator('[data-kind="grid-cell"]').evaluateAll((cells) => cells.map((cell) => {
       const box = cell.getBoundingClientRect()
-      return Math.min(box.width, box.height)
+      return { size: Math.min(box.width, box.height), x: box.x }
     }))
-    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(24)
-    const overflow = await grid.locator('.map-scroll').evaluate((wrap) => wrap.scrollWidth - wrap.clientWidth)
-    // ten positions fit from 375px up; on the narrowest phones the map scrolls inside its own frame rather than shrink
-    if (width >= 375) {
-      expect(overflow).toBe(0)
-    }
-    else {
-      expect(overflow).toBeGreaterThan(0)
+    // 24px discs from 375px up; under that the pitch shrinks to fit ten wafers, never under 22px from centre to centre
+    const [first, second] = boxes
+    expect(Math.min(...boxes.map((box) => box.size))).toBeGreaterThanOrEqual(width >= 375 ? 24 : 20)
+    expect((second?.x ?? 0) - (first?.x ?? 0)).toBeGreaterThanOrEqual(22)
+    const scroll = grid.locator('.map-scroll')
+    expect(await scroll.evaluate((wrap) => wrap.scrollWidth - wrap.clientWidth)).toBe(0)
+    const frame = await scroll.boundingBox()
+    const row = grid.getByRole('row', { name: /^Lot 6/ })
+    for (const cell of [row.getByRole('link', { name: /^Lot 6, wafer 10:/ }), row.locator('td.map-out')]) {
+      const box = await cell.boundingBox()
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((frame?.x ?? 0) + (frame?.width ?? 0) + 0.5)
     }
     if (width < 640) {
-      // too small to print a score in: it stays in the disc's name
+      // too small to print a score in: it stays in the disc's name, and the key stops promising one
       await expect(grid.getByRole('link', { name: 'Lot 6, wafer 5: out of range, how unusual 18.8' }).locator('.disc-text')).toBeHidden()
+      await expect(grid.getByRole('link', { name: 'Lot 6', exact: true })).toHaveText('6', { useInnerText: true })
+      await expect(grid.locator('.map-key .disc-text')).toBeHidden()
+      await expect(grid.locator('.map-key .key-score-words')).toBeHidden()
+      await expect(grid.locator('.map-key')).toContainText('The limit is 6.0; a stuck sensor or a phase far from the good runs also counts.')
+    }
+    else {
+      await expect(grid.getByRole('link', { name: 'Lot 6', exact: true })).toHaveText('Lot 6', { useInnerText: true })
+      await expect(grid.locator('.map-key .key-score-words')).toBeVisible()
     }
   })
 }
@@ -360,6 +371,14 @@ test('scrolls a long lot inside the map rather than shrink its discs', async ({ 
   expect(Math.min(...widths)).toBeGreaterThanOrEqual(24)
   expect(await grid.locator('.map-scroll').evaluate((wrap) => wrap.scrollWidth - wrap.clientWidth)).toBeGreaterThan(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0)
+
+  // on a phone the pitch stops at 22px and the Out count stays pinned to the frame's right edge
+  await page.setViewportSize({ width: 320, height: 800 })
+  const [left, next] = await grid.locator('[data-kind="grid-cell"]').evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().x))
+  expect(Math.round((next ?? 0) - (left ?? 0))).toBe(22)
+  const frame = await grid.locator('.map-scroll').boundingBox()
+  const out = await grid.locator('td.map-out').boundingBox()
+  expect((out?.x ?? 0) + (out?.width ?? 0)).toBeLessThanOrEqual((frame?.x ?? 0) + (frame?.width ?? 0) + 0.5)
 })
 
 test('clusters each first channel\'s runs by lot, each disc a link to its run', async ({ page }) => {
@@ -441,6 +460,50 @@ test('lists every public wafer in the table and narrows to the ones in range', a
   await expect(page).toHaveURL(/show=in/)
 })
 
+test('draws the runs table as the other ledgers are drawn: links underlined, How unusual before First channel', async ({ page }) => {
+  await page.goto('/?show=all')
+  const table = page.locator('table.runs-table')
+  await expect(table.locator('tbody tr')).toHaveCount(96)
+
+  await expect(table.locator('.c-wafer a').first()).toHaveCSS('text-decoration-line', 'underline')
+  await expect(table.locator('.c-wafer a').first()).toHaveCSS('font-weight', '500')
+  expect((await table.locator('thead th').allTextContents()).map((text) => text.replace(/ 0 to.*/, '')))
+    .toEqual(['Wafer', 'State', 'How unusual', 'First channel', 'Left at', 'Excursions', 'Label'])
+})
+
+test('spends no lines on a phone on a run that left no range, and labels the ledgers in one face', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto('/')
+  const ledger = page.getByRole('region', { name: 'Out-of-range runs, by lot' })
+  await expect(ledger.locator('.ledger-run')).toHaveCount(15)
+  const mono = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim())
+  await expect(ledger.locator('.ledger-run .c-exc').first()).toHaveCSS('font-family', mono)
+
+  await page.goto('/?show=all')
+  const rows = page.locator('table.runs-table tbody tr')
+  await expect(rows).toHaveCount(96)
+  const inRange = rows.filter({ has: page.getByRole('link', { name: 'Lot 1 · Wafer 1', exact: true }) })
+  await expect(inRange.locator('.c-chan')).toHaveAttribute('data-empty', 'true')
+  await expect(inRange.locator('.c-chan')).toBeHidden()
+  await expect(inRange.locator('.c-at')).toBeHidden()
+  await expect(inRange.locator('.c-out')).toBeVisible()
+  const out = rows.filter({ has: page.getByRole('link', { name: 'Lot 6 · Wafer 5', exact: true }) })
+  await expect(out.locator('.c-chan')).toBeVisible()
+  await expect(out.locator('.c-chan')).not.toHaveAttribute('data-empty')
+})
+
+test('sets the figures of the Needs a look tab one gap apart, 48px wide and 36px on a phone', async ({ page }) => {
+  for (const [width, gap] of [[1280, 48], [375, 36]] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/')
+    await expect(page.locator('.attention > .figure')).toHaveCount(3)
+    const boxes = await page.locator('.attention > .figure').evaluateAll((figures) => figures.map((figure) => figure.getBoundingClientRect()))
+    for (const [index, box] of boxes.slice(1).entries()) {
+      expect(Math.round(box.top - (boxes[index]?.bottom ?? 0))).toBe(gap)
+    }
+  }
+})
+
 test('filters to one lot', async ({ page }) => {
   await page.goto('/?show=all')
   await page.getByRole('combobox', { name: 'Lot' }).selectOption('6')
@@ -476,7 +539,7 @@ test('switches to the simulated lots and opens a wafer with a known fault', asyn
     .toContainText('Helium backside pressure in 2 and 3 other channels in 1 each.')
   // a step change of 97,795 would flatten every other line, so the lines stop at ten limits and say so
   await expect(page.getByRole('region', { name: 'Out-of-range runs, by lot' }).locator('.figure-answer'))
-    .toHaveText('The highest score is 97,795.1, Lot 901 wafer 7. Each line runs from 0 to 60; the tick is the limit, 6.0, and 2 scores run past its end.')
+    .toHaveText('The highest score is 97,795, Lot 901 wafer 7. Each line runs from 0 to 60; the tick is the limit, 6.0, and 2 scores run past its end.')
 
   await page.getByRole('tab', { name: /All runs/ }).click()
   const rows = page.locator('table.runs-table tbody tr')

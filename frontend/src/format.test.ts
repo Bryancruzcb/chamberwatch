@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Channel, depthModelSchema, driftVsDepthSchema } from './api/schema'
 import {
+  columnFormat,
   describeCatch,
   describeChannelTrace,
   describeClip,
@@ -28,9 +29,13 @@ import {
   formatShortAgainstLimit,
   formatShortScore,
   formatValue,
+  formatZ,
   MISSING,
+  tieUnits,
   waferHeadline,
 } from './format'
+
+const NBSP = String.fromCharCode(0xa0)
 
 describe('format', () => {
   it('prints readings to four significant digits', () => {
@@ -250,7 +255,7 @@ describe('format', () => {
     expect(describeWaferDepth({ ...measurements, points: 0, meanDepthUm: null, values: [] })).toBeNull()
   })
 
-  it('heads the depth page with the side of the wafer that etched deepest, in the run page\'s words', () => {
+  it('heads the depth page with which of its edge and its center etched deeper, in the run page\'s words', () => {
     const at = (xMm: number, depthUm: number) => ({
       pointNo: 1, locId: null, xUm: xMm * 1000, yUm: 0, preoxUm: 0, postoxUm: 0, postoxMeasured: true, stepheightUm: depthUm, depthUm,
     })
@@ -258,12 +263,21 @@ describe('format', () => {
     const sites = [at(0, 44), at(20, 43), at(60, 42), at(90, 41.5)]
     const measurements = { set: 'NINE_POINT', points: 4, meanDepthUm: 42.63, sdDepthUm: 1.1, values: sites } as const
 
-    expect(waferHeadline(run, measurements)).toBe('Wafer 5 of Lot\u00a06 etched deepest at its center.')
+    expect(waferHeadline(run, measurements)).toBe('Wafer 5 of Lot\u00a06 etched deeper at its center than at its edge.')
     expect(waferHeadline(run, { ...measurements, values: [at(0, 41), at(20, 42), at(60, 43), at(90, 44)] }))
-      .toBe('Wafer 5 of Lot\u00a06 etched deepest at its edge.')
+      .toBe('Wafer 5 of Lot\u00a06 etched deeper at its edge than at its center.')
     // 0.001 µm apart prints as the same depth, so neither side is called deeper
     expect(waferHeadline(run, { ...measurements, values: [at(0, 42.001), at(20, 42.001), at(60, 42), at(90, 42)] }))
       .toBe('Wafer 5 of Lot\u00a06 etched evenly from center to edge.')
+    // a wafer deepest in its middle ring is still deeper at its edge than at its center, which is all the line claims
+    const ringed = [at(0, 40), at(1, 40), at(2, 40.1), at(30, 45), at(31, 45.2), at(32, 45), at(80, 41), at(81, 41.2), at(82, 41)]
+    expect(waferHeadline(run, { ...measurements, points: 9, values: ringed })).toBe(`Wafer 5 of Lot${NBSP}6 etched deeper at its edge than at its center.`)
+    // the headline decides "evenly" from the same rounded difference the figure's answer prints, so the two agree
+    const close = (centerUm: number, edgeUm: number) => ({ ...measurements, values: [at(0, centerUm), at(20, 42), at(60, 42), at(90, edgeUm)] })
+    expect(waferHeadline(run, close(30.0049, 30.0051))).toBe(`Wafer 5 of Lot${NBSP}6 etched evenly from center to edge.`)
+    expect(describeWaferDepth(close(30.0049, 30.0051))).toMatch(/etched 0\.00 .m deeper/)
+    expect(waferHeadline(run, close(29.996, 30.004))).toBe(`Wafer 5 of Lot${NBSP}6 etched deeper at its edge than at its center.`)
+    expect(describeWaferDepth(close(29.996, 30.004))).toMatch(/etched 0\.01 .m deeper/)
     expect(waferHeadline(run, { ...measurements, points: 2, values: sites.slice(0, 2) })).toBe('Wafer 5 of Lot\u00a06 etched 42.63 µm deep on average.')
     expect(waferHeadline(run, { ...measurements, points: 0, meanDepthUm: null, values: [] })).toBe('Wafer 5 of Lot\u00a06 has no 9-point measurements.')
   })
@@ -302,7 +316,27 @@ describe('format', () => {
     expect(formatAgainstLimit(6, 6)).toBe('6.0')
     expect(formatAgainstLimit(6.06, 6)).toBe('6.1')
     expect(formatAgainstLimit(18.81, 6)).toBe('18.8')
-    expect(formatAgainstLimit(97795.1, 6)).toBe('>20')
+  })
+
+  it('prints a score past 20 in full, never as a bound', () => {
+    const scored = (name: string, persistentZ: number): Channel => ({ ...channel(name), persistentZ })
+
+    expect(formatAgainstLimit(20.01, 6)).toBe('20.0')
+    expect(formatAgainstLimit(24.93, 6)).toBe('24.9')
+    expect(formatAgainstLimit(99.9, 6)).toBe('99.9')
+    expect(formatAgainstLimit(97795.1, 6)).toBe('97,795')
+    expect(describeLineup([scored('PlatenRFLoadCapacitor', 20.01), scored('Gas1Flow', 7)], 6))
+      .toBe('2 of 2 channels went past the limit of 6.0. Platen RF load cap went furthest, to 20.0.')
+    expect(describeLineup([scored('PlatenRFLoadCapacitor', 24.93), scored('Gas1Flow', 2)], 6))
+      .toBe('1 of 2 channels went past the limit of 6.0. Platen RF load cap went furthest, to 24.9.')
+    expect(describeLineup([scored('PlatenRFLoadCapacitor', 99.9), scored('Gas1Flow', 2)], 6))
+      .toBe('1 of 2 channels went past the limit of 6.0. Platen RF load cap went furthest, to 99.9.')
+  })
+
+  it('speaks of a run with one channel as the one channel', () => {
+    const scored = (name: string, persistentZ: number): Channel => ({ ...channel(name), persistentZ })
+
+    expect(describeLineup([scored('Gas1Flow', 7)], 6)).toBe('The one channel, Gas 1 flow, went past the limit of 6.0, to 7.0.')
   })
 
   it('marks a missing value', () => {
@@ -324,6 +358,16 @@ function fixture(name: string): unknown {
 
 /** A scored channel with as many excursions and holds as asked for, and nothing else of note. */
 describe("the run page's numbers and notes", () => {
+  it('prints a z in a table to one decimal under 100 and whole from there, so a step change is not 403,671.9', () => {
+    expect(formatZ(-0.94)).toBe('-0.9')
+    expect(formatZ(9.03)).toBe('9.0')
+    expect(formatZ(99.94)).toBe('99.9')
+    expect(formatZ(-659.63)).toBe('-660')
+    expect(formatZ(403671.9)).toBe('403,672')
+    expect(formatZ(1118160.94)).toBe('1,118,161')
+    expect(formatZ(null)).toBe(MISSING)
+  })
+
   it("prints the verdict's numeral in full, one decimal under 100", () => {
     expect(formatBigScore(18.81)).toBe('18.8')
     expect(formatBigScore(99.96)).toBe('100.0')
@@ -377,15 +421,62 @@ function channel(name: string, { excursions = 0, holds = 0, deviation = false } 
 }
 
 describe('formatShortScore', () => {
-  it('prints at most four characters: one decimal under 100, whole under 10,000, then compact', () => {
+  it('prints at most four characters: one decimal under 100, whole under 1,000, then compact', () => {
     expect(formatShortScore(24.925)).toBe('24.9')
     expect(formatShortScore(9.6)).toBe('9.6')
     expect(formatShortScore(6)).toBe('6.0')
     expect(formatShortScore(99.94)).toBe('99.9')
     expect(formatShortScore(100)).toBe('100')
-    expect(formatShortScore(9805.63)).toBe('9806')
+    expect(formatShortScore(999.4)).toBe('999')
+    expect(formatShortScore(9805.63)).toBe('9.8K')
     expect(formatShortScore(97795.1)).toBe('98K')
     expect(formatShortScore(123456)).toBe('120K')
     expect(formatShortScore(4_560_000)).toBe('4.6M')
+  })
+
+  it('rounds before it picks a bracket, so a value at a bracket edge never prints five characters', () => {
+    expect(formatShortScore(99.95)).toBe('100')
+    expect(formatShortScore(999.6)).toBe('1K')
+    expect(formatShortScore(9999.5)).toBe('10K')
+    expect(formatShortScore(-99.95)).toBe('-100')
+  })
+
+  it('keeps a number on the same line as its unit in a sentence', () => {
+    expect(tieUnits('Left its range at 537.0 s, then held.')).toBe('Left its range at 537.0 s, then held.')
+    expect(tieUnits('wafers etch 0.90 µm shallower')).toBe('wafers etch 0.90 µm shallower')
+    expect(tieUnits('the first 3 wafers ± 3.0 sd of the good runs')).toBe('the first 3 wafers ± 3.0 sd of the good runs')
+    expect(tieUnits('cut Gas 5 flow to 36 sccm.')).toBe('cut Gas 5 flow to 36 sccm.')
+    // a word that only starts like a unit, and a number followed by a word, are left alone
+    expect(tieUnits('3 samples in 2 sdx lots, 5 stuck')).toBe('3 samples in 2 sdx lots, 5 stuck')
+    expect(tieUnits('')).toBe('')
+  })
+})
+
+describe('a column of readings', () => {
+  it('prints every value with the decimals the most precise one needs, so the decimal points line up', () => {
+    const tuning = columnFormat([27.223, 27.3037, 27.5011])
+    expect([27.223, 27.3037, 27.5011].map(tuning)).toEqual(['27.22', '27.30', '27.50'])
+    const gas = columnFormat([573.67, 247.84, 573.27])
+    expect([573.67, 247.84].map(gas)).toEqual(['573.7', '247.8'])
+    const flat = columnFormat([2, 2, 2])
+    expect(flat(2)).toBe('2')
+    expect(columnFormat([1371.014, 1371.016])(1371.014)).toBe('1,371')
+    expect(tuning(null)).toBe(MISSING)
+    expect(columnFormat([])(3.25)).toBe('3')
+  })
+})
+
+describe('a score that rounds to zero', () => {
+  it('prints 0.0, never -0.0, in every score and z formatter', () => {
+    expect(formatScore(-0.0035)).toBe('0.0')
+    expect(formatScore(-0)).toBe('0.0')
+    expect(formatScore(-0.05)).toBe('-0.1')
+    expect(formatScore(-3.26)).toBe('-3.3')
+    expect(formatBigScore(-0.04)).toBe('0.0')
+    expect(formatZ(-0.04)).toBe('0.0')
+    expect(formatShortScore(-0.04)).toBe('0.0')
+    expect(formatAgainstLimit(-0.04, 6)).toBe('0.0')
+    expect(formatShortAgainstLimit(-0.004, 0)).toBe('0.00')
+    expect(formatValue(-0)).toBe('0')
   })
 })

@@ -49,6 +49,9 @@
   --text-60: 3.75rem;
   --text-72: 4.5rem;
 
+  /* the space between one figure and the next, on every page */
+  --figure-gap: 48px;
+
   font-family: var(--font-sans);
   line-height: 1.5;
   color: var(--ink);
@@ -333,7 +336,8 @@ code {
   margin-bottom: 4px;
 }
 
-.fig-no {
+.fig-no,
+h2.verdict-label {
   color: var(--ink-2);
   font-family: var(--font-mono);
   font-size: var(--text-12);
@@ -359,9 +363,14 @@ code {
 }
 
 .figure-note {
-  margin: -12px 0 18px;
+  margin: 0 0 18px;
   font-size: var(--text-13);
   color: var(--ink-2);
+}
+
+/* a note that qualifies the answer sits close under it; with no answer it keeps clear of the title */
+.figure-answer + .figure-note {
+  margin-top: -12px;
 }
 
 .figure-foot {
@@ -629,7 +638,8 @@ a.disc:focus-visible .disc-mark {
   margin-right: 20px;
 }
 
-.sl-axis {
+.sl-axis,
+.time-line::before {
   position: absolute;
   top: 50%;
   right: 0;
@@ -661,7 +671,8 @@ a.disc:focus-visible .disc-mark {
   background: var(--ring);
 }
 
-.sl-point {
+.sl-point,
+.lineup-dot {
   position: absolute;
   top: 50%;
   width: 12px;
@@ -678,8 +689,9 @@ a.disc:focus-visible .disc-mark {
   box-shadow: 0 0 0 2px var(--paper);
 }
 
-/* Past the end of the line: the dot stops at the end and points on. */
-.score-line.past .sl-point::after {
+/* Past the end of the line or the scale: the dot stops at the end and points on. */
+.score-line.past .sl-point::after,
+.lineup-row.past .lineup-dot::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -1193,13 +1205,14 @@ tbody tr.selected a {
   color: var(--ink-2);
 }
 
-/* Each row is held at two lines' height, so the placeholder's rows match whatever the key ends up saying. */
+/* Each row is held at least at two lines' height, so the placeholder's rows match a key of short rows; the out-of-range
+   row, which names every way a run gets there, may run longer. */
 .map-key li {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  height: 40px;
+  min-height: 40px;
 }
 
 .map-key li > :first-child {
@@ -1251,7 +1264,7 @@ tbody tr.selected a {
 .attention,
 .panel-skeleton {
   display: grid;
-  gap: 48px;
+  gap: var(--figure-gap);
 }
 
 .panel-skeleton .skel-head {
@@ -1406,11 +1419,6 @@ tbody tr.selected a {
 
 .time-line::before {
   content: '';
-  position: absolute;
-  top: 50%;
-  right: 0;
-  left: 0;
-  border-top: 1px solid var(--ring);
 }
 
 .time-tick {
@@ -1486,11 +1494,6 @@ tbody tr.selected a {
 
 .runs-table .c-wafer a {
   font-weight: 500;
-  text-decoration: none;
-}
-
-.runs-table .c-wafer a:hover {
-  text-decoration: underline;
 }
 
 .c-wafer .key {
@@ -1668,6 +1671,11 @@ tbody tr.selected a {
   margin-top: 18px;
 }
 
+/* a command never breaks at its hyphens, where it would read as two */
+.live-how code {
+  white-space: nowrap;
+}
+
 .live-note {
   margin: 20px 0 0;
 }
@@ -1759,7 +1767,8 @@ tbody tr.selected a {
   height: 18px;
 }
 
-.lots td.c-out {
+.lots td.c-out,
+.count-num {
   font-family: var(--font-mono);
   font-size: var(--text-28);
   font-weight: 500;
@@ -1792,6 +1801,10 @@ tbody tr.selected a {
   display: grid;
   align-content: start;
   gap: 12px;
+  min-width: 0;
+}
+
+.depth-main {
   min-width: 0;
 }
 
@@ -1937,13 +1950,6 @@ tbody tr.selected a {
   display: flex;
   align-items: baseline;
   gap: 8px;
-}
-
-.count-num {
-  font-family: var(--font-mono);
-  font-size: var(--text-28);
-  font-weight: 500;
-  line-height: 1;
 }
 
 :is(.drift-counts, .drift-table, .figure-control, .figure-table) .word {
@@ -2120,6 +2126,21 @@ tbody tr.selected a {
 
 .key-line.series-2 {
   border-top: 2px dashed var(--ink);
+}
+
+/* the chart's dots at their drawn size: filled for the first series, a ring for the second */
+.key-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.key-dot.series-2 {
+  width: 8px;
+  height: 8px;
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--ink);
 }
 
 .key-swatch {
@@ -2413,23 +2434,11 @@ tbody tr.selected a {
   gap: 12px;
 }
 
-@media (max-width: 1000px) {
-  .depth-model {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 760px) {
-  .wafer-chart {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* The run page: the lot strip and the sentence with the verdict beside them, then the figures. */
 .run-page,
 .sheet {
   display: grid;
-  gap: 48px;
+  gap: var(--figure-gap);
   min-width: 0;
 }
 
@@ -2492,10 +2501,6 @@ tbody tr.selected a {
   color: var(--ink-3);
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
-}
-
-.run-state {
-  margin-top: 0;
 }
 
 .skel-crumb {
@@ -2594,8 +2599,10 @@ tbody tr.selected a {
   bottom: auto;
 }
 
-/* At either end of the strip the label lines up with the disc's outer edge, so it never runs past the strip. */
-.strip-here:first-child .strip-here-label {
+/* At either end of the strip the label lines up with the disc's outer edge, so it never runs past the strip. Inside
+   the baseline, the first wafer follows the bracket. */
+.strip-here:first-child .strip-here-label,
+.strip-bracket + .strip-here .strip-here-label {
   left: 0;
   translate: 0 0;
 }
@@ -2616,13 +2623,7 @@ tbody tr.selected a {
 }
 
 h2.verdict-label {
-  color: var(--ink-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-12);
-  font-weight: 500;
   line-height: 1;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .verdict-big {
@@ -2817,8 +2818,10 @@ h2.verdict-label {
   border-left: 1px solid var(--ink);
 }
 
+/* the margin keeps the unit off a last tick label that hangs past the axis's end */
 .lane-tick.unit {
   left: calc(100% + 10px);
+  margin-left: 4px;
   translate: 0 0;
 }
 
@@ -2878,14 +2881,14 @@ h2.verdict-label {
   display: grid;
   grid-template-columns: minmax(0, 11fr) minmax(0, 13fr);
   align-items: start;
-  gap: 48px;
+  gap: var(--figure-gap);
 }
 
 .run-panels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 48px;
+  gap: var(--figure-gap);
 }
 
 .panel-small {
@@ -2976,17 +2979,6 @@ h2.verdict-label {
   background: var(--signal);
 }
 
-.lineup-dot {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--ring);
-  border-radius: 50%;
-  background: var(--paper);
-  translate: -50% -50%;
-}
-
 .lineup-row.over .lineup-dot {
   width: 16px;
   height: 16px;
@@ -2997,17 +2989,6 @@ h2.verdict-label {
 
 .lineup-row.selected.over .lineup-dot {
   box-shadow: 0 0 0 2px var(--paper-2);
-}
-
-/* Past the end of the scale: the dot stops at the end and points on. */
-.lineup-row.past .lineup-dot::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 3px);
-  border: 5px solid transparent;
-  border-left: 7px solid var(--signal);
-  translate: 0 -50%;
 }
 
 .lineup-value {
@@ -3083,7 +3064,8 @@ h2.verdict-label {
 }
 
 .lineup .how,
-.trace-figure .how {
+.trace-figure .how,
+.drift-channels .how {
   margin-top: 12px;
 }
 
@@ -3158,12 +3140,23 @@ h2.verdict-label {
   background: var(--signal);
 }
 
+/* min-width keeps a wide table from widening the figure; its own box scrolls instead */
 .figure-table {
+  min-width: 0;
   margin-top: 24px;
 }
 
 .figure-table caption {
   font-size: var(--text-15);
+}
+
+/* A table's title set above its scrolling box, styled as a caption. */
+.table-title {
+  margin: 0;
+  padding: 0 0 8px;
+  color: var(--ink);
+  font-size: var(--text-15);
+  font-weight: 600;
 }
 
 /* Long column heads wrap onto two lines, so the numbers keep the width. */
@@ -3214,11 +3207,35 @@ h2.verdict-label {
   font-size: var(--text-13);
 }
 
+/* Narrower screens, widest breakpoint first, so a narrower one wins where both apply. */
+@media (max-width: 1100px) {
+  .lot-map-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lot-map-side {
+    padding-top: 0;
+  }
+
+  .map-key {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 24px;
+  }
+}
+
 @media (max-width: 1000px) {
+  .depth-model {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .run-cols,
   .lot-cols,
   .run-panels {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .words {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3227,11 +3244,42 @@ h2.verdict-label {
     grid-template-columns: minmax(0, 1fr);
     gap: 28px;
   }
+
+  /* The map steps down with the page, keeping every disc at 24px or more. */
+  .lot-map-body {
+    --pitch: 46px;
+    --disc: 38px;
+    --gap: 14px;
+    --lotw: 100px;
+    --outw: 44px;
+  }
+
+  .lot-map .disc-map .disc-mark {
+    font-size: var(--text-12);
+  }
+}
+
+@media (max-width: 760px) {
+  .wafer-chart {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lot-map-body {
+    --pitch: 40px;
+    --disc: 34px;
+    --gap: 12px;
+    --lotw: 92px;
+    --outw: 40px;
+  }
+
+  .lot-map .map-out {
+    font-size: var(--text-20);
+  }
 }
 
 @media (max-width: 640px) {
-  .run-page {
-    gap: 36px;
+  :root {
+    --figure-gap: 36px;
   }
 
   .verdict-num {
@@ -3320,81 +3368,7 @@ h2.verdict-label {
     padding-bottom: 0;
     border-bottom: 0;
   }
-}
 
-/* The narrowest phones: a lot of ten still fits the strip without scrolling. */
-@media (max-width: 360px) {
-  .lot-strip {
-    gap: 2px;
-    padding-right: 0;
-  }
-
-  .lot-strip .disc-here {
-    --d: 32px;
-  }
-
-  .strip-baseline {
-    gap: 2px;
-    margin-right: 6px;
-  }
-
-  .strip-here {
-    margin: 0 5px;
-  }
-}
-
-/* Narrower screens */
-@media (max-width: 1100px) {
-  .lot-map-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .lot-map-side {
-    padding-top: 0;
-  }
-
-  .map-key {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px 24px;
-  }
-}
-
-@media (max-width: 1000px) {
-  .words {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-/* The map steps down with the page, keeping every disc at 24px or more. */
-@media (max-width: 900px) {
-  .lot-map-body {
-    --pitch: 46px;
-    --disc: 38px;
-    --gap: 14px;
-    --lotw: 100px;
-    --outw: 44px;
-  }
-
-  .lot-map .disc-map .disc-mark {
-    font-size: var(--text-12);
-  }
-}
-
-@media (max-width: 760px) {
-  .lot-map-body {
-    --pitch: 40px;
-    --disc: 34px;
-    --gap: 12px;
-    --lotw: 92px;
-    --outw: 40px;
-  }
-
-  .lot-map .map-out {
-    font-size: var(--text-20);
-  }
-}
-
-@media (max-width: 640px) {
   .masthead-in {
     gap: 18px;
     height: 52px;
@@ -3439,18 +3413,30 @@ h2.verdict-label {
     margin-top: 20px;
   }
 
-  /* The phone map: 24px discs on a 26px pitch, the score kept in each disc's label rather than printed inside. */
+  /* The phone map: the pitch shares the width out over the slots and the Out column, so ten wafers and the count fit
+     from 320px up (22.2px there, 26px from 362px); the score stays in each disc's label rather than printed inside.
+     A lot longer than ten stops at 22px and scrolls, its Out count pinned to the right edge. */
   .lot-map-body {
-    --pitch: 26px;
-    --disc: 24px;
+    --pitch: max(22px, min(26px, calc((100vw - 76px) / (var(--positions, 10) + 1))));
+    --disc: calc(var(--pitch) - 2px);
     --gap: 8px;
-    --lotw: 48px;
-    --outw: 26px;
+    --lotw: 34px;
+    --outw: var(--pitch);
     --headh: 58px;
   }
 
-  .lot-map .disc-map .disc-text {
+  .lot-map .disc-map .disc-text,
+  .map-key .disc-text,
+  .map-key .key-score-words,
+  .map-lot-word {
     display: none;
+  }
+
+  .lot-map :is(.map-out, .map-out-head) {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: var(--paper);
   }
 
   .map-lot a {
@@ -3500,11 +3486,6 @@ h2.verdict-label {
     gap: 6px;
   }
 
-  .attention,
-  .panel-skeleton {
-    gap: 36px;
-  }
-
   .first-channels {
     gap: 24px;
   }
@@ -3515,7 +3496,8 @@ h2.verdict-label {
   }
 
   /* The ledgers fold each run into two or three lines: wafer, score and line; then the channel; then when it left. */
-  .ledger thead {
+  .ledger thead,
+  .lots thead {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3590,7 +3572,6 @@ h2.verdict-label {
   .out-ledger .ledger-run .c-exc {
     grid-area: 3 / 2;
     justify-self: end;
-    font-family: var(--font-sans);
     white-space: nowrap;
   }
 
@@ -3650,18 +3631,24 @@ h2.verdict-label {
     content: attr(data-label) ' ';
     color: var(--ink-3);
   }
-}
 
-/* The lot table on a phone: each lot on two lines, its name and out count over its wafers at full size. */
-@media (max-width: 640px) {
-  .lots thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+  /* a run that left no range has no first channel and no time: two lines of dashes say nothing */
+  .runs-table td[data-empty] {
+    display: none;
   }
 
+  /* a lot's wafers: a fixed name column, so a long state never covers the name and the discs line up row to row; the
+     state's words wrap under its disc */
+  .lot-runs tbody tr {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .lot-runs .state-cell {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  /* The lot table on a phone: each lot on two lines, its name and out count over its wafers at full size. */
   .lots,
   .lots tbody,
   .lots :is(th, td) {
@@ -3726,9 +3713,15 @@ h2.verdict-label {
     gap: 8px 20px;
   }
 
-  /* the verdict words wrap so the channel names keep the width */
-  .drift-table :is(.word, thead th) {
+  /* the verdict words wrap so the channel names and the numbers keep the width */
+  .drift-table :is(.word, thead th),
+  .drift-points .word {
     white-space: normal;
+  }
+
+  /* "Fitted z" is one name, so it does not break */
+  .drift-table thead th.num {
+    white-space: nowrap;
   }
 
   /* the slope and its t are in the readout and the method; the phone keeps the mean, z and the verdict */
@@ -3741,8 +3734,27 @@ h2.verdict-label {
   }
 }
 
-/* The narrowest phones: the wordmark, three links and the theme button still fit one row without the page scrolling sideways. */
 @media (max-width: 360px) {
+  /* The narrowest phones: a lot of ten still fits the strip without scrolling. */
+  .lot-strip {
+    gap: 2px;
+    padding-right: 0;
+  }
+
+  .lot-strip .disc-here {
+    --d: 32px;
+  }
+
+  .strip-baseline {
+    gap: 2px;
+    margin-right: 6px;
+  }
+
+  .strip-here {
+    margin: 0 5px;
+  }
+
+  /* The narrowest phones: the wordmark, three links and the theme button still fit one row without the page scrolling sideways. */
   .masthead-in {
     gap: 10px;
     padding: 0 12px;

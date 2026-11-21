@@ -174,14 +174,20 @@ function flagCount(run: Record<string, unknown>): number {
   return limit + deviation + stuck
 }
 
-/** The captured trace, labeled with the channel and the cycle range the page asked for, as the API echoes them. */
+/**
+ * The captured trace, labeled with the channel and the cycle range the page asked for, as the API echoes them. Like the
+ * API, it keeps only the asked cycles' points but every excursion of the channel.
+ */
 function asAsked(trace: unknown, channel: string, params: URLSearchParams): unknown {
   if (!isObject(trace)) {
     return trace
   }
   const from = params.get('fromCycle')
   const to = params.get('toCycle')
-  return { ...trace, channel, fromCycle: from === null ? null : Number(from), toCycle: to === null ? null : Number(to) }
+  const inRange = (point: unknown) => isObject(point) && typeof point.cycle === 'number'
+    && (from === null || point.cycle >= Number(from)) && (to === null || point.cycle <= Number(to))
+  const points = Array.isArray(trace.points) && (from !== null || to !== null) ? trace.points.filter(inRange) : trace.points
+  return { ...trace, channel, points, fromCycle: from === null ? null : Number(from), toCycle: to === null ? null : Number(to) }
 }
 
 /** The captured lot drift, labeled with the phase and the reference the page asked for, as the API echoes them. */

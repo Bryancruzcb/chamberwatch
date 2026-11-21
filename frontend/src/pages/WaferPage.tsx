@@ -11,8 +11,8 @@ import { Figure } from '../components/Figure'
 import { Segmented } from '../components/Segmented'
 import { Stat } from '../components/Stat'
 import { ErrorState } from '../components/States'
-import { describePrediction, describeWaferDepth, formatDate, formatMicrons, formatMeasurementSet, waferHeadline } from '../format'
-import { NotFound } from './NotFound'
+import { describePrediction, describeWaferDepth, formatDate, formatMicrons, formatMeasurementSet, tieUnits, waferHeadline } from '../format'
+import { NotFound, PageFailure } from './NotFound'
 
 const SETS = [['EIGHTY_NINE_POINT', '89-point'], ['NINE_POINT', '9-point']] as const
 
@@ -25,7 +25,7 @@ export function WaferPage() {
 }
 
 /**
- * A wafer's measured depth. The answer says where it etched deeper, its edge or its center; then the map of its sites
+ * A wafer's measured depth. The answer says which etched deeper, the sites near its edge or near its center; then the map of its sites
  * and, for a public wafer, the depth its telemetry predicts. The measurement set is chosen in the first figure's head.
  */
 function WaferView({ runId }: { runId: number }) {
@@ -37,17 +37,22 @@ function WaferView({ runId }: { runId: number }) {
   const current = measurements.kind === 'ready' && !measurements.refreshing ? measurements.data : null
   if (run.kind === 'error') {
     return (
-      <div className="sheet">
-        <title>Measured depth · ChamberWatch</title>
-        <ErrorState title="This wafer did not load" message={run.error.message} onRetry={reloadRun} />
-      </div>
+      <PageFailure
+        error={run.error}
+        onRetry={reloadRun}
+        missing={`There is no run ${runId}.`}
+        back={{ to: '/', label: 'Back to the runs' }}
+        name="Measured depth"
+        failed="This wafer did not load"
+        title="Measured depth · ChamberWatch"
+      />
     )
   }
   return (
     <div className="sheet">
       {run.kind === 'loading'
         ? <WaferHeadSkeleton />
-        : <WaferHead run={run.data} measurements={current} />}
+        : <WaferHead run={run.data} measurements={current} failed={measurements.kind === 'error'} />}
       <Figure
         id="wafer"
         title="Etch depth across the wafer"
@@ -77,7 +82,8 @@ function WaferView({ runId }: { runId: number }) {
   )
 }
 
-function WaferHead({ run, measurements }: { run: RunDetail; measurements: Measurements | null }) {
+/** The breadcrumb and the answer. When the measurements fail, Fig. 1 says why and the headline names the wafer plainly. */
+function WaferHead({ run, measurements, failed }: { run: RunDetail; measurements: Measurements | null; failed: boolean }) {
   return (
     <header className="page-head">
       <title>{`Lot ${run.lotNo}, wafer ${run.positionInLot} depth · ChamberWatch`}</title>
@@ -90,15 +96,18 @@ function WaferHead({ run, measurements }: { run: RunDetail; measurements: Measur
         <span aria-hidden="true"> / </span>
         Depth
       </p>
-      {measurements === null
-        ? (
-            <>
-              <h1 className="visually-hidden">Measured depth</h1>
-              <span className="skel skel-title" aria-hidden="true" />
-              <span className="skel skel-title short" aria-hidden="true" />
-            </>
-          )
-        : <h1>{waferHeadline(run, measurements)}</h1>}
+      {measurements !== null
+        ? <h1>{tieUnits(waferHeadline(run, measurements))}</h1>
+        : failed
+          // a placeholder here would wait forever
+          ? <h1>{`Wafer ${run.positionInLot} of Lot\u00a0${run.lotNo}`}</h1>
+          : (
+              <>
+                <h1 className="visually-hidden">Measured depth</h1>
+                <span className="skel skel-title" aria-hidden="true" />
+                <span className="skel skel-title short" aria-hidden="true" />
+              </>
+            )}
       <p className="page-meta">
         {run.runDate !== null && <span>{formatDate(run.runDate)}</span>}
         <span className="run-key">{run.key}</span>
@@ -122,11 +131,22 @@ function WaferHeadSkeleton() {
 /** What the wafer's telemetry says its depth should be, from a model that never saw its lot. Public wafers only. */
 function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) {
   const [depth, reload] = useResource(`/api/runs/${runId}/depth?set=${set}`, runDepthSchema)
+  // a new set keeps the last set's prediction on hand, dimmed, until its own arrives; it never answers for the new set
+  const refreshing = depth.kind === 'ready' && depth.refreshing
   return (
-    <Figure id="predicted" title="Predicted from the telemetry" answer={depth.kind === 'ready' ? describePrediction(depth.data) : undefined}>
+    <Figure
+      id="predicted"
+      title="Predicted from the telemetry"
+      answer={depth.kind === 'ready' && !depth.refreshing ? describePrediction(depth.data) : undefined}
+      busy={depth.kind === 'loading' || refreshing}
+    >
       {depth.kind === 'loading' && <span className="skel skel-strip-wide" aria-hidden="true" />}
       {depth.kind === 'error' && <ErrorState title="Could not load the prediction" message={depth.error.message} onRetry={reload} />}
-      {depth.kind === 'ready' && <PredictionStrip predictedUm={depth.data.predictedUm} measuredUm={depth.data.measuredUm} missUm={depth.data.lotRmseUm} />}
+      {depth.kind === 'ready' && (
+        <div className={refreshing ? 'figure-body refreshing' : 'figure-body'} aria-busy={refreshing || undefined}>
+          <PredictionStrip predictedUm={depth.data.predictedUm} measuredUm={depth.data.measuredUm} missUm={depth.data.lotRmseUm} />
+        </div>
+      )}
       <details className="how">
         <summary>How this is counted</summary>
         <p>

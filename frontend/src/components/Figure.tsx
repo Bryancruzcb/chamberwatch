@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { tieUnits } from '../format'
 
 /**
  * A section of a page that shows data, set like a figure in a report: a 2px ink rule, a "Fig. n" label, the title and
@@ -30,7 +31,7 @@ export function Figure({ id, title, control, answer, numbered = true, busy, clas
         <h2 id={`${id}-title`}>{title}</h2>
         {control !== undefined && <div className="figure-control">{control}</div>}
       </div>
-      {answer !== undefined && answer !== null && <p className="figure-answer">{answer}</p>}
+      {answer !== undefined && answer !== null && <p className="figure-answer">{typeof answer === 'string' ? tieUnits(answer) : answer}</p>}
       {children}
     </section>
   )

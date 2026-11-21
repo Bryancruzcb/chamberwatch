@@ -6,8 +6,8 @@ const NEAR_START = 0.2
 /**
  * A how-unusual score on a line from 0 to `end`: a 1px axis, a 2px ink tick at the limit `k`, then, out of range, a
  * red bar from the limit to the score and a red dot; in range, a hollow ring on a thin stem. A score past `end` stops
- * at the end with an arrow. Every line in one column takes the same `end` (see `scoreLineEnd` in charts/scale.ts), so
- * the lines compare.
+ * at the end with an arrow, and the end's tick reads "60+". Every line in one column takes the same `end` (see
+ * `scoreLineEnd` in charts/scale.ts), so the lines compare.
  *
  * `out` is the run's state, not `z > k`: a stuck value or a phase mean can put a run out of range under the limit,
  * and then it gets the red dot without a bar. `size="verdict"` is the run page's large version; `ticks` prints 0, the
@@ -39,7 +39,7 @@ export function ScoreLine({ z, k, end, out, size = 'row', ticks = false, label }
           {k !== null && (
             <span className={limitNearStart ? 'sl-tick limit near-start' : 'sl-tick limit'} style={{ left: at(k) }}>{`limit ${formatScore(k)}`}</span>
           )}
-          <span className="sl-tick end">{String(end)}</span>
+          <span className="sl-tick end">{`${end}${z > end ? '+' : ''}`}</span>
         </>
       )}
     </span>

@@ -1,7 +1,7 @@
 import { type CSSProperties, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import {
-  type DepthModel, depthModelSchema, type DriftVsDepth, driftVsDepthSchema, type Lot, lotsSchema, type MeasurementSet, type RunsPage,
+  type DepthModel, depthModelSchema, type DriftVsDepth, driftVsDepthSchema, type Lot, lotsSchema, type MeasurementSet,
   runsPageSchema, type Source,
 } from '../api/schema'
 import { readSource, withSource } from '../api/source'
@@ -14,10 +14,10 @@ import { SourceSwitch } from '../components/SourceSwitch'
 import { AnswerSkeleton, ErrorState } from '../components/States'
 import {
   describeDepthModel, describeDepthTrend, describeEveryWafer, formatConditioning, formatDate, formatDepthFeature, formatDepthMethod,
-  formatMicrons, formatShortScore, MISSING,
+  formatMicrons, formatShortScore, MISSING, tieUnits,
 } from '../format'
-import { type GridRow, gridKinds, lotGrid, rowSegments } from '../grid'
-import { describeWaferKey, lotsAnswer } from '../lotSummary'
+import { type GridRow, gridKinds, type LotGrid, lotGrid, rowSegments } from '../grid'
+import { describeRunsByPosition, describeWaferKey, lotsAnswer, thinPositions } from '../lotSummary'
 import { EMPTY_HINTS, SOURCE_LINES } from '../sources'
 
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -53,7 +53,9 @@ export function LotsPage() {
   const current = runs.kind === 'ready' && !runs.refreshing ? runs.data : null
   const failed = lots.kind === 'error'
   const empty = sourceLots !== null && sourceLots.length === 0
-  const answer = sourceLots === null ? null : lotsAnswer(sourceLots, current === null || current.baseline !== null)
+  const scored = current !== null ? current.baseline !== null : runs.kind === 'error' ? 'failed' : 'loading'
+  const answer = sourceLots === null ? null : lotsAnswer(sourceLots, scored)
+  const grid = current === null || sourceLots === null ? null : lotGrid(current.runs, sourceLots)
   return (
     <>
       <title>Lots · ChamberWatch</title>
@@ -64,35 +66,37 @@ export function LotsPage() {
             ? <AnswerSkeleton name="Lots" />
             : (
                 <>
-                  <h1>{answer.title}</h1>
-                  {answer.lead !== null && <p className="answer-next">{answer.lead}</p>}
+                  <h1>{tieUnits(answer.title)}</h1>
+                  {answer.lead !== null && <p className="answer-next">{tieUnits(answer.lead)}</p>}
                 </>
               )}
       </section>
-      <Figure
-        id="lots"
-        title="Every lot"
-        numbered={!failed && !empty}
-        busy={sourceLots === null && !failed}
-        control={<SourceSwitch value={source} onChange={(next) => setParams(next === 'PUBLIC' ? {} : { source: next }, { replace: true })} />}
-      >
-        {lots.kind === 'error'
-          ? <ErrorState title="Could not load the lots" message={lots.error.message} onRetry={reloadLots} />
-          : sourceLots === null
-            ? <span className="skel skel-lots" aria-hidden="true" />
-            : empty
-              ? (
-                  <div className="state" role="status">
-                    <p className="state-title">No lots yet</p>
-                    <p>{EMPTY_HINTS[source]}</p>
-                  </div>
-                )
-              : <LotsTable lots={sourceLots} runs={current} runsFailed={runs.kind === 'error'} source={source} />}
-      </Figure>
-      {!empty && !failed && <DriftFigure report={report} onRetry={reloadReport} />}
-      {source === 'PUBLIC' && !failed && (
-        <DepthModelFigure baseline={report.kind === 'ready' && !report.refreshing ? report.data.referenceWafers : null} />
-      )}
+      <div className="sheet">
+        <Figure
+          id="lots"
+          title="Every lot"
+          numbered={!failed && !empty}
+          busy={sourceLots === null && !failed}
+          control={<SourceSwitch value={source} onChange={(next) => setParams(next === 'PUBLIC' ? {} : { source: next }, { replace: true })} />}
+        >
+          {lots.kind === 'error'
+            ? <ErrorState title="Could not load the lots" message={lots.error.message} onRetry={reloadLots} />
+            : sourceLots === null
+              ? <span className="skel skel-lots" aria-hidden="true" />
+              : empty
+                ? (
+                    <div className="state" role="status">
+                      <p className="state-title">No lots yet</p>
+                      <p>{EMPTY_HINTS[source]}</p>
+                    </div>
+                  )
+                : <LotsTable lots={sourceLots} grid={grid} runsFailed={runs.kind === 'error'} source={source} />}
+        </Figure>
+        {!empty && !failed && <DriftFigure report={report} onRetry={reloadReport} baseline={grid?.baseline ?? null} />}
+        {source === 'PUBLIC' && !failed && (
+          <DepthModelFigure reference={report.kind === 'ready' && !report.refreshing ? report.data.referenceWafers : null} />
+        )}
+      </div>
       {!empty && <p className="figure-source page-source">{SOURCE_LINES[source]}</p>}
     </>
   )
@@ -103,8 +107,7 @@ export function LotsPage() {
  * when every lot keeps them first, or a centre dot in each baseline disc when not. The discs wait for the runs, and
  * stay out if they fail; the rest of the table needs only the lot list.
  */
-function LotsTable({ lots, runs, runsFailed, source }: { lots: readonly Lot[]; runs: RunsPage | null; runsFailed: boolean; source: Source }) {
-  const grid = runs === null ? null : lotGrid(runs.runs, lots)
+function LotsTable({ lots, grid, runsFailed, source }: { lots: readonly Lot[]; grid: LotGrid | null; runsFailed: boolean; source: Source }) {
   const positions = grid?.positions ?? PLANNED
   const bracket = grid?.baseline ?? null
   const style: WafersStyle = { '--positions': positions, '--base': bracket ?? 0 }
@@ -198,23 +201,33 @@ function MiniDiscs({ row, bracket }: { row: GridRow | null; bracket: number | nu
   )
 }
 
-/** Drift and depth loss by wafer position, averaged over every lot of the source. */
-function DriftFigure({ report, onRetry }: { report: Resource<DriftVsDepth>; onRetry: () => void }) {
-  const answer = report.kind === 'ready' ? describeDepthTrend(report.data) : null
+/**
+ * Drift and depth loss by wafer position, averaged over every lot of the source. `baseline` is how many first wafers of
+ * every lot are the baseline runs, from the runs; null when they are not a common prefix or the runs are not in.
+ */
+function DriftFigure({ report, onRetry, baseline }: { report: Resource<DriftVsDepth>; onRetry: () => void; baseline: number | null }) {
+  // while another source's report loads, the last one's answer would speak for the wrong wafers
+  const settled = report.kind === 'ready' && !report.refreshing ? report.data : null
+  const answer = settled === null ? null : describeDepthTrend(settled) ?? describeRunsByPosition(settled.positions)
   return (
-    <Figure id="report" title="Drift and depth by wafer position" answer={answer} busy={report.kind === 'loading'}>
+    <Figure
+      id="report"
+      title="Drift and depth by wafer position"
+      answer={answer}
+      busy={report.kind === 'loading' || (report.kind === 'ready' && report.refreshing)}
+    >
       {report.kind === 'loading' && <span className="skel skel-charts" aria-hidden="true" />}
       {report.kind === 'error' && <ErrorState title="Could not load the drift report" message={report.error.message} onRetry={onRetry} />}
       {report.kind === 'ready' && (
         <div className={report.refreshing ? 'figure-body refreshing' : 'figure-body'} aria-busy={report.refreshing || undefined}>
-          <DriftReport report={report.data} />
+          <DriftReport report={report.data} baseline={baseline} />
         </div>
       )}
     </Figure>
   )
 }
 
-function DriftReport({ report }: { report: DriftVsDepth }) {
+function DriftReport({ report, baseline }: { report: DriftVsDepth; baseline: number | null }) {
   const [tableShown, setTableShown] = useState(false)
   const positions = Math.max(0, ...report.positions.map((position) => position.position))
   const measured = report.positions.some((position) => position.depth.length > 0)
@@ -234,6 +247,11 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
   if (score.points.length === 0) {
     return <p className="state">No wafer has a drift score yet, so there is nothing to place by position.</p>
   }
+  const reference = `FIRST ${report.referenceWafers}`
+  // a mean over one lot's wafer is not the drift of a position, so the highest one is not called out
+  const thin = thinPositions(report.positions)
+  const top = score.points.reduce<PositionPoint | null>((best, point) => (best === null || point.value > best.value ? point : best), null)
+  const runsAt = (position: number) => report.positions.find((entry) => entry.position === position)?.runs ?? 0
   return (
     <>
       {!measured && <p className="figure-note">Simulated wafers have no measured depth, so only the drift score is shown.</p>}
@@ -243,10 +261,11 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
           label="Mean drift score by wafer position"
           positions={positions}
           series={[score]}
-          baseline={report.referenceWafers}
+          baseline={baseline === report.referenceWafers ? baseline : null}
           labelEnds
-          peak
+          peak={top !== null && !thin.includes(top.position)}
           formatValue={(value) => twoDecimals.format(value)}
+          details={(position) => [['Runs', String(runsAt(position))]]}
         />
         {measured && (
           <PositionChart
@@ -255,6 +274,7 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
             positions={positions}
             series={loss}
             baseline={report.referenceWafers}
+            zoneLabel={reference}
             labelEnds
             formatValue={(value) => twoDecimals.format(value)}
           />
@@ -267,7 +287,7 @@ function DriftReport({ report }: { report: DriftVsDepth }) {
         <details className="how">
           <summary>How this is counted</summary>
           <p>
-            {`Each position averages every lot. A run's drift score is the root mean square of its channels' SF6 phase mean
+            {`A position averages every lot that ran a wafer there. A run's drift score is the root mean square of its channels' SF6 phase mean
             z-scores. Depth loss is how much shallower a wafer etched than the mean of the first ${report.referenceWafers}
             wafers of its lot. The two measurement sets come from different instruments, so each keeps its own line.`}
           </p>
@@ -327,20 +347,24 @@ function lossPoints(report: DriftVsDepth, set: MeasurementSet): PositionPoint[] 
   })
 }
 
-/** Depth predicted from the telemetry against measured depth, and how the model compares with two simpler guesses. */
-function DepthModelFigure({ baseline }: { baseline: number | null }) {
+/**
+ * Depth predicted from the telemetry against measured depth, and how the model compares with two simpler guesses.
+ * `reference` is how many first wafers of a lot the depth is measured against, null until the drift report says.
+ */
+function DepthModelFigure({ reference }: { reference: number | null }) {
   const [model, reload] = useResource('/api/reports/depth-model', depthModelSchema)
   const answer = model.kind === 'ready' ? describeDepthModel(model.data) : null
   return (
     <Figure id="depth-model" title="Depth predicted from the telemetry" answer={answer} busy={model.kind === 'loading'}>
       {model.kind === 'loading' && <span className="skel skel-charts" aria-hidden="true" />}
       {model.kind === 'error' && <ErrorState title="Could not load the depth model" message={model.error.message} onRetry={reload} />}
-      {model.kind === 'ready' && <DepthModelReport model={model.data} baseline={baseline} />}
+      {model.kind === 'ready' && <DepthModelReport model={model.data} reference={reference} />}
     </Figure>
   )
 }
 
-function DepthModelReport({ model, baseline }: { model: DepthModel; baseline: number | null }) {
+function DepthModelReport({ model, reference }: { model: DepthModel; reference: number | null }) {
+  const [tableShown, setTableShown] = useState(false)
   const positions = Math.max(0, ...model.byPosition.map((position) => position.position))
   const series: PositionSeries[] = [
     {
@@ -361,17 +385,26 @@ function DepthModelReport({ model, baseline }: { model: DepthModel; baseline: nu
   const every = describeEveryWafer(model)
   return (
     <div className="depth-model">
-      <PositionChart
-        title="Mean depth, µm"
-        label="Measured and predicted mean depth by wafer position"
-        positions={positions}
-        series={series}
-        baseline={baseline}
-        labelEnds
-        formatValue={(value) => twoDecimals.format(value)}
-      />
+      <div className="depth-main">
+        <PositionChart
+          title="Mean depth, µm"
+          label="Measured and predicted mean depth by wafer position"
+          positions={positions}
+          series={series}
+          baseline={reference}
+          zoneLabel={`FIRST ${reference ?? 0}`}
+          labelEnds
+          formatValue={(value) => twoDecimals.format(value)}
+        />
+        <div className="figure-links">
+          <button type="button" className="link-button" aria-expanded={tableShown} onClick={() => setTableShown(!tableShown)}>
+            {tableShown ? 'Hide the table' : 'Show as a table'}
+          </button>
+        </div>
+        {tableShown && <DepthModelTable model={model} />}
+      </div>
       <div className="depth-side">
-        <MissBars model={model} />
+        <MissBars model={model} reference={reference} />
         {every !== null && <p className="figure-note">{every}</p>}
         <h3 className="side-title">What the model leans on</h3>
         <ol className="leans">
@@ -403,11 +436,39 @@ function DepthModelReport({ model, baseline }: { model: DepthModel; baseline: nu
   )
 }
 
+function DepthModelTable({ model }: { model: DepthModel }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <caption className="visually-hidden">Measured and predicted mean depth by wafer position</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="num">Position</th>
+            <th scope="col" className="num">Wafers</th>
+            <th scope="col" className="num">Measured, µm</th>
+            <th scope="col" className="num">Predicted, µm</th>
+          </tr>
+        </thead>
+        <tbody>
+          {model.byPosition.map((position) => (
+            <tr key={position.position}>
+              <td className="num">{position.position}</td>
+              <td className="num">{position.wafers}</td>
+              <td className="num">{twoDecimals.format(position.meanMeasuredUm)}</td>
+              <td className="num">{twoDecimals.format(position.meanPredictedUm)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /**
  * Each guess's miss on the wafers every guess can score, as bars on one scale with the value at each bar's end. The
  * worst is drawn hollow, so the order never rests on length alone.
  */
-function MissBars({ model }: { model: DepthModel }) {
+function MissBars({ model, reference }: { model: DepthModel; reference: number | null }) {
   const misses = model.methods.map((method) => ({ method: method.method, um: method.late.rmseUm }))
   const worst = Math.max(...misses.map((miss) => miss.um))
   const end = niceInterval([0, Math.max(worst, 0.1)], 4)[1]
@@ -416,7 +477,9 @@ function MissBars({ model }: { model: DepthModel }) {
     <table className="miss-bars">
       <caption>
         How far each guess misses
-        <span className="caption-note">Wafers after the first three, root mean square error.</span>
+        <span className="caption-note">
+          {`Wafers after ${reference === null ? "each lot's first wafers" : `the first ${reference}`}, root mean square error.`}
+        </span>
       </caption>
       <tbody>
         {misses.map((miss) => (

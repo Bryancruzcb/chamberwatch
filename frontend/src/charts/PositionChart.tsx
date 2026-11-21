@@ -1,6 +1,6 @@
-import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useId, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, useId, useState } from 'react'
 import { MISSING } from '../format'
-import { type LinearScale, linearScale, niceInterval, niceTicks, spreadLabels } from './scale'
+import { type LinearScale, linearScale, niceInterval, niceTicks, spreadLabels, tickFormat } from './scale'
 import { useWidth } from './useWidth'
 
 const PLOT_HEIGHT = 220
@@ -58,7 +58,8 @@ interface Layout {
  * keys read one wafer at a time, every series at once.
  */
 export function PositionChart({
-  title, label, positions, series, band = null, fit = null, baseline = null, labelEnds = false, peak = false, formatValue, details,
+  title, label, positions, series, band = null, fit = null, baseline = null, zoneLabel = 'BASELINE', labelEnds = false, peak = false,
+  formatValue, details,
 }: {
   title: string
   label: string
@@ -66,14 +67,17 @@ export function PositionChart({
   series: readonly PositionSeries[]
   band?: PositionBand | null
   fit?: PositionFit | null
-  /** The first N positions, the ones a baseline learns from, shaded and labelled. */
+  /** The first N positions, shaded and labelled with `zoneLabel`. */
   baseline?: number | null
+  /** What the shaded positions are: the baseline runs, or on a depth chart the reference wafers ("FIRST 3"). */
+  zoneLabel?: string
   /** Print each connected line's last value at its end, with the series name under it when there are several. */
   labelEnds?: boolean
   /** Print the first line's highest value over its point, unless that point is the last and its end label says it. */
   peak?: boolean
   formatValue: (value: number) => string
-  details?: (position: number) => ReactNode
+  /** More rows for the readout at a position, each a name and a value, also read aloud. */
+  details?: (position: number) => readonly ReadoutRow[]
 }) {
   const [width, measure] = useWidth()
   const [active, setActive] = useState<number | null>(null)
@@ -83,6 +87,9 @@ export function PositionChart({
   const ends = layout === null || !labelEnds ? [] : endLabels(series, layout)
   const top = layout === null || !peak ? null : peakOf(series[0])
   const showKey = series.length > 1 || band !== null || fit !== null
+  // ticks print by their step, not by the readings' precision, so 27.0 sits under 27.1 and 0 to 140 has no decimals
+  const yTicks = layout === null ? [] : niceTicks(layout.y.domain, 5)
+  const yTick = tickFormat(yTicks)
 
   function readAt(event: PointerEvent<SVGRectElement>) {
     const svg = event.currentTarget.ownerSVGElement
@@ -127,7 +134,8 @@ export function PositionChart({
         <p className="chart-title">{title}</p>
         {showKey && (
           <ul className="chart-key" aria-label="Key">
-            {series.map((line) => <li key={line.id}><span className={`key-line series-${line.slot}`} />{line.name}</li>)}
+            {/* a series drawn as dots alone is keyed with a dot, so it never reads as a second line beside the fit */}
+            {series.map((line) => <li key={line.id}><span className={`${line.connect ? 'key-line' : 'key-dot'} series-${line.slot}`} />{line.name}</li>)}
             {band !== null && <li><span className="key-swatch key-band" />{band.label}</li>}
             {fit !== null && <li><span className="key-fit" />{fit.label}</li>}
             {fit !== null && fit.extendTo > fit.fittedTo && <li><span className="key-fit key-projection" />Projected</li>}
@@ -154,14 +162,14 @@ export function PositionChart({
             {zone !== null && zone > 0 && (
               <g className="baseline-zone">
                 <rect x={layout.x.map(0.5)} y={layout.top} width={layout.x.map(zone + 0.5) - layout.x.map(0.5)} height={PLOT_HEIGHT} />
-                <text x={(layout.x.map(0.5) + layout.x.map(zone + 0.5)) / 2} y={layout.top - 9} textAnchor="middle">BASELINE</text>
+                <text x={(layout.x.map(0.5) + layout.x.map(zone + 0.5)) / 2} y={layout.top - 9} textAnchor="middle">{zoneLabel}</text>
               </g>
             )}
-            {niceTicks(layout.y.domain, 5).map((tick) => (
+            {yTicks.map((tick) => (
               <g key={tick}>
                 <line className="gridline" x1={layout.left} x2={layout.right} y1={layout.y.map(tick)} y2={layout.y.map(tick)} />
                 <text className="tick" x={layout.left - 8} y={layout.y.map(tick)} dy="0.32em" textAnchor="end">
-                  {formatValue(tick)}
+                  {yTick(tick)}
                 </text>
               </g>
             ))}
@@ -249,28 +257,39 @@ export function PositionChart({
           </svg>
         )}
         {active !== null && layout !== null && (
-          <PositionReadout
-            position={active}
-            series={series}
-            formatValue={formatValue}
-            details={details}
-            x={layout.x.map(active)}
-            width={width}
-          />
+          <PositionReadout rows={readoutRows(active, series, formatValue, details)} position={active} x={layout.x.map(active)} width={width} />
         )}
+        {/* mounted from the start, so a screen reader announces each wafer the arrow keys move to */}
+        <p className="visually-hidden" role="status" aria-atomic="true">
+          {active === null ? '' : readoutText(active, readoutRows(active, series, formatValue, details))}
+        </p>
       </div>
     </figure>
   )
 }
 
-function PositionReadout({ position, series, formatValue, details, x, width }: {
-  position: number
-  series: readonly PositionSeries[]
-  formatValue: (value: number) => string
-  details: ((position: number) => ReactNode) | undefined
-  x: number
-  width: number
-}) {
+/** One line of the readout: a series or a detail, and its value at the position read. */
+export type ReadoutRow = readonly [name: string, value: string]
+
+function readoutRows(
+  position: number,
+  series: readonly PositionSeries[],
+  formatValue: (value: number) => string,
+  details: ((position: number) => readonly ReadoutRow[]) | undefined,
+): ReadoutRow[] {
+  const values = series.map((line): ReadoutRow => {
+    const point = line.points.find((candidate) => candidate.position === position)
+    return [line.name, point === undefined ? MISSING : formatValue(point.value)]
+  })
+  return [...values, ...(details?.(position) ?? [])]
+}
+
+/** "Wafer 2. Measured 44.08. Predicted 44.08." */
+function readoutText(position: number, rows: readonly ReadoutRow[]): string {
+  return [`Wafer ${position}.`, ...rows.map(([name, value]) => `${name} ${value}.`)].join(' ')
+}
+
+function PositionReadout({ rows, position, x, width }: { rows: readonly ReadoutRow[]; position: number; x: number; width: number }) {
   const style: CSSProperties = x + 12 + READOUT_WIDTH > width
     ? { right: width - x + 12, top: MARGIN.top }
     : { left: x + 12, top: MARGIN.top }
@@ -278,16 +297,12 @@ function PositionReadout({ position, series, formatValue, details, x, width }: {
     <div className="readout" style={style}>
       <p className="readout-value">{`Wafer ${position}`}</p>
       <dl>
-        {series.map((line) => {
-          const point = line.points.find((candidate) => candidate.position === position)
-          return (
-            <div key={line.id}>
-              <dt>{line.name}</dt>
-              <dd>{point === undefined ? MISSING : formatValue(point.value)}</dd>
-            </div>
-          )
-        })}
-        {details?.(position)}
+        {rows.map(([name, value]) => (
+          <div key={name}>
+            <dt>{name}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
       </dl>
     </div>
   )

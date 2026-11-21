@@ -5,7 +5,7 @@ import { Disc } from '../components/Disc'
 import { ScoreLine } from '../components/ScoreLine'
 import { Segmented } from '../components/Segmented'
 import { formatChannelName, formatDate, formatLabel, formatScore, formatSeconds, formatShortScore, MISSING } from '../format'
-import { type RunsSummary, runState, sortRuns, type TableOrder } from '../summary'
+import { leftNoRange, type RunsSummary, runState, sortRuns, type TableOrder } from '../summary'
 import { Words } from './RunsAttention'
 
 const ORDERS = [['out', 'Out of range first'], ['lot', 'Lot and wafer'], ['z', 'How unusual']] as const
@@ -52,12 +52,12 @@ export function RunsTablePanel({ summary, baseline, inRangeOnly, lotId, order, o
             <tr>
               <th scope="col">Wafer</th>
               <th scope="col">State</th>
-              <th scope="col">First channel</th>
-              <th scope="col" className="num">Left at</th>
               <th scope="col">
                 How unusual
                 <span className="th-scale">{k === null ? ` 0 to ${end}` : ` 0 to ${end}, limit ${formatScore(k)}`}</span>
               </th>
+              <th scope="col">First channel</th>
+              <th scope="col" className="num">Left at</th>
               <th scope="col" className="num">Excursions</th>
               <th scope="col">Label</th>
             </tr>
@@ -65,6 +65,7 @@ export function RunsTablePanel({ summary, baseline, inRangeOnly, lotId, order, o
           <tbody>
             {runs.map((run) => {
               const state = runState(run)
+              const empty = leftNoRange(run)
               return (
                 <tr key={run.id} className={state === 'out' ? 'out-row' : undefined}>
                   <td className="c-wafer">
@@ -78,10 +79,6 @@ export function RunsTablePanel({ summary, baseline, inRangeOnly, lotId, order, o
                       <Words run={run} />
                     </span>
                   </td>
-                  <td className="c-chan" data-label="First channel">
-                    {run.score?.firstChannel === undefined || run.score.firstChannel === null ? MISSING : formatChannelName(run.score.firstChannel)}
-                  </td>
-                  <td className="num c-at" data-label="Left at">{formatSeconds(run.score?.firstTimeS ?? null)}</td>
                   <td className="c-z">
                     {run.score === null
                       ? MISSING
@@ -92,6 +89,10 @@ export function RunsTablePanel({ summary, baseline, inRangeOnly, lotId, order, o
                           </span>
                         )}
                   </td>
+                  <td className="c-chan" data-label="First channel" data-empty={empty || undefined}>
+                    {run.score?.firstChannel === undefined || run.score.firstChannel === null ? MISSING : formatChannelName(run.score.firstChannel)}
+                  </td>
+                  <td className="num c-at" data-label="Left at" data-empty={empty || undefined}>{formatSeconds(run.score?.firstTimeS ?? null)}</td>
                   <td className="num c-out" data-label="Excursions">{run.score?.limitFlags ?? MISSING}</td>
                   <td className="c-label" data-label="Label">{formatLabel(run.label)}</td>
                 </tr>
