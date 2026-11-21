@@ -4,13 +4,8 @@ import type { Lot, RunRow, Source } from '../api/schema'
 import { Disc } from '../components/Disc'
 import { formatDate, formatScore, formatShortScore } from '../format'
 import { describeNotRun, type GridCell, gridKinds, type GridStop, hasStop, lotGrid, nextStop, rowSegments } from '../grid'
+import { SOURCE_LINES } from '../sources'
 import { describeWafers } from '../summary'
-
-const SOURCES = {
-  PUBLIC: 'Source: Zenodo record 17122442, "A Multi-Model Dataset for BOSCH Plasma-Etching", TU Chemnitz and Fraunhofer ENAS, CC BY 4.0.',
-  SYNTHETIC: 'Source: ChamberWatch\'s seeded simulator. The faults are planted, and the detectors score the wafers without knowing.',
-  LIVE: 'Source: wafers the C chamber simulator streamed to this app on the Live page.',
-} as const satisfies Record<Source, string>
 
 const STATE_WORDS = { out: 'out of range', in: 'in range', failed: 'not aligned', unscored: 'not scored' } as const
 
@@ -159,7 +154,7 @@ export function LotGrid({ runs, lots, k, source }: { runs: readonly RunRow[]; lo
             <li><span className="key-none" /><span><b>Not run</b>{`: ${notRun}`}</span></li>
           )}
         </ul>
-        <p className="figure-source">{SOURCES[source]}</p>
+        <p className="figure-source">{SOURCE_LINES[source]}</p>
       </div>
     </div>
   )
@@ -181,7 +176,7 @@ export function LotGridSkeleton({ source }: { source: Source }) {
             <li key={index}><span className="skel skel-mark" /><span className="skel skel-text" /></li>
           ))}
         </ul>
-        <p className="figure-source">{SOURCES[source]}</p>
+        <p className="figure-source">{SOURCE_LINES[source]}</p>
       </div>
     </div>
   )

@@ -1,11 +1,15 @@
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useId, useState } from 'react'
 import { MISSING } from '../format'
-import { type LinearScale, linearScale, niceInterval, niceTicks } from './scale'
+import { type LinearScale, linearScale, niceInterval, niceTicks, spreadLabels } from './scale'
 import { useWidth } from './useWidth'
 
 const PLOT_HEIGHT = 220
-const MARGIN = { top: 12, right: 16, bottom: 40, left: 64 } as const
+/** The top margin holds the baseline zone's label; the right one, when lines are labelled at their ends, the labels. */
+const MARGIN = { top: 28, right: 16, bottom: 40, left: 56 } as const
+const END_LABEL_ROOM = 72
 const HEIGHT = MARGIN.top + PLOT_HEIGHT + MARGIN.bottom
+/** End labels sit at least this far apart: a value and a series name under it, or a value alone. */
+const LABEL_GAP = { named: 34, bare: 18 } as const
 /** Room the readout needs to the right of the crosshair before it moves to the left side. */
 const READOUT_WIDTH = 240
 
@@ -17,7 +21,7 @@ export interface PositionPoint {
 export interface PositionSeries {
   readonly id: string
   readonly name: string
-  /** The categorical color slot, taken in the palette's fixed order. */
+  /** 1 is a heavy ink line with filled points; 2 a lighter dashed line with hollow points. Never a second hue. */
   readonly slot: 1 | 2
   readonly connect: boolean
   readonly points: readonly PositionPoint[]
@@ -49,23 +53,35 @@ interface Layout {
 }
 
 /**
- * Values by wafer position in a lot, against an optional band and fitted line. The pointer or the arrow keys read one
- * wafer at a time, every series at once.
+ * Values by wafer position in a lot, in ink: against an optional band and fitted line, with the baseline positions as
+ * a paper zone, each line labelled at its end and the first line's peak annotated when asked. The pointer or the arrow
+ * keys read one wafer at a time, every series at once.
  */
-export function PositionChart({ title, label, positions, series, band = null, fit = null, formatValue, details }: {
+export function PositionChart({
+  title, label, positions, series, band = null, fit = null, baseline = null, labelEnds = false, peak = false, formatValue, details,
+}: {
   title: string
   label: string
   positions: number
   series: readonly PositionSeries[]
   band?: PositionBand | null
   fit?: PositionFit | null
+  /** The first N positions, the ones a baseline learns from, shaded and labelled. */
+  baseline?: number | null
+  /** Print each connected line's last value at its end, with the series name under it when there are several. */
+  labelEnds?: boolean
+  /** Print the first line's highest value over its point, unless that point is the last and its end label says it. */
+  peak?: boolean
   formatValue: (value: number) => string
   details?: (position: number) => ReactNode
 }) {
   const [width, measure] = useWidth()
   const [active, setActive] = useState<number | null>(null)
   const clipId = `position-clip-${useId().replace(/[^\w-]/g, '')}`
-  const layout = layoutPositions({ width, positions, series, band, fit })
+  const layout = layoutPositions({ width, positions, series, band, fit, right: labelEnds ? END_LABEL_ROOM : MARGIN.right })
+  const zone = baseline === null || layout === null ? null : Math.min(baseline, positions)
+  const ends = layout === null || !labelEnds ? [] : endLabels(series, layout)
+  const top = layout === null || !peak ? null : peakOf(series[0])
   const showKey = series.length > 1 || band !== null || fit !== null
 
   function readAt(event: PointerEvent<SVGRectElement>) {
@@ -135,6 +151,12 @@ export function PositionChart({ title, label, positions, series, band = null, fi
                 <rect x={layout.left} y={layout.top} width={layout.right - layout.left} height={PLOT_HEIGHT} />
               </clipPath>
             </defs>
+            {zone !== null && zone > 0 && (
+              <g className="baseline-zone">
+                <rect x={layout.x.map(0.5)} y={layout.top} width={layout.x.map(zone + 0.5) - layout.x.map(0.5)} height={PLOT_HEIGHT} />
+                <text x={(layout.x.map(0.5) + layout.x.map(zone + 0.5)) / 2} y={layout.top - 9} textAnchor="middle">BASELINE</text>
+              </g>
+            )}
             {niceTicks(layout.y.domain, 5).map((tick) => (
               <g key={tick}>
                 <line className="gridline" x1={layout.left} x2={layout.right} y1={layout.y.map(tick)} y2={layout.y.map(tick)} />
@@ -199,9 +221,20 @@ export function PositionChart({ title, label, positions, series, band = null, fi
                     className="dot"
                     cx={layout.x.map(point.position)}
                     cy={layout.y.map(point.value)}
-                    r={point.position === active ? 5 : 4}
+                    r={(line.slot === 1 ? 4.5 : 4) + (point.position === active ? 1 : 0)}
                   />
                 ))}
+              </g>
+            ))}
+            {top !== null && top.position !== series[0]?.points.at(-1)?.position && (
+              <text className="peak-label" x={layout.x.map(top.position)} y={layout.y.map(top.value) - 11} textAnchor="middle">
+                {formatValue(top.value)}
+              </text>
+            )}
+            {ends.map((end) => (
+              <g key={end.id} className="end-label">
+                <text className="end-value" x={end.x} y={end.y} dy="0.32em">{formatValue(end.value)}</text>
+                {series.length > 1 && <text className="end-name" x={end.x} y={end.y + 15} dy="0.32em">{end.name}</text>}
               </g>
             ))}
             <rect
@@ -260,15 +293,16 @@ function PositionReadout({ position, series, formatValue, details, x, width }: {
   )
 }
 
-function layoutPositions({ width, positions, series, band, fit }: {
+function layoutPositions({ width, positions, series, band, fit, right: margin }: {
   width: number
   positions: number
   series: readonly PositionSeries[]
   band: PositionBand | null
   fit: PositionFit | null
+  right: number
 }): Layout | null {
   const left = MARGIN.left
-  const right = width - MARGIN.right
+  const right = width - margin
   const values = series.flatMap((line) => line.points.map((point) => point.value))
   if (band !== null) {
     values.push(band.low, band.high)
@@ -289,6 +323,36 @@ function layoutPositions({ width, positions, series, band, fit }: {
     top,
     bottom,
   }
+}
+
+interface EndLabel {
+  readonly id: string
+  readonly name: string
+  readonly value: number
+  readonly x: number
+  readonly y: number
+}
+
+/** Each connected line's last point, its label moved clear of the others' along the right edge. */
+function endLabels(series: readonly PositionSeries[], layout: Layout): EndLabel[] {
+  const lasts = series.flatMap((line) => {
+    const last = line.points.at(-1)
+    return !line.connect || last === undefined ? [] : [{ line, last }]
+  })
+  const gap = series.length > 1 ? LABEL_GAP.named : LABEL_GAP.bare
+  const ys = spreadLabels(lasts.map(({ last }) => layout.y.map(last.value)), gap, layout.top, layout.bottom - gap / 2)
+  return lasts.map(({ line, last }, index) => ({
+    id: line.id,
+    name: line.name,
+    value: last.value,
+    x: layout.x.map(last.position) + 10,
+    y: ys[index] ?? layout.y.map(last.value),
+  }))
+}
+
+/** A line's highest point, the first of equals. */
+function peakOf(line: PositionSeries | undefined): PositionPoint | null {
+  return (line?.points ?? []).reduce<PositionPoint | null>((best, point) => (best === null || point.value > best.value ? point : best), null)
 }
 
 function fitAt(fit: PositionFit, position: number): number {

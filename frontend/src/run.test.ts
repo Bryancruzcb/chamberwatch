@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Channel, runDetailSchema, type RunDetail, runsPageSchema, type Score } from './api/schema'
 import {
-  describeClosest, describeHiddenChannels, describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle,
+  describeClosest, describeHiddenChannels, describeUnscored, describeVerdict, lotStrip, lotWafers, runDetailState, runHeadline, runTitle,
   splitLineup,
 } from './run'
 
@@ -111,6 +111,16 @@ describe('the lot strip', () => {
 
     expect(strip.slots.map((slot) => slot.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
     expect(lotStrip([], run55).slots.map((slot) => slot.id)).toEqual([55])
+  })
+
+  it('lays out a lot on its own page with no wafer marked as this one', () => {
+    const strip = lotWafers([...publicRuns].reverse(), run55.lotId)
+
+    expect(strip.baseline).toBe(3)
+    expect(strip.slots.map((slot) => slot.text)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
+    expect(strip.slots.some((slot) => slot.current)).toBe(false)
+    expect(strip.slots[4]?.label).toBe('Lot 6, wafer 5: out of range, how unusual 18.8')
+    expect(lotWafers(publicRuns, 9999)).toEqual({ slots: [], baseline: null })
   })
 })
 

@@ -28,13 +28,14 @@ import { Disc } from '../components/Disc'
 import { Figure } from '../components/Figure'
 import { Icon } from '../components/Icon'
 import { Loaded } from '../components/Loaded'
+import { LotStrip, LotStripPlaceholder } from '../components/LotStrip'
 import { ScoreLine } from '../components/ScoreLine'
 import {
   describeCatch, describeChannelTrace, describeFault, describeRun, formatBigScore, formatChannelName, formatDate, formatFaultKind,
   formatLabel, formatScore, formatSeconds, formatShortAgainstLimit, formatValue,
 } from '../format'
 import {
-  describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle, type StripSlot,
+  describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle,
 } from '../run'
 import { NotFound } from './NotFound'
 
@@ -267,48 +268,9 @@ function LotStripView({ run }: { run: RunDetail }) {
     return null
   }
   if (runs.kind === 'loading') {
-    return <div className="lot-strip placeholder" aria-hidden="true"><span className="skel skel-strip" /></div>
+    return <LotStripPlaceholder />
   }
-  const strip = lotStrip(runs.data.runs, run)
-  const n = strip.baseline
-  const baseline = n === null ? [] : strip.slots.filter((slot) => slot.position <= n)
-  const rest = n === null ? strip.slots : strip.slots.filter((slot) => slot.position > n)
-  // the "this wafer" label goes under its disc when the baseline bracket already holds the space above it
-  const hereInBaseline = baseline.some((slot) => slot.current)
-  return (
-    <div className={hereInBaseline ? 'lot-strip label-below' : 'lot-strip'} role="group" aria-label={`Lot ${run.lotNo}, wafer by wafer`}>
-      {baseline.length > 0 && (
-        <span className="strip-baseline">
-          <span className="strip-bracket" aria-hidden="true">Baseline</span>
-          {baseline.map((slot) => <StripDisc key={slot.id} slot={slot} marked={false} />)}
-        </span>
-      )}
-      {rest.map((slot) => <StripDisc key={slot.id} slot={slot} marked={n === null && slot.good} />)}
-    </div>
-  )
-}
-
-function StripDisc({ slot, marked }: { slot: StripSlot; marked: boolean }) {
-  const disc = (
-    <Disc
-      state={slot.state}
-      size={slot.current ? 'here' : 'strip'}
-      text={slot.text}
-      to={`/runs/${slot.id}`}
-      label={slot.label}
-      current={slot.current}
-      baseline={marked}
-    />
-  )
-  if (!slot.current) {
-    return disc
-  }
-  return (
-    <span className="strip-here">
-      <span className="strip-here-label" aria-hidden="true">This wafer</span>
-      {disc}
-    </span>
-  )
+  return <LotStrip strip={lotStrip(runs.data.runs, run)} lotNo={run.lotNo} />
 }
 
 function ChannelsTable({ channels, selected }: { channels: readonly Channel[]; selected: Channel | undefined }) {

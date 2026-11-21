@@ -36,11 +36,13 @@ test('the run page of a flagged public wafer', async ({ page }) => {
   await page.screenshot({ path: join(OUT, 'run-55.png') })
 })
 
-test('the lots page with drift and depth by wafer position', async ({ page }) => {
+test('the lots page: every lot with its wafers, then drift and depth by wafer position', async ({ page }) => {
   await serveApi(page)
   await page.goto('/lots')
 
   await expect(page.getByRole('img', { name: /^Depth loss by wafer position/ }).locator('[data-kind="dot"]')).toHaveCount(20)
+  await expect(page.locator('[data-kind="mini"]')).toHaveCount(96)
+  await expect(page.locator('.leans li')).toHaveCount(5)
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path: join(OUT, 'lots.png'), fullPage: true })
 })

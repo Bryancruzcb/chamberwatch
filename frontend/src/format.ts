@@ -328,6 +328,21 @@ export function describeDepthModel(model: DepthModel): string | null {
     + `${formatMicrons(position)} for a guess from its place in the lot and ${formatMicrons(firstWafers)} from the lot's first wafers.`
 }
 
+/**
+ * The depth model's misses over every measured wafer, the ones the first wafers' guess cannot score, as one note line.
+ * Null when no guess has them.
+ */
+export function describeEveryWafer(model: DepthModel): string | null {
+  const misses = model.methods.flatMap((method) => (method.all === null
+    ? []
+    : [`${DEPTH_METHOD_NAMES[method.method].charAt(0).toLowerCase()}${DEPTH_METHOD_NAMES[method.method].slice(1)} ${formatMicrons(method.all.rmseUm)}`]))
+  if (misses.length === 0) {
+    return null
+  }
+  const list = misses.length === 1 ? misses[0] : `${misses.slice(0, -1).join(', ')} and ${misses[misses.length - 1]}`
+  return `Over every measured wafer: ${list}.`
+}
+
 /** A z-score or a t-statistic, to one decimal. */
 export function formatScore(value: number | null): string {
   return value === null ? MISSING : oneDecimal.format(value)
@@ -392,17 +407,6 @@ export function formatSeconds(value: number | null): string {
   return value === null ? MISSING : `${oneDecimal.format(value)} s`
 }
 
-/** A depth or a thickness, in micrometres to two decimals. */
-/** A wafer's depth against its lot's first wafers, for example "0.45 µm shallower than wafers 1 to 3 of its lot, 89-point set". */
-export function describeDepthLoss(depth: MeasuredDepth): string {
-  const set = `${MEASUREMENT_SET_NAMES[depth.set]} set`
-  if (depth.lossUm === null) {
-    return `${set}, none of its lot's first ${depth.referenceWafers} wafers was measured`
-  }
-  const direction = depth.lossUm >= 0 ? 'shallower' : 'deeper'
-  return `${twoDecimals.format(Math.abs(depth.lossUm))} µm ${direction} than wafers 1 to ${depth.referenceWafers} of its lot, ${set}`
-}
-
 export function formatDepthMethod(method: DepthMethod): string {
   return DEPTH_METHOD_NAMES[method]
 }
@@ -411,14 +415,6 @@ export function formatDepthMethod(method: DepthMethod): string {
 export function formatDepthFeature(feature: string): string {
   const [channel = feature, phase, statistic] = feature.split('/')
   return phase === undefined || statistic === undefined ? feature : `${formatChannelName(channel)}, ${phase} ${statistic}`
-}
-
-/** How a prediction missed, for example "0.06 µm shallower than measured"; predicted minus measured is the residual. */
-export function describeResidual(residualUm: number | null): string {
-  if (residualUm === null) {
-    return 'Not measured in this set'
-  }
-  return `Predicted ${twoDecimals.format(Math.abs(residualUm))} µm ${residualUm < 0 ? 'shallower' : 'deeper'} than measured`
 }
 
 /**
@@ -438,6 +434,28 @@ export function describeWaferDepth(measurements: Measurements): string | null {
   return `${mean} Sites near the edge etched ${twoDecimals.format(Math.abs(difference))} µm ${difference >= 0 ? 'deeper' : 'shallower'} than sites near the center.`
 }
 
+/**
+ * The depth page's `h1`: where the wafer etched deepest, its edge or its center, in the run page's words ("Wafer 5 of
+ * Lot 6 ..."). Without enough sites to compare it states the mean, and without measurements it says so.
+ */
+export function waferHeadline(run: { positionInLot: number; lotNo: number }, measurements: Measurements): string {
+  const wafer = `Wafer ${run.positionInLot} of Lot\u00a0${run.lotNo}`
+  if (measurements.meanDepthUm === null || measurements.points === 0) {
+    return `${wafer} has no ${MEASUREMENT_SET_NAMES[measurements.set]} measurements.`
+  }
+  const sides = centerAndEdge(measurements.values)
+  if (sides === null) {
+    return `${wafer} etched ${formatMicrons(measurements.meanDepthUm)} deep on average.`
+  }
+  // the two sides print the same to two decimals: no side is deeper that the page could show
+  if (twoDecimals.format(sides.edgeUm) === twoDecimals.format(sides.centerUm)) {
+    return `${wafer} etched evenly from center to edge.`
+  }
+  return sides.edgeUm > sides.centerUm
+    ? `${wafer} etched deepest at its edge.`
+    : `${wafer} etched deepest at its center.`
+}
+
 /** The prediction's answer: what the telemetry predicted against what was measured, and the lot's typical miss. */
 export function describePrediction(depth: RunDepth): string {
   const predicted = formatMicrons(depth.predictedUm)
@@ -449,6 +467,7 @@ export function describePrediction(depth: RunDepth): string {
     : `${first} Across lot ${depth.lotNo} it typically misses by ${formatMicrons(depth.lotRmseUm)}.`
 }
 
+/** A depth or a thickness, in micrometres to two decimals. */
 export function formatMicrons(value: number | null): string {
   return value === null ? MISSING : `${twoDecimals.format(value)} µm`
 }

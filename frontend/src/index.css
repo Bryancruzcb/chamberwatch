@@ -198,10 +198,6 @@ code {
   font-family: var(--font-mono);
 }
 
-a.key {
-  font-size: var(--text-13);
-}
-
 .num {
   font-variant-numeric: tabular-nums;
 }
@@ -355,8 +351,7 @@ a.key {
 }
 
 /* The sentence that answers the figure, one line where it can be. */
-.figure-answer,
-.panel-answer {
+.figure-answer {
   max-width: 62ch;
   margin: 6px 0 20px;
   font-size: var(--text-17);
@@ -812,6 +807,17 @@ td {
 td.num,
 th.num {
   text-align: right;
+}
+
+/* a number and its unit stay on one line wherever a value is set in mono */
+td.num,
+.time-value,
+.score-num,
+.lane-score,
+.lineup-value,
+.facts-aside,
+.verdict-num {
+  white-space: nowrap;
 }
 
 td.num {
@@ -1505,45 +1511,35 @@ tbody tr.selected a {
   min-width: 180px;
 }
 
-/* The run, lot, wafer and Live pages' sections until they move to Figure: the same rule, no number. */
-.panel {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding-top: 14px;
-  border-top: 2px solid var(--ink);
-}
-
-/* Until the run, lot and wafer pages are redrawn, their second series reads as dashed with hollow points, never as a
-   second hue. */
-.series-1,
-.series-2 {
-  --series: var(--ink);
-}
-
-.series-2 .series-line {
-  stroke-dasharray: 6 4;
-}
-
-.series-2 .dot {
-  fill: var(--paper);
-  stroke: var(--ink);
-}
-
-.key-line.series-2 {
-  height: 0;
-  border-top: 2px dashed var(--ink);
-  background: none;
-}
-
+/* Pages other than Runs: a head like the run page's, then one sheet of figures 48px apart. */
 .page-head,
 .page-head .resource {
   display: grid;
-  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.page-head .breadcrumb {
+  margin-bottom: 12px;
+}
+
+.page-head .lot-strip {
+  justify-self: stretch;
+}
+
+/* a lot's lead runs longer than a page's answer line, so it takes the run page's lead size */
+.page-head .answer-next {
+  max-width: 58ch;
+  font-size: var(--text-17);
+  line-height: 1.55;
+}
+
+.page-head .skel-text {
+  width: 440px;
+  max-width: 100%;
 }
 
 .breadcrumb,
-.subtitle,
 .note,
 .status-line {
   color: var(--ink-2);
@@ -1553,26 +1549,9 @@ tbody tr.selected a {
   font-size: var(--text-13);
 }
 
-.subtitle {
-  max-width: 70ch;
-  font-size: var(--text-17);
-}
-
-.subtitle.key {
-  font-size: var(--text-15);
-}
-
 .note {
   max-width: 70ch;
   font-size: var(--text-15);
-}
-
-/* The depth model's strongest features: a short numbered list under its note. */
-ol.features {
-  margin: 0;
-  padding-left: 1.5rem;
-  color: var(--ink-2);
-  font-size: var(--text-13);
 }
 
 .resource {
@@ -1581,34 +1560,62 @@ ol.features {
   min-width: 0;
 }
 
-/* Controls */
+.figure-body {
+  display: grid;
+  min-width: 0;
+}
+
+/* The page's source line at its foot, under a hairline. */
+.page-source {
+  max-width: none;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* Controls: text switches over the figures they steer. */
 .filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px 24px;
+  gap: 12px 32px;
 }
 
-/* Stats: a figure under a hairline, the way a report sets a row of measured values */
+/* A row of links under a chart: "Show as a table" beside a closed method note, which takes its own line when open. */
+.figure-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 24px;
+  margin-top: 14px;
+}
+
+.figure-links .how[open] {
+  flex-basis: 100%;
+}
+
+/* Stats: mono numerals under a hairline, the way a report sets a row of measured values. No box. */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px 32px;
-  margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 20px 32px;
+  margin: 4px 0 0;
 }
 
 .stat {
   display: grid;
   align-content: start;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--ring);
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .stat dt {
-  font-size: var(--text-13);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .stat dd {
@@ -1616,15 +1623,20 @@ ol.features {
 }
 
 .stat-value {
+  font-family: var(--font-mono);
   font-size: var(--text-28);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .stat-value.compact {
   font-size: var(--text-17);
+  font-weight: 600;
   line-height: 1.5;
+  letter-spacing: 0;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
@@ -1633,163 +1645,334 @@ ol.features {
   color: var(--ink-2);
 }
 
-
-.panel-head {
+/* Actions on the Live page: real buttons, the first filled in ink, the others drawn in ink. */
+.actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
+  gap: 10px 12px;
+  margin-top: 24px;
 }
 
-.run-layout {
-  display: grid;
-  grid-template-columns: minmax(300px, 440px) minmax(0, 1fr);
-  align-items: start;
-  gap: 32px 40px;
+.button.secondary {
+  background: none;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
 }
 
-@media (max-width: 1000px) {
-  .run-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
-/* Status: an icon of its own shape next to the words */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.live-how {
+  margin-top: 18px;
+}
+
+.live-note {
+  margin: 20px 0 0;
+}
+
+.skel-stats {
+  height: 92px;
+}
+
+/* The Lots page: every lot with its wafers as small discs, then drift and depth by position, then the depth model. */
+.skel-lots {
+  height: 460px;
+  margin-top: 16px;
+}
+
+.skel-charts {
+  height: 300px;
+  margin-top: 16px;
+}
+
+.lots thead th {
+  padding-top: 18px;
+}
+
+.lots :is(th, td) {
+  padding-right: 20px;
+}
+
+.lots tbody :is(th, td) {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.lot-name {
+  font-family: var(--font-serif);
+  font-size: var(--text-20);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lots td.c-date {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
   white-space: nowrap;
 }
 
-.badge-good {
+.lots td.c-cond {
   color: var(--ink-2);
 }
 
-.badge-warning {
-  color: var(--drift);
+/* One bracket over the baseline positions, above the column's head, like the cassette map's. */
+.lots th.c-wafers {
+  position: relative;
 }
 
-.badge-serious {
-  color: var(--ink-2);
+.wafers-bracket {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: calc(var(--base) * 26px);
+  height: 10px;
+  border: 2px solid var(--ink);
+  border-bottom: 0;
 }
 
-.badge-critical {
-  color: var(--signal);
-  font-weight: 500;
-}
-
-.badge-neutral {
-  color: var(--ink-2);
-}
-
-.badge-neutral .icon {
-  color: var(--ink-3);
-}
-
-/* In a narrow table a verdict wraps rather than pushing the table past its card. */
-td .badge {
-  white-space: normal;
-}
-
-/* A lot's overview: how unusual each wafer was beside how its channels end. */
-.lot-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  align-items: start;
-  gap: 32px 40px;
-}
-
-@media (max-width: 1000px) {
-  .lot-overview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.lot-overview .dot-plot {
-  margin: 0;
-}
-
-.share-bar {
+.minis {
   display: flex;
-  gap: 2px;
-  height: 14px;
-  overflow: hidden;
-  border-radius: 2px;
+  align-items: center;
 }
 
-.share {
-  min-width: 4px;
+/* The divider after the baseline, the same dotted line the cassette map draws. */
+.mini-gap {
+  flex: none;
+  height: 22px;
+  margin: 0 4px;
+  border-left: 2px dotted var(--ring);
 }
 
-.share-OUT_OF_BAND {
-  background: var(--signal);
+/* A slot the lot never ran: a short dash centred in each slot's width. */
+.mini-none {
+  flex: none;
+  width: calc(var(--span) * 26px);
+  height: 32px;
+  background: repeating-linear-gradient(to right, transparent 0 8px, var(--ring) 8px 18px, transparent 18px 26px) center / 100% 2px no-repeat;
 }
 
-.share-WILL_EXIT {
-  background: var(--drift);
+.skel-minis {
+  width: calc(var(--positions) * 26px + 10px);
+  height: 18px;
 }
 
-.share-STAYS_IN,
-.share-INSUFFICIENT_RUNS {
-  background: var(--ink-3);
+.lots td.c-out {
+  font-family: var(--font-mono);
+  font-size: var(--text-28);
+  font-weight: 500;
+  line-height: 1;
 }
 
-.share-NO_TREND {
-  background: var(--ink-2);
+.lots td.c-out.zero {
+  color: var(--ink-3);
+  font-size: var(--text-17);
 }
 
-.share-key {
+.lots-key {
+  margin: 14px 0 0;
+}
+
+.chart-pair {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 24px 56px;
+}
+
+.depth-model {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+  gap: 32px 56px;
+}
+
+.depth-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.depth-side .figure-note {
   margin: 0;
+}
+
+.side-title {
+  margin-top: 18px;
+}
+
+/* How far each guess misses: bars on one scale, the value at each bar's end, the worst drawn hollow. */
+.miss-bars caption {
+  padding-bottom: 10px;
+  font-size: var(--text-17);
+}
+
+.caption-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--text-13);
+  font-weight: 400;
+}
+
+.miss-bars :is(th, td) {
+  padding: 5px 0;
+  border: 0;
+}
+
+.miss-bars th {
+  width: 1%;
+  padding-right: 16px;
+  font-weight: 600;
+}
+
+.miss-bars tbody tr:hover {
+  background: none;
+}
+
+.miss-track {
+  position: relative;
+  display: block;
+  height: 22px;
+}
+
+.miss-bar {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: calc((100% - 84px) * var(--share));
+  height: 18px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.worst .miss-bar {
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.miss-value {
+  position: absolute;
+  top: 50%;
+  left: calc((100% - 84px) * var(--share) + 8px);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+  translate: 0 -50%;
+}
+
+.miss-bars tfoot td {
+  padding: 0;
+}
+
+.miss-axis {
+  position: relative;
+  display: block;
+  height: 20px;
+  margin-right: 84px;
+  border-top: 1px solid var(--ring);
+}
+
+.miss-tick {
+  position: absolute;
+  top: 4px;
+  left: calc(100% * var(--share));
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  line-height: 1;
+  translate: -50% 0;
+}
+
+/* What the model leans on: a ruled list, the rank and the value in mono. */
+.leans {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ink);
+}
+
+.leans li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-13);
+}
+
+.lean-rank {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+}
+
+.lean-value {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* A lot's page: its wafers' scores in the runs table's ledger, then its channels' drift beside the one picked. */
+.lot-drift {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.lot-runs {
+  margin-top: 4px;
+}
+
+.drift-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 2px 0 20px;
   padding: 0;
   list-style: none;
 }
 
-.share-key li {
+.drift-counts li {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
-  font-size: var(--text-15);
+  align-items: baseline;
+  gap: 8px;
 }
 
-.share-key li:last-child {
-  padding-bottom: 0;
-  border-bottom: none;
+.count-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-28);
+  font-weight: 500;
+  line-height: 1;
 }
 
-.share-key .num {
-  color: var(--ink-2);
+:is(.drift-counts, .drift-table, .figure-control, .figure-table) .word {
+  margin-left: 0;
 }
 
-/* The depth map's side: the figures as a plain list, then depth from center to edge. */
+/* The open row is inset 10px, so its ink bar sits inside the figure's edge and off its text. */
+.drift-table :is(th, td):first-child {
+  padding-left: 10px;
+}
+
+.drift-table tbody tr.selected td:first-child {
+  box-shadow: inset 4px 0 0 var(--ink);
+}
+
+/* The wafer page: the map and its facts, then the depth predicted from the telemetry. */
 .wafer-facts {
-  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 24px;
-  margin: 0;
 }
 
-.wafer-facts div {
-  display: grid;
-  gap: 2px;
+.skel-wafer {
+  width: min(100%, 460px);
+  aspect-ratio: 1;
+  margin-top: 16px;
 }
 
-.wafer-facts dt {
-  font-size: var(--text-13);
-  color: var(--ink-3);
-}
-
-.wafer-facts dd {
-  margin: 0;
-  font-size: var(--text-20);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.skel-strip-wide {
+  height: 64px;
+  margin-top: 16px;
 }
 
 .profile-plot {
@@ -1810,33 +1993,32 @@ td .badge {
 }
 
 .profile-axis {
-  stroke: var(--ring);
+  stroke: var(--ink);
 }
 
 /* The predicted depth with the lot's typical miss around it, and the measured depth on the same scale. */
 .strip {
   margin: 0;
-  padding: 30px 0 4px;
+  padding: 34px 0 4px;
 }
 
 .strip-track {
   position: relative;
-  height: 10px;
-  border-radius: 2px;
-  background: var(--line);
+  height: 2px;
+  background: var(--ring);
 }
 
 .strip-band,
 .strip-swatch {
+  border-radius: 2px;
   background: var(--paper-3);
   box-shadow: inset 0 0 0 1px var(--ink);
 }
 
 .strip-band {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 2px;
+  top: -7px;
+  bottom: -7px;
 }
 
 .strip-mark {
@@ -1853,8 +2035,8 @@ td .badge {
 }
 
 .strip-mark.measured {
-  width: 3px;
-  height: 22px;
+  width: 2px;
+  height: 28px;
   border-radius: 2px;
   background: var(--ink);
 }
@@ -1862,10 +2044,9 @@ td .badge {
 .strip-label {
   position: absolute;
   left: 50%;
-  translate: -50% 0;
   font-size: var(--text-13);
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  translate: -50% 0;
 }
 
 .strip-label.above {
@@ -1874,101 +2055,44 @@ td .badge {
 }
 
 .strip-label.below {
-  top: calc(100% + 6px);
-  color: var(--ink);
+  top: calc(100% + 8px);
 }
 
 .strip-key {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 34px;
+  margin-top: 40px;
   font-size: var(--text-13);
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .strip-swatch {
   width: 18px;
-  height: 10px;
-  border-radius: 2px;
+  height: 12px;
 }
 
-.dot-plot {
-  margin: 14px 0 0;
+.strip + .how {
+  margin-top: 12px;
 }
 
-.dot-plot svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  overflow: visible;
-}
-
-.dot-zero {
-  stroke: var(--ring);
-}
-
-.dot-limit {
-  stroke: var(--ink);
-  stroke-dasharray: 3 3;
-}
-
-.dot-top {
-  fill: var(--signal);
-  font-size: var(--text-12);
-  font-weight: 600;
-}
-
-.lot-dot {
-  fill: var(--ring);
-  stroke: var(--ring);
-  stroke-width: 1.6;
-}
-
-.lot-dot.baseline {
-  fill: none;
-}
-
-.lot-dot.out {
-  fill: var(--signal);
-  stroke: var(--signal);
-}
-
-.plot-key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 6px 0 0;
-  font-size: var(--text-12);
-  color: var(--ink-3);
-}
-
-.key-dot {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  margin-right: 5px;
-  border: 1.6px solid var(--ring);
-  border-radius: 50%;
-  background: var(--ring);
-  vertical-align: -1px;
-}
-
-.key-dot.out {
-  border-color: var(--signal);
-  background: var(--signal);
-}
-
-.key-dot.baseline {
-  background: none;
-}
-
-/* Charts */
+/* Charts: ink on paper, ticks in mono, a second series dashed with hollow points, never a second hue. */
 .chart {
   display: grid;
   gap: 8px;
   margin: 0;
   min-width: 0;
+}
+
+.chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 24px;
+}
+
+.chart-title {
+  font-weight: 600;
 }
 
 .chart-key {
@@ -1989,9 +2113,13 @@ td .badge {
 }
 
 .key-line {
-  width: 16px;
-  height: 2px;
-  background: var(--ink);
+  width: 18px;
+  height: 0;
+  border-top: 2.75px solid var(--ink);
+}
+
+.key-line.series-2 {
+  border-top: 2px dashed var(--ink);
 }
 
 .key-swatch {
@@ -2003,6 +2131,15 @@ td .badge {
 .key-band {
   background: var(--paper-3);
   box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.key-fit {
+  width: 16px;
+  border-top: 2px solid var(--ink-2);
+}
+
+.key-projection {
+  border-top-style: dashed;
 }
 
 .chart-frame {
@@ -2017,6 +2154,10 @@ td .badge {
   overflow: visible;
 }
 
+.position-frame {
+  min-height: 288px;
+}
+
 .gridline {
   stroke: var(--line);
   stroke-width: 1;
@@ -2024,15 +2165,15 @@ td .badge {
 }
 
 .axis-line {
-  stroke: var(--ring);
+  stroke: var(--ink);
   stroke-width: 1;
   shape-rendering: crispEdges;
 }
 
 .tick {
-  fill: var(--ink-3);
+  fill: var(--ink-2);
+  font-family: var(--font-mono);
   font-size: var(--text-12);
-  font-variant-numeric: tabular-nums;
 }
 
 .axis-title {
@@ -2040,16 +2181,13 @@ td .badge {
   font-size: var(--text-12);
 }
 
-.reading {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .band-area {
   fill: var(--paper-3);
+}
+
+.band-mean {
+  stroke: var(--ring);
+  stroke-width: 1;
 }
 
 .crosshair {
@@ -2067,6 +2205,73 @@ td .badge {
 .hit {
   fill: transparent;
   cursor: crosshair;
+}
+
+.series-line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.series-2 .series-line {
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.dot {
+  fill: var(--ink);
+  stroke: var(--paper);
+  stroke-width: 1.5;
+}
+
+.series-2 .dot {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.fit-line {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.fit-projection {
+  stroke-dasharray: 4 3;
+}
+
+/* The baseline positions as a paper zone, named once above the plot. */
+.baseline-zone rect {
+  fill: var(--paper-2);
+}
+
+.baseline-zone text {
+  fill: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+/* Each line named at its end: the value in mono, the series under it. */
+.end-value {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-17);
+  font-weight: 500;
+}
+
+.end-name {
+  fill: var(--ink-2);
+  font-size: var(--text-12);
+}
+
+.peak-label {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 600;
 }
 
 .readout {
@@ -2107,64 +2312,21 @@ td .badge {
   text-align: right;
 }
 
-.chart-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 16px;
+.readout-alert dt::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--signal);
 }
 
-.chart-title {
-  font-weight: 600;
-}
-
-.chart-pair {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
-  gap: 24px;
-}
-
-.position-frame {
-  min-height: 272px;
-}
-
-.series-line {
-  fill: none;
-  stroke: var(--series);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.dot {
-  fill: var(--series);
-  stroke: var(--paper);
-  stroke-width: 2;
-}
-
-.fit-line {
-  stroke: var(--ink-2);
-  stroke-width: 1.5;
-}
-
-.fit-projection {
-  stroke-dasharray: 4 3;
-}
-
-.key-fit {
-  width: 16px;
-  border-top: 2px solid var(--ink-2);
-}
-
-.key-projection {
-  border-top-style: dashed;
-}
-
+/* The wafer map: depth on one ink ramp from paper to ink, flipped in dark mode, with an edge on its lightest step. */
 .wafer-chart {
   grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
   align-items: start;
-  gap: 16px 32px;
+  gap: 16px 48px;
 }
 
 .wafer-chart .table-wrap {
@@ -2174,14 +2336,8 @@ td .badge {
 .wafer-side {
   display: grid;
   align-content: start;
-  gap: 12px;
-  padding-top: 8px;
-}
-
-@media (max-width: 760px) {
-  .wafer-chart {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  gap: 20px;
+  padding-top: 4px;
 }
 
 .wafer-frame {
@@ -2196,9 +2352,9 @@ td .badge {
 }
 
 .wafer {
-  fill: var(--paper-3);
-  stroke: var(--ring);
-  stroke-width: 1;
+  fill: var(--paper-2);
+  stroke: var(--ink);
+  stroke-width: 1.5;
 }
 
 .site {
@@ -2206,8 +2362,15 @@ td .badge {
   stroke-width: 2;
 }
 
+.site.seq-1,
+.profile-dot.seq-1 {
+  stroke: var(--ring);
+  stroke-width: 1;
+}
+
 .site.active {
   stroke: var(--ink);
+  stroke-width: 2;
 }
 
 .site-hit {
@@ -2237,7 +2400,11 @@ td .badge {
 
 .scale-swatches span {
   flex: 1;
-  height: 10px;
+  height: 12px;
+}
+
+.scale-swatches .seq-1 {
+  box-shadow: inset 0 0 0 1px var(--ring);
 }
 
 .scale-labels {
@@ -2246,18 +2413,21 @@ td .badge {
   gap: 12px;
 }
 
-.readout-alert dt::before {
-  content: '';
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--signal);
+@media (max-width: 1000px) {
+  .depth-model {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .wafer-chart {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* The run page: the lot strip and the sentence with the verdict beside them, then the figures. */
-.run-page {
+.run-page,
+.sheet {
   display: grid;
   gap: 48px;
   min-width: 0;
@@ -2294,7 +2464,8 @@ td .badge {
   font-weight: 600;
 }
 
-.run-meta {
+.run-meta,
+.page-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -2304,11 +2475,13 @@ td .badge {
   color: var(--ink-2);
 }
 
-.run-meta .word {
+.run-meta .word,
+.page-meta .word {
   margin-left: 0;
 }
 
-.run-meta a {
+.run-meta a,
+.page-meta a {
   display: inline-block;
   min-height: 24px;
   padding: 2px 0;
@@ -2699,10 +2872,11 @@ h2.verdict-label {
   border-left: 2px dashed var(--ink);
 }
 
-/* The lineup and the trace side by side, then the two small panels. */
-.run-cols {
+/* The lineup and the trace side by side, then the two small panels; a lot's channels beside the one picked. */
+.run-cols,
+.lot-cols {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-columns: minmax(0, 11fr) minmax(0, 13fr);
   align-items: start;
   gap: 48px;
 }
@@ -2739,7 +2913,8 @@ h2.verdict-label {
 
 .lineup-row {
   display: grid;
-  grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) 52px;
+  /* wide enough for the longest name and a DEVIATES word on one line, so the rows share one height */
+  grid-template-columns: minmax(120px, 256px) minmax(0, 1fr) 52px;
   align-items: center;
   gap: 12px;
   min-height: 32px;
@@ -2917,11 +3092,6 @@ h2.verdict-label {
   min-height: 338px;
 }
 
-.trace .tick {
-  fill: var(--ink-2);
-  font-family: var(--font-mono);
-}
-
 .trace .axis-line,
 .axis-mark {
   stroke: var(--ink);
@@ -3001,10 +3171,6 @@ h2.verdict-label {
   white-space: normal;
 }
 
-.figure-table td.num {
-  white-space: nowrap;
-}
-
 .figure-table td.strong {
   font-weight: 600;
 }
@@ -3050,6 +3216,7 @@ h2.verdict-label {
 
 @media (max-width: 1000px) {
   .run-cols,
+  .lot-cols,
   .run-panels {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3259,8 +3426,7 @@ h2.verdict-label {
     font-size: var(--text-24);
   }
 
-  .answer-next,
-  .subtitle {
+  .answer-next {
     font-size: var(--text-17);
   }
 
@@ -3483,6 +3649,95 @@ h2.verdict-label {
   .runs-table td[data-label]::before {
     content: attr(data-label) ' ';
     color: var(--ink-3);
+  }
+}
+
+/* The lot table on a phone: each lot on two lines, its name and out count over its wafers at full size. */
+@media (max-width: 640px) {
+  .lots thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .lots,
+  .lots tbody,
+  .lots :is(th, td) {
+    display: block;
+  }
+
+  .lots tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px 12px;
+    padding: 10px 0 4px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .lots tbody :is(th, td) {
+    padding: 0;
+    border: 0;
+  }
+
+  .lots :is(.c-date, .c-cond, .c-runs) {
+    display: none;
+  }
+
+  .lots td.c-wafers {
+    grid-column: 1 / -1;
+  }
+
+  .lots td.c-out,
+  .lots td.c-out.zero {
+    grid-area: 1 / 2;
+    font-size: var(--text-20);
+  }
+
+  .lots td.c-out::after {
+    content: ' out';
+    color: var(--ink-2);
+    font-family: var(--font-sans);
+    font-size: var(--text-13);
+  }
+
+  /* each guess's name over its bar, so the bars keep the full width */
+  .miss-bars,
+  .miss-bars :is(caption, tbody, tfoot) {
+    display: block;
+  }
+
+  .miss-bars tr {
+    display: grid;
+  }
+
+  .miss-bars th {
+    width: auto;
+    padding-bottom: 0;
+  }
+
+  .miss-bars tfoot td:first-child {
+    display: none;
+  }
+
+  .drift-counts {
+    gap: 8px 20px;
+  }
+
+  /* the verdict words wrap so the channel names keep the width */
+  .drift-table :is(.word, thead th) {
+    white-space: normal;
+  }
+
+  /* the slope and its t are in the readout and the method; the phone keeps the mean, z and the verdict */
+  .drift-points :is(.c-slope, .c-t) {
+    display: none;
+  }
+
+  :is(.lot-runs .c-wafer, .drift-points td:first-child) a {
+    white-space: nowrap;
   }
 }
 
