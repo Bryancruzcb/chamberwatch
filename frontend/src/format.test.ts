@@ -7,6 +7,7 @@ import {
   describeDepthTrend,
   describeEvidence,
   describeFault,
+  describeLineup,
   describePrediction,
   describeResidual,
   describeRun,
@@ -207,6 +208,19 @@ describe('format', () => {
     expect(describePrediction({ ...depth, residualUm: 0.12, lotRmseUm: null })).toBe('The telemetry predicted 43.64 µm, 0.12 µm deeper than measured.')
     expect(describePrediction({ ...depth, measuredUm: null, residualUm: null, lotRmseUm: null }))
       .toBe('The telemetry predicts 43.64 µm; this wafer was not measured in this set.')
+  })
+
+  it('answers the lineup with how many channels passed the limit and which went furthest', () => {
+    const scored = (name: string, persistentZ: number): Channel => ({ ...channel(name), persistentZ })
+    const channels = [scored('PlatenRFLoadCapacitor', 18.8), scored('PlatenRFTuningCapacitor', 6.9), scored('Gas1Flow', 2.2)]
+
+    expect(describeLineup(channels, 6)).toBe('2 of 3 channels went past the limit of 6.0. Platen RF load cap went furthest, to 18.8.')
+    expect(describeLineup([scored('Gas5Flow', 97795.1), scored('Gas1Flow', 2.2)], 6))
+      .toBe('1 of 2 channels went past the limit of 6.0. Gas 5 flow went furthest, to >20.')
+    // exactly at the limit is not past it
+    expect(describeLineup([scored('Gas7Flow', 3.56), scored('Gas1Flow', 6)], 6))
+      .toBe('No channel went past the limit of 6.0. The closest was Gas 1 flow, at 6.0.')
+    expect(describeLineup([], 6)).toBe('No channel was scored.')
   })
 
   it('marks a missing value', () => {

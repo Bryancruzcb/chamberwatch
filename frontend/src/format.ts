@@ -218,6 +218,20 @@ function describeDeparture(channel: Channel | undefined): string {
   return channel.deviation ? 'moved its phase mean or spread away from the good runs\'' : 'left its range'
 }
 
+/** The lineup's answer: how many of the run's channels went past the limit, and which one went furthest. */
+export function describeLineup(channels: readonly Channel[], k: number): string {
+  const over = channels.filter((channel) => channel.persistentZ > k)
+  const furthest = channels.reduce<Channel | null>((best, channel) => (best === null || channel.persistentZ > best.persistentZ ? channel : best), null)
+  if (furthest === null) {
+    return 'No channel was scored.'
+  }
+  if (over.length === 0) {
+    return `No channel went past the limit of ${formatScore(k)}. The closest was ${formatChannelName(furthest.channel)}, at ${formatUnusual(furthest.persistentZ)}.`
+  }
+  return `${over.length} of ${channels.length} channels went past the limit of ${formatScore(k)}. `
+    + `${formatChannelName(furthest.channel)} went furthest, to ${formatUnusual(furthest.persistentZ)}.`
+}
+
 /**
  * Every rule that caught the run, counted, in one line under its timeline: excursions and the channels they were on, a
  * phase mean or spread off the good runs, and stuck values. Null for a run no rule caught.

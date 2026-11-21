@@ -3,61 +3,67 @@
 This is the UI style file: how the web app in `frontend/` looks and behaves. The system design (data, detectors, API, storage) is [docs/DESIGN.md](docs/DESIGN.md).
 
 ## The look in one sentence
-Attention first: the top of the Runs page answers in plain facts which runs are out of range and where, the interface stays black and white like Notion Calendar, and only the data carries color, in soft gray cards like Superhuman's.
+Lab notebook: each page reads like a page of an engineering report, warm paper with ink rules, a serif headline that states the answer, and figures that carry the numbers, each with a one-line source.
+
+## Why it changed
+The first style (2026-10, "Attention first") put every section in a soft gray rounded card, after Notion Calendar and Superhuman. Those are consumer productivity apps, and on a tool for reading sensor data the cards made every page look like the same generic dashboard. This style keeps the "answer first" rule and replaces the cards with figures.
 
 ## References
-- Notion Calendar (`notioncal-hero`): the interface itself is black and white; only the content carries color. Here the chrome is ink on white and the color belongs to out of range, drift, in range and the channel.
-- Superhuman (`superhuman-cards`): soft gray cards with a small colored icon chip, under a row of tabs. Here each lot that needs a look, the first-channel count and the lot drift get one card each.
-- The approved mockup: `ui-makeover-2026-10/chamberwatch/a/index.html`, direction A "Attention first".
+Browsed 2026-11-20 on the live sites.
+- Our World in Data grapher (`ourworldindata.org/grapher/life-expectancy`): a serif title, a one-line definition under it, lines labeled at their ends instead of a legend box, and a source line under every chart.
+- Vercel Observability (`vercel.com/products/observability`): an anomaly stated as one line of text over a chart with the bad window shaded, and a chart and its table in one frame.
+- Honeycomb BubbleUp (`honeycomb.io/bubbleup`): the unusual cases compared against the baseline in small charts with one shared scale. Here: the lot-by-wafer grid on the Runs page and every channel on one scale on the run page.
+- From Bryan's taste board: Brilliant's serif headline on warm off-white, and the calm, single-accent base of Things and Notion Calendar.
 
 ## Colors
+Light is warm paper; dark is the same notebook at night. Only data carries color.
+
 | Token | Light | Dark | Used for |
 |---|---|---|---|
-| `--bg` (background) | `#ffffff` | `#0e0e0e` | page background |
-| `--card` (surface) | `#f4f4f2` | `#1a1a19` | cards, panels, the selected nav item |
-| `--card-2` | `#e9e9e6` | `#262624` | tracks, tags, table hover |
-| `--ink` (text) | `#161616` | `#f2f2ef` | body text, primary buttons, the limit line |
-| `--ink-2` | `#47474a` | `#c4c4be` | secondary text |
-| `--ink-3` (text-muted) | `#66666a` | `#a1a19b` | labels, captions, axis ticks |
-| `--line` (border) | `#e0e0dc` | `#2d2d2b` | dividers, input borders |
-| `--btn` (primary) | `#161616` | `#f2f2ef` | the one filled button; links are ink and underlined |
-| `--focus` | `#1f5fbf` | `#8db7ff` | focus ring |
-| `--ok` (success) | `#2b7a47` | `#74cf91` | in range, no trend |
-| `--drift` (warning) | `#8f5200` | `#f2b452` | drift, heading out of the band, stuck sensor, degraded alignment |
-| `--out` (danger) | `#c22f25` | `#ff8a7d` | out of range, out of the band, errors |
-| `--chan` (info) | `#1f5fbf` | `#8db7ff` | channel names in the answer, the first-channel bars, the trace line |
+| `--bg` (paper) | `#f7f4ec` | `#14130f` | page background |
+| `--card` (tint) | `#eee8dc` | `#1d1b16` | controls, the selected nav item, tracks |
+| `--card-2` | `#e4ddcd` | `#2a2720` | table hover, tags |
+| `--ink` | `#1c1a16` | `#efe9dc` | text, the rule above each figure, the limit line |
+| `--ink-2` | `#48433a` | `#c9c1b0` | secondary text |
+| `--ink-3` | `#686152` | `#a39a88` | labels, captions, axis ticks, source lines |
+| `--line` | `#dcd4c3` | `#2f2b24` | hairlines inside figures and tables |
+| `--line-strong` | `#bfb4a0` | `#4a4439` | axes, link underlines |
+| `--out` | `#b3261e` | `#ff8a7d` | out of range |
+| `--drift` | `#8a5300` | `#f2b452` | drift, heading out, stuck values |
+| `--ok` | `#2c6e49` | `#74cf91` | in range, no trend |
+| `--chan` | `#1f4e9c` | `#8fb0e8` | channel names in an answer, trace lines |
 
-Each semantic color has a `-wash` partner for icon chips and tags. The charts keep their own tokens (`--series-*`, `--seq-*`, `--band`) on the same base; the blue depth ramp is unchanged.
+The lot grid shades in range by how close a wafer came to the limit (three warm grays) and out of range by how far past it went (three reds). The depth ramp stays blue.
 
 ## Type
-- The one answer per page: Instrument Serif 400, 44px (34px on a phone). Every page's `h1` uses it; a wafer key as a title uses Geist Mono instead.
-- UI and body: Geist, weights 400/500/600, 15px base, line height 1.5.
-- Wafer keys and recorded names: Geist Mono.
-- Scale: 12 / 13 / 14 / 15 / 18 / 20 / 28 / 44. Nothing renders below 12px.
-- Numbers that line up (stats, tables, meters): tabular figures, on the whole page.
+- Headlines and figure titles: Newsreader (500), a serif drawn for reading on screens. The page's answer is the `h1` at 44px (34px on a phone); figure titles are `h2` at 22px.
+- Text and controls: IBM Plex Sans, 15px base, line height 1.5.
+- Wafer keys, channel codes and figures that line up: IBM Plex Mono and tabular numbers.
+- Scale: 12 / 13 / 14 / 15 / 18 / 22 / 28 / 44. Nothing renders below 12px.
 - Fonts load from Google Fonts in `frontend/index.html`, with system fallbacks.
 
+## Figures, not cards
+- A section is a figure: a 1px ink rule across the top, the title, one sentence that answers it, the chart or table, then a source or method line in `--ink-3`. No background, no radius, no shadow.
+- Charts label their lines and marks directly where they can; a key is a short line of text with swatches, never a boxed legend.
+- Methods stay in a closed "How this is counted" disclosure.
+
 ## Spacing and shape
-- Spacing steps: 4 / 8 / 12 / 16 / 24 / 32 / 40 / 64. Page width 1160px with a 24px gutter, 16px on a phone.
-- Radius: 8px for controls and segmented buttons, 10px for icon chips and the theme button, 16px for cards.
+- Spacing steps: 4 / 8 / 12 / 16 / 24 / 32 / 40 / 64. Page width 1160px with a 24px gutter, 16px on a phone. Figures sit 40px apart.
+- Radius: 6px for controls and segmented buttons, 2px for marks. Nothing else is rounded.
 - Shadows: none, except the chart readout, which floats.
 
 ## Components
-- The app's own React components; the repo has no component library and needs none. `Segmented` for every switch, `Badge` and `RunStatus` for verdicts, `ZMeter` for how unusual against the limit, `Icon` for Lucide icons.
-- Buttons: primary = filled ink; secondary = segmented gray. There is no destructive action in the app.
-- Cards: soft gray, no border, no shadow. No cards inside cards: stats inside a panel lose their own card.
-- Tabs on the Runs page: Needs a look / All runs / In range, with counts. Tables turn into stacked rows on a phone.
+- The app's own React components; no component library. `Segmented` for every switch, `Badge` and `RunStatus` for verdicts, `Icon` for Lucide icons.
+- `LotGrid`: every wafer of a source, lots as rows and positions as columns, each cell a link to its run.
+- `ChannelLineup`: every channel of a run on one how-unusual scale with the limit drawn once.
+- `EtchTimeline`, `LotDotPlot`, `RadialProfile`, `PredictionStrip`, `TraceChart`, `PositionChart`, `WaferMap` as before.
 
 ## Motion
 - CSS only: the Runs panel fades in over 180 ms, ease-out, when a tab or source changes. Nothing else moves.
 - Off under `prefers-reduced-motion`.
 
-## Icons and art
-- Small UI icons: Lucide only, pasted as inline SVG in `frontend/src/components/Icon.tsx`.
-- No decorative art. Charts are the pictures.
-
 ## Rules (every screen, always)
 1. Skeleton loaders that match the final layout for anything that loads data (no layout shift). Skip them for near-instant loads.
-2. Semantic colors (success, warning, danger, info) from the table above. Never use color as the only signal; pair it with an icon or text.
-3. No clutter: no subtitle that restates a heading, no redundant helper text, no decorative dividers, no duplicate labels. If it isn't useful, remove it.
+2. Semantic colors from the table above. Never use color as the only signal; pair it with an icon, a shape or text.
+3. No clutter: no subtitle that restates a heading, no redundant helper text, no decorative dividers, no duplicate labels. A source line is not clutter; it says where the figure comes from.
 4. Accessibility, WCAG 2.2 AA: 4.5:1 text contrast (3:1 for large text and controls), full keyboard navigation with visible focus, a label on every input, aria-labels on icon-only buttons, alt text on meaningful images, semantic HTML, targets at least 24×24px, prefers-reduced-motion respected.
