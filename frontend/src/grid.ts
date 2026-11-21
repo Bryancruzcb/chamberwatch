@@ -1,15 +1,12 @@
 import type { Lot, RunRow } from './api/schema'
-import { type RunState, runState } from './summary'
+import { baselinePrefix } from './baseline'
+import { describeLots, type RunState, runState } from './summary'
 
-// Every run of a source laid out as lots by wafer position, for the Runs page's grid. Only calculations.
-
-/** Three steps of shade. In range: how close a wafer came to the limit. Out of range: how far past it went. */
-export type Shade = 1 | 2 | 3
+// Every run of a source laid out as lots by wafer position, for the Runs page's cassette map. Only calculations.
 
 export interface GridCell {
   readonly run: RunRow
   readonly state: RunState
-  readonly shade: Shade
 }
 
 export interface GridRow {
@@ -24,29 +21,15 @@ export interface GridRow {
 export interface LotGrid {
   readonly rows: readonly GridRow[]
   readonly positions: number
+  /** The baseline runs are the first `baseline` positions of every lot; null when they are not, or there are none. */
+  readonly baseline: number | null
 }
 
 /** Lots are planned at 10 wafers, so a shorter lot still shows where its missing wafers would sit. */
 const MIN_POSITIONS = 10
 
-/**
- * The shade of a scored run against the limit `k`. In range: under half the limit is 1, under 80 percent 2, closer 3.
- * Out of range: under twice the limit 1, under three times 2, further 3. A run flagged by a rule other than the limit,
- * a stuck value or a phase average, can sit under the limit and still be out; it takes the lightest red.
- */
-export function shadeOf(z: number | null, k: number | null, out: boolean): Shade {
-  if (z === null || k === null || k <= 0) {
-    return 1
-  }
-  if (out) {
-    return z >= 3 * k ? 3 : z >= 2 * k ? 2 : 1
-  }
-  // whole-number multiples on both sides: 0.8 * 6 is 4.800000000000001, which would push a run at 4.8 down a shade
-  return 5 * z >= 4 * k ? 3 : 2 * z >= k ? 2 : 1
-}
-
 /** The runs as rows of lots in lot order, each cell at its wafer's position. */
-export function lotGrid(runs: readonly RunRow[], lots: readonly Lot[], k: number | null): LotGrid {
+export function lotGrid(runs: readonly RunRow[], lots: readonly Lot[]): LotGrid {
   const positions = Math.max(MIN_POSITIONS, ...runs.map((run) => run.positionInLot))
   const byLot = new Map<number, RunRow[]>()
   for (const run of runs) {
@@ -56,11 +39,7 @@ export function lotGrid(runs: readonly RunRow[], lots: readonly Lot[], k: number
     // the database keeps one run per position, counted from 1; a row is built by position so nothing else can land in it
     const cells = Array.from({ length: positions }, (_, index): GridCell | null => {
       const run = lotRuns.find((candidate) => candidate.positionInLot === index + 1)
-      if (run === undefined) {
-        return null
-      }
-      const state = runState(run)
-      return { run, state, shade: shadeOf(run.score?.persistentZ ?? null, k, state === 'out') }
+      return run === undefined ? null : { run, state: runState(run) }
     })
     return {
       lotId,
@@ -70,10 +49,10 @@ export function lotGrid(runs: readonly RunRow[], lots: readonly Lot[], k: number
       out: cells.filter((cell) => cell?.state === 'out').length,
     }
   })
-  return { rows: rows.sort((a, b) => a.lotNo - b.lotNo), positions }
+  return { rows: rows.sort((a, b) => a.lotNo - b.lotNo), positions, baseline: baselinePrefix([...byLot.values()]) }
 }
 
-/** Which kinds of cell a grid holds, so its key names only what is on the page. */
+/** Which kinds of mark a grid holds, so its key names only what is on the page. */
 export interface GridKinds {
   readonly inRange: boolean
   readonly outOfRange: boolean
@@ -93,6 +72,57 @@ export function gridKinds(grid: LotGrid): GridKinds {
     missing: cells.some((cell) => cell === null),
     baseline: cells.some((cell) => cell?.run.good === true),
   }
+}
+
+/** One stretch of a lot's row, left to right: a wafer, the gap after the baseline, or slots the lot never ran. */
+export type GridSegment =
+  | { readonly kind: 'slot'; readonly position: number; readonly cell: GridCell }
+  | { readonly kind: 'gap' }
+  | { readonly kind: 'not-run'; readonly from: number; readonly to: number }
+
+/**
+ * A row as the map draws it. Positions a lot never ran merge into one stretch, so it can carry a single "not run"
+ * label, and the gap after the baseline sits after position `baseline` in every row so the divider lines up.
+ */
+export function rowSegments(row: GridRow, baseline: number | null): GridSegment[] {
+  const segments: GridSegment[] = []
+  row.cells.forEach((cell, index) => {
+    const position = index + 1
+    const last = segments.at(-1)
+    if (cell !== null) {
+      segments.push({ kind: 'slot', position, cell })
+    }
+    else if (last !== undefined && last.kind === 'not-run' && last.to === position - 1) {
+      segments[segments.length - 1] = { ...last, to: position }
+    }
+    else {
+      segments.push({ kind: 'not-run', from: position, to: position })
+    }
+    if (baseline !== null && position === baseline && position < row.cells.length) {
+      segments.push({ kind: 'gap' })
+    }
+  })
+  return segments
+}
+
+/** The key's line for the slots lots never ran: "Lot 7 ran 6 wafers." Null when every lot ran every slot. */
+export function describeNotRun(grid: LotGrid): string | null {
+  const short = grid.rows
+    .filter((row) => row.cells.some((cell) => cell === null))
+    .map((row) => ({ lotNo: row.lotNo, ran: row.cells.filter((cell) => cell !== null).length }))
+  const [first] = short
+  if (first === undefined) {
+    return null
+  }
+  const wafers = (count: number) => `${count} ${count === 1 ? 'wafer' : 'wafers'}`
+  if (short.length === 1) {
+    return `Lot ${first.lotNo} ran ${wafers(first.ran)}.`
+  }
+  if (short.every((entry) => entry.ran === first.ran)) {
+    const lots = describeLots(short.map((entry) => entry.lotNo))
+    return `${lots.charAt(0).toUpperCase()}${lots.slice(1)} ran ${wafers(first.ran)} each.`
+  }
+  return 'A slot its lot never ran.'
 }
 
 /** A keyboard stop in the grid: column 0 is the lot's link, column c the wafer at position c. */

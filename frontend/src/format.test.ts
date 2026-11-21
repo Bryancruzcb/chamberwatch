@@ -23,6 +23,7 @@ import {
   formatMicrons,
   formatScore,
   formatSeconds,
+  formatShortScore,
   formatValue,
   MISSING,
 } from './format'
@@ -318,3 +319,17 @@ function channel(name: string, { excursions = 0, holds = 0, deviation = false } 
     holds: Array.from({ length: holds }, () => ({ ...span, samples: 10, value: 1 })),
   }
 }
+
+describe('formatShortScore', () => {
+  it('prints at most four characters: one decimal under 100, whole under 10,000, then compact', () => {
+    expect(formatShortScore(24.925)).toBe('24.9')
+    expect(formatShortScore(9.6)).toBe('9.6')
+    expect(formatShortScore(6)).toBe('6.0')
+    expect(formatShortScore(99.94)).toBe('99.9')
+    expect(formatShortScore(100)).toBe('100')
+    expect(formatShortScore(9805.63)).toBe('9806')
+    expect(formatShortScore(97795.1)).toBe('98K')
+    expect(formatShortScore(123456)).toBe('120K')
+    expect(formatShortScore(4_560_000)).toBe('4.6M')
+  })
+})

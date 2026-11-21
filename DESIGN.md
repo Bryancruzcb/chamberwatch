@@ -3,71 +3,65 @@
 This is the UI style file: how the web app in `frontend/` looks and behaves. The system design (data, detectors, API, storage) is [docs/DESIGN.md](docs/DESIGN.md).
 
 ## The look in one sentence
-Lab notebook: each page reads like a page of an engineering report, warm paper with ink rules, a serif headline that states the answer, and figures that carry the numbers, with their source or method a click away.
+Cassette: a lab notebook in true ink on warm paper, where every wafer is drawn as a disc, one red means out of range and nothing else, and each section is a numbered figure whose serif title and one-line answer sit over the chart that proves it.
 
-## Why it changed
-The first style (2026-10, "Attention first") put every section in a soft gray rounded card, after Notion Calendar and Superhuman. Those are consumer productivity apps, and on a tool for reading sensor data the cards made every page look like the same generic dashboard. This style keeps the "answer first" rule and replaces the cards with figures.
-
-## References
-Browsed 2026-11-20 on the live sites.
-- Our World in Data grapher (`ourworldindata.org/grapher/life-expectancy`): a serif title, a one-line definition under it, lines labeled at their ends instead of a legend box, and a source line under every chart.
-- Vercel Observability (`vercel.com/products/observability`): an anomaly stated as one line of text over a chart with the bad window shaded, and a chart and its table in one frame.
-- Honeycomb BubbleUp (`honeycomb.io/bubbleup`): the unusual cases compared against the baseline in small charts with one shared scale. Here: the lot-by-wafer grid on the Runs page and every channel on one scale on the run page.
-- From Bryan's taste board: Brilliant's serif headline on warm off-white, and the calm, single-accent base of Things and Notion Calendar.
+## Why it changed again (2026-11-20)
+The first style (2026-10, "Attention first") put every section in a soft rounded card, and every page looked like the same generic dashboard. The lab-notebook style that replaced it kept the answer-first rule but still read as plain: the wafer grid was rows of tan boxes, beige sat on beige, the charts and tables looked like library defaults, and there was too much text, with a raw file name as the run page's title. Cassette keeps the notebook and makes it bolder: black ink, a solid ink masthead, one saturated red, large mono numerals, and wafers as discs instead of boxes.
 
 ## Colors
-Light is warm paper; dark is the same notebook at night. Only data carries color.
+Light is warm paper; dark is the same notebook at night, the same tokens swapped under `prefers-color-scheme: dark` (unless the theme button picked light) and under `[data-theme='dark']`.
 
 | Token | Light | Dark | Used for |
 |---|---|---|---|
-| `--bg` (paper) | `#f7f4ec` | `#14130f` | page background |
-| `--card` (tint) | `#eee8dc` | `#1d1b16` | the segmented switch, the selected lineup row, the etch timeline's lanes |
-| `--card-2` | `#e4ddcd` | `#2a2720` | table hover and selection, tags, meter and bar tracks, the wafer disc |
-| `--ink` | `#1c1a16` | `#efe9dc` | text, the rule above each figure, the limit line |
-| `--ink-2` | `#48433a` | `#c9c1b0` | secondary text |
-| `--ink-3` | `#686152` | `#a39a88` | labels, captions, axis ticks, source lines |
-| `--line` | `#dcd4c3` | `#2f2b24` | hairlines inside figures and tables |
-| `--line-strong` | `#bfb4a0` | `#4a4439` | axes, link underlines |
-| `--out` | `#b3261e` | `#ff8a7d` | out of range |
-| `--drift` | `#8a5300` | `#f2b452` | drift, heading out, stuck values |
-| `--ok` | `#2c6e49` | `#74cf91` | in range, no trend |
-| `--chan` | `#1f4e9c` | `#8fb0e8` | channel names in an answer, trace lines |
-| `--dot-in` | `#857c6a` | `#7d7566` | the in-range dot and meter fill; 3:1 or better on the paper and on a track |
-| `--grid-edge` | `#948b78` | `#6f6757` | the edge of each lot-grid cell and key swatch; 3:1 on the paper |
+| `--paper` | `#f5efe2` | `#12110e` | page |
+| `--paper-2` | `#ebe3d1` | `#1c1a16` | chart lanes, the baseline zone, a selected row |
+| `--paper-3` | `#e0d5bd` | `#2b2720` | the good-run band, loading placeholders |
+| `--ink` | `#14120f` | `#f2ece0` | text, the 2px figure rules, limit lines, the reading |
+| `--ink-2` | `#3b362e` | `#cfc6b4` | secondary text, ticks, column heads |
+| `--ink-3` | `#5c5547` | `#a69d8a` | source lines, a dashed ring |
+| `--line` | `#d3c8b2` | `#2e2a23` | hairlines, the cassette rail |
+| `--ring` | `#8f8572` | `#6d6556` | the in-range ring, a score line's axis, link underlines (3:1) |
+| `--signal` | `#c4160c` | `#ff5a47` | out of range, and nothing else |
+| `--on-signal` | `#f5efe2` | `#12110e` | a score printed inside a red disc |
+| `--drift` | `#8a5300` | `#f2b452` | warning words such as "Stuck sensor" |
+| `--band`, `--band-ink`, `--band-ink-2` | `#14120f`, `#f5efe2`, `#cfc6b4` | `#211e19`, `#f2ece0`, `#b5ab97` | the masthead |
+| `--focus` | `#1f4e9c` | `#8fb0e8` | the focus ring on the paper; on the masthead it takes `--band-ink` |
+| `--seq-1` to `--seq-6` | paper to ink | dark paper to light ink | depth on the wafer map |
 
-The lot grid shades in range by how close a wafer came to the limit (three warm grays) and out of range by how far past it went (three reds). Every cell has an edge, and an out-of-range cell carries a corner flag as well as its red, so neither the cell nor its state rests on a faint fill or on hue alone. A stuck value on the timeline is hatched for the same reason. The depth ramp stays blue.
+Charts are ink. A second series is dashed with hollow points, never a second hue. Red marks state, so it never decorates.
 
 ## Type
-- Headlines and figure titles: Newsreader (500), a serif drawn for reading on screens. The page's answer is the `h1` at 44px (34px on a phone); figure titles are `h2` at 22px.
-- Text and controls: IBM Plex Sans, 15px base, line height 1.5.
-- Wafer keys, channel codes and figures that line up: IBM Plex Mono and tabular numbers.
-- Scale: 12 / 13 / 14 / 15 / 18 / 20 / 22 / 28 / 44; on a phone the `h1` drops to 34 and the lead paragraph to 16. Inline code and wafer keys are set at 0.9em and 0.95em of the text around them. Nothing renders below 12px.
-- Fonts load from Google Fonts in `frontend/index.html`, with system fallbacks.
+- Newsreader 600 for the `h1`, which states the page's answer (60px, 36px on a phone, at most 17 characters wide), for figure titles (`h2`, 28px, 24px on a phone) and for lot names in tables (20px).
+- IBM Plex Sans for text and controls: 15px body, 20px lead (17px on a phone), 17px figure answers, 13px captions in `--ink-2`.
+- IBM Plex Mono for figure numbers, column heads, ticks, scores and counts. Big numerals carry the key numbers, never inside a box.
+- One scale, as tokens named for their size: `--text-12` / 13 / 15 / 17 / 20 / 24 / 28 / 36 / 60 / 72. Every `font-size` in the stylesheet is one of them; nothing renders below 12px. Fonts load from Google Fonts in `frontend/index.html`.
 
-## Figures, not cards
-- A section is a figure: a 1px ink rule across the top, the title, one sentence that answers it, the chart or table, then, where the numbers need it, a source line in `--ink-3` or a closed "How this is counted" disclosure. No background, no radius, no shadow.
-- A figure set directly under the page's headline takes that headline as its answer and has no sentence of its own, as the lot grid does on the Runs page.
-- Charts label their lines and marks directly where they can; a key is a short line of text with swatches, never a boxed legend, and it names only what the chart holds.
-- Long methods stay in a closed "How this is counted" disclosure; a one-line definition may sit open as the source line.
+## Figures
+- A section that shows data is a figure: a 2px ink rule, then `FIG. n`, the serif title and an optional control (such as the Source switch) on one line, then one sentence that answers it, then the chart or table. No background, no radius, no shadow.
+- The number is a CSS counter on the figure, in page order, so a figure that is absent leaves no gap. Small panels with no data of their own take the rule and the title without a number.
+- Headlines and answers state facts in plain words. Definitions and methods sit in closed disclosures.
+- Charts label marks directly where they can; a key names only what its chart holds.
+
+## Shared pieces (`frontend/src/components/` unless named)
+- `Figure`: the rule, the counted label, the `h2`, an optional `control`, an optional `answer`, then children. `numbered={false}` for small panels; `busy` while it holds a placeholder.
+- `Disc`: a wafer. In range is a hollow ring, out of range a solid red disc that may print its score, not scored or not aligned a dashed ring. Sizes `map` 46px (24px on a phone), `strip` 34px, `here` 48px, `ledger` 26px, `cluster` 32px, `mini` 18px on a 26 by 32px target, `key` 34px. A link with `to`, a name with `label`, a centre dot with `baseline`, the ink halo and `aria-current` with `current`.
+- `ScoreLine`: a score on a line from 0 to a stated end: a 1px axis, a 2px ink tick at the limit, a red bar and dot out of range, a hollow ring on a stem in range, an arrow past the end. `size="verdict"` and `ticks` give the run page's large version. One column of lines shares one end, from `scoreLineEnd` in `charts/scale.ts`.
+- `baselinePrefix` in `baseline.ts`: N when every lot keeps its baseline runs in its first N positions. Then one bracket marks them over those columns; otherwise each baseline disc carries a centre dot and the key says so.
+- Ledger tables: mono 12px uppercase column heads over a 2px ink rule, hairline rows, numbers right-aligned in mono. Tags are words in mono capitals: ink for a role, `--drift` for a warning.
+- `Segmented` is a text switch: a row of words, the one in effect 600 ink over a 2px ink underline. Tabs are the same with a 3px underline and a mono count. `Icon` keeps only functional icons (theme, retry).
+- `LotGrid` (`charts/`) draws the Runs page's cassette map: lots as rows of discs on a rail, one tab stop, with arrows, Home and End to move.
 
 ## Spacing and shape
-- Spacing steps: 4 / 8 / 12 / 16 / 24 / 32 / 40 / 64. Page width 1160px with a 24px gutter, 16px on a phone. Figures sit 32px apart down the page (24px on a phone) and 40px apart side by side.
-- Radius: 6px for controls (buttons, selects, the segmented control's frame) and the floating readout; 4px for the buttons inside a segmented control; 2px for marks and their tracks (cells, swatches, bars, meters, tags); dots are circles. Nothing else is rounded, and a focus ring follows its element's radius.
-- Shadows: none, except the chart readout, which floats.
-
-## Components
-- The app's own React components; no component library. `Segmented` for every switch, `Badge` and `RunStatus` for verdicts, `Icon` for Lucide icons.
-- `LotGrid`: every wafer of a source, lots as rows and positions as columns, each cell a link to its run. One tab stop; the arrow keys, Home and End move between its links.
-- `ChannelLineup`: every channel of a run on one how-unusual scale with the limit drawn once, in the detectors' rank.
-- `ZMeter` for how unusual against the limit, on the same scale as the lineup.
-- `EtchTimeline`, `LotDotPlot`, `RadialProfile`, `PredictionStrip`, `TraceChart`, `PositionChart`, `WaferMap` as before.
+- Page width 1160px with a 24px gutter, 16px on a phone. Figures sit 48px apart (36px on a phone).
+- Radius: discs and dots are circles; 6px on real controls (the theme button, buttons, selects) and the floating readout; 2px on bars and marks; nothing else is rounded.
+- Shadows: none, except the chart readout, which floats. A disc's halo is an edge, not a shadow.
 
 ## Motion
-- CSS only: the Runs panel fades in over 180 ms, ease-out, when a tab or source changes. Nothing else moves.
-- Off under `prefers-reduced-motion`.
+- One 180 ms fade when a tab or source changes on the Runs page. Nothing else moves. Off under `prefers-reduced-motion`.
 
 ## Rules (every screen, always)
-1. Skeleton loaders that match the final layout for anything that loads data (no layout shift). Skip them for near-instant loads.
-2. Semantic colors from the table above. Never use color as the only signal; pair it with an icon, a shape or text.
-3. No clutter: no subtitle that restates a heading, no redundant helper text, no decorative dividers, no duplicate labels. A source line is not clutter; it says where the figure comes from.
-4. Accessibility, WCAG 2.2 AA: 4.5:1 text contrast (3:1 for large text and controls), full keyboard navigation with visible focus, a label on every input, aria-labels on icon-only buttons, alt text on meaningful images, semantic HTML, targets at least 24×24px, prefers-reduced-motion respected.
+1. Placeholders that match the final layout for anything that loads data, so nothing jumps.
+2. State is never carried by color alone: a solid disc with a number against a hollow ring against a dashed ring, and words next to marks.
+3. No cards, chips, pills, tiles or boxed legends. No subtitle that restates a heading. A source line is not clutter.
+4. Accessibility, WCAG 2.2 AA: 4.5:1 text contrast, 3:1 for marks and controls, full keyboard use with a visible focus ring on the paper and on the masthead, targets at least 24px, a label on every input, `prefers-reduced-motion` respected.
+5. `frontend/src/designRules.test.ts` pins the radius, type scale, shadow, dark-token and token-only color rules against the stylesheet.

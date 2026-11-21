@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { lotsSchema, type RunRow, runsPageSchema } from './api/schema'
-import { gridKinds, hasStop, lotGrid, nextStop, shadeOf } from './grid'
+import { describeNotRun, gridKinds, hasStop, lotGrid, nextStop, rowSegments } from './grid'
 
 const fixtures = import.meta.glob('../e2e/fixtures/*.json', { eager: true, import: 'default' })
 
@@ -14,36 +14,10 @@ function fixture(name: string): unknown {
 
 const lots = lotsSchema.parse(fixture('lots.json'))
 const page = runsPageSchema.parse(fixture('runs.json'))
-const K = 6
 
 describe('grid', () => {
-  it('shades an in-range run by how close it came to the limit', () => {
-    expect(shadeOf(0, K, false)).toBe(1)
-    expect(shadeOf(2.9, K, false)).toBe(1)
-    expect(shadeOf(3, K, false)).toBe(2)
-    expect(shadeOf(4.7, K, false)).toBe(2)
-    expect(shadeOf(4.8, K, false)).toBe(3)
-    expect(shadeOf(5.9, K, false)).toBe(3)
-  })
-
-  it('shades an out-of-range run by how far past the limit it went', () => {
-    expect(shadeOf(6.1, K, true)).toBe(1)
-    expect(shadeOf(11.9, K, true)).toBe(1)
-    expect(shadeOf(12, K, true)).toBe(2)
-    expect(shadeOf(18, K, true)).toBe(3)
-    expect(shadeOf(97795, K, true)).toBe(3)
-    // a stuck value or a phase average can flag a run that never passed the limit
-    expect(shadeOf(1.5, K, true)).toBe(1)
-  })
-
-  it('takes the lightest shade when there is nothing to measure against', () => {
-    expect(shadeOf(null, K, false)).toBe(1)
-    expect(shadeOf(9, null, true)).toBe(1)
-    expect(shadeOf(9, 0, true)).toBe(1)
-  })
-
   it('lays the public wafers out as ten lots by ten positions, with the out-of-range block in lots 6 to 9', () => {
-    const grid = lotGrid(page.runs, lots, page.baseline?.k ?? null)
+    const grid = lotGrid(page.runs, lots)
 
     expect(grid.positions).toBe(10)
     expect(grid.rows.map((row) => row.lotNo)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
@@ -56,7 +30,7 @@ describe('grid', () => {
   })
 
   it('leaves a gap where a lot has no wafer, and puts each wafer at its own position', () => {
-    const grid = lotGrid(page.runs, lots, K)
+    const grid = lotGrid(page.runs, lots)
     const lot7 = grid.rows[6]
 
     // lot 7 ran six wafers
@@ -77,11 +51,11 @@ describe('grid', () => {
     }
     const long: RunRow[] = Array.from({ length: 12 }, (_, index) => ({ ...first, id: 9000 + index, positionInLot: index + 1 }))
 
-    const grid = lotGrid(long, [], K)
+    const grid = lotGrid(long, [])
     expect(grid.positions).toBe(12)
     expect(grid.rows).toHaveLength(1)
     expect(grid.rows[0]?.lot).toBeNull()
-    expect(lotGrid([], [], K)).toEqual({ rows: [], positions: 10 })
+    expect(lotGrid([], [])).toEqual({ rows: [], positions: 10, baseline: null })
   })
 
   it('keeps an unscored and a misaligned wafer in their own slots, out of the count', () => {
@@ -98,31 +72,58 @@ describe('grid', () => {
       // a misaligned run that still carries a score is misaligned first
       return run.positionInLot === 6 ? { ...run, alignment: 'FAILED' } : run
     })
-    const lot6 = lotGrid(runs, lots, K).rows[5]
+    const lot6 = lotGrid(runs, lots).rows[5]
 
     expect(lot6?.cells.map((cell) => cell?.state)).toEqual(['in', 'in', 'in', 'unscored', 'failed', 'failed', 'out', 'out', 'out', 'out'])
-    expect(lot6?.cells[3]?.shade).toBe(1)
-    expect(lot6?.cells[4]?.shade).toBe(1)
     expect(lot6?.out).toBe(4)
   })
 
-  it('shades every wafer the lightest without a baseline, and still counts the out-of-range ones', () => {
-    const grid = lotGrid(page.runs, lots, null)
-
-    expect(grid.rows.flatMap((row) => row.cells).every((cell) => cell === null || cell.shade === 1)).toBe(true)
-    expect(grid.rows.map((row) => row.out)).toEqual([0, 0, 0, 0, 0, 7, 3, 1, 4, 0])
+  it('counts the out-of-range wafers without a baseline too', () => {
+    expect(lotGrid(page.runs, lots).rows.map((row) => row.out)).toEqual([0, 0, 0, 0, 0, 7, 3, 1, 4, 0])
   })
 
-  it('says which kinds of cell a grid holds, so the key names only those', () => {
+  it('finds the baseline in the first three positions, and loses it when a relabel moves it', () => {
+    expect(lotGrid(page.runs, lots).baseline).toBe(3)
+    const relabeled = page.runs.map((run): RunRow => (run.lotNo === 6 && run.positionInLot === 5 ? { ...run, good: true } : run))
+    expect(lotGrid(relabeled, lots).baseline).toBeNull()
+  })
+
+  it('draws a row as wafers, the gap after the baseline, and one stretch for the slots never run', () => {
+    const grid = lotGrid(page.runs, lots)
+    const lot7 = grid.rows[6]
+    if (lot7 === undefined) {
+      throw new Error('no lot 7')
+    }
+    const kinds = (segments: ReturnType<typeof rowSegments>) => segments.map((segment) => (segment.kind === 'slot' ? segment.position : segment.kind === 'gap' ? '|' : `${segment.from}-${segment.to}`))
+
+    expect(kinds(rowSegments(lot7, 3))).toEqual([1, 2, 3, '|', 4, 5, 6, '7-10'])
+    expect(kinds(rowSegments(lot7, null))).toEqual([1, 2, 3, 4, 5, 6, '7-10'])
+    // a stretch never crosses the gap, and a baseline as long as the row leaves no gap
+    const short = { ...lot7, cells: lot7.cells.map((cell, index) => (index === 1 || index === 3 ? null : cell)) }
+    expect(kinds(rowSegments(short, 2))).toEqual([1, '2-2', '|', 3, '4-4', 5, 6, '7-10'])
+    expect(kinds(rowSegments(grid.rows[0] ?? lot7, 10))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  })
+
+  it('names the lots that ran fewer wafers than the map has slots', () => {
+    expect(describeNotRun(lotGrid(page.runs, lots))).toBe('Lot 7 ran 6 wafers.')
+    expect(describeNotRun(lotGrid(page.runs.filter((run) => run.lotNo === 1), lots))).toBeNull()
+    const threes = page.runs.filter((run) => run.lotNo < 4 && run.positionInLot <= 3)
+    expect(describeNotRun(lotGrid(threes, lots))).toBe('Lots 1 to 3 ran 3 wafers each.')
+    const one = page.runs.filter((run) => run.lotNo === 2 && run.positionInLot === 1)
+    expect(describeNotRun(lotGrid(one, lots))).toBe('Lot 2 ran 1 wafer.')
+    expect(describeNotRun(lotGrid([...threes, ...page.runs.filter((run) => run.lotNo === 7)], lots))).toBe('A slot its lot never ran.')
+  })
+
+  it('says which kinds of mark a grid holds, so the key names only those', () => {
     // the public wafers: in range, out of range, baseline runs, and lot 7's four missing positions
-    expect(gridKinds(lotGrid(page.runs, lots, K))).toEqual({ inRange: true, outOfRange: true, unmeasured: false, missing: true, baseline: true })
+    expect(gridKinds(lotGrid(page.runs, lots))).toEqual({ inRange: true, outOfRange: true, unmeasured: false, missing: true, baseline: true })
     const unscored = page.runs.filter((run) => run.lotNo === 1).map((run): RunRow => ({ ...run, score: null, good: false }))
-    expect(gridKinds(lotGrid(unscored, lots, null))).toEqual({ inRange: false, outOfRange: false, unmeasured: true, missing: false, baseline: false })
-    expect(gridKinds(lotGrid([], [], K))).toEqual({ inRange: false, outOfRange: false, unmeasured: false, missing: false, baseline: false })
+    expect(gridKinds(lotGrid(unscored, lots))).toEqual({ inRange: false, outOfRange: false, unmeasured: true, missing: false, baseline: false })
+    expect(gridKinds(lotGrid([], []))).toEqual({ inRange: false, outOfRange: false, unmeasured: false, missing: false, baseline: false })
   })
 
   it("moves the keyboard between the grid's links, skipping positions a lot never ran", () => {
-    const grid = lotGrid(page.runs, lots, K)
+    const grid = lotGrid(page.runs, lots)
 
     expect(nextStop(grid, { row: 0, col: 0 }, 'ArrowRight', false)).toEqual({ row: 0, col: 1 })
     // at an edge the focus stays where it is
