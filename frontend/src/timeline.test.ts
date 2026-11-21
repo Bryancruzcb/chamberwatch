@@ -105,4 +105,19 @@ describe('timeline', () => {
     expect(closestChannel(detail.channels)?.channel).toBe('PlatenRFLoadCapacitor')
     expect(closestChannel([])).toBeNull()
   })
+
+  it('finds the first moment any lane leaves its range, an excursion or a stuck value', () => {
+    const flagged = run(55)
+    const first = etchTimeline(flagged.detail.channels, flagged.fromS, flagged.toS).first
+
+    expect(first?.kind).toBe('excursion')
+    expect(first?.s).toBe(407.2)
+    expect(first?.at).toBeCloseTo((407.2 - 30.2) / (629.3 - 30.2), 6)
+
+    const stuck = run(136)
+    expect(etchTimeline(stuck.detail.channels, stuck.fromS, stuck.toS).first).toMatchObject({ kind: 'hold', s: 498.8378 })
+
+    const clean = run(11)
+    expect(etchTimeline(clean.detail.channels, clean.fromS, clean.toS).first).toBeNull()
+  })
 })

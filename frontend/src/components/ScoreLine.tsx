@@ -1,5 +1,8 @@
 import { formatScore } from '../format'
 
+/** A limit closer to 0 than this share of the line has its label set from the tick rightward, and the 0 left off. */
+const NEAR_START = 0.2
+
 /**
  * A how-unusual score on a line from 0 to `end`: a 1px axis, a 2px ink tick at the limit `k`, then, out of range, a
  * red bar from the limit to the score and a red dot; in range, a hollow ring on a thin stem. A score past `end` stops
@@ -20,6 +23,7 @@ export function ScoreLine({ z, k, end, out, size = 'row', ticks = false, label }
   label?: string
 }) {
   const at = (value: number) => `${(100 * Math.min(Math.max(value, 0), end)) / end}%`
+  const limitNearStart = k !== null && k / end < NEAR_START
   const classes = `score-line ${size} ${out ? 'out' : 'in'}${z > end ? ' past' : ''}`
   return (
     <span className={classes} role={label === undefined ? undefined : 'img'} aria-label={label} aria-hidden={label === undefined ? true : undefined}>
@@ -30,8 +34,11 @@ export function ScoreLine({ z, k, end, out, size = 'row', ticks = false, label }
       <span className="sl-point" style={{ left: at(z) }} />
       {ticks && (
         <>
-          <span className="sl-tick start">0</span>
-          {k !== null && <span className="sl-tick limit" style={{ left: at(k) }}>{`limit ${formatScore(k)}`}</span>}
+          {/* a limit near 0 takes the start's place, since its label would cover the 0 */}
+          {!limitNearStart && <span className="sl-tick start">0</span>}
+          {k !== null && (
+            <span className={limitNearStart ? 'sl-tick limit near-start' : 'sl-tick limit'} style={{ left: at(k) }}>{`limit ${formatScore(k)}`}</span>
+          )}
           <span className="sl-tick end">{String(end)}</span>
         </>
       )}

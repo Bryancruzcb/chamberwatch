@@ -506,7 +506,6 @@ select {
 }
 
 /* Words next to a mark: a role such as "Baseline run" in ink, a warning such as "Stuck sensor" in amber. No box. */
-.tag,
 .word {
   display: inline-block;
   margin-left: 8px;
@@ -519,7 +518,6 @@ select {
   white-space: nowrap;
 }
 
-.tag-warn,
 .word.warn {
   color: var(--drift);
 }
@@ -1544,16 +1542,6 @@ tbody tr.selected a {
   gap: 8px;
 }
 
-.page-head h1.key {
-  max-width: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-28);
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: 0;
-  overflow-wrap: anywhere;
-}
-
 .breadcrumb,
 .subtitle,
 .note,
@@ -1587,8 +1575,7 @@ ol.features {
   font-size: var(--text-13);
 }
 
-.resource,
-.stack {
+.resource {
   display: grid;
   gap: 32px;
   min-width: 0;
@@ -1668,30 +1655,7 @@ ol.features {
   }
 }
 
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 16px;
-  margin: 0;
-  font-size: var(--text-15);
-}
-
-.facts dt {
-  color: var(--ink-3);
-}
-
-.facts dd {
-  margin: 0;
-}
-
 /* Status: an icon of its own shape next to the words */
-.badges {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1727,183 +1691,6 @@ ol.features {
 /* In a narrow table a verdict wraps rather than pushing the table past its card. */
 td .badge {
   white-space: normal;
-}
-
-.meter {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--text-13);
-}
-
-.meter-track {
-  position: relative;
-  width: 56px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--paper-3);
-}
-
-.meter-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 2px;
-  background: var(--ring);
-}
-
-.meter-fill.over {
-  background: var(--signal);
-}
-
-.meter-limit {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  left: 50%;
-  width: 2px;
-  background: var(--ink);
-}
-
-.meter-value {
-  min-width: 30px;
-  text-align: right;
-  font-weight: 500;
-}
-
-/* A run's timeline: one lane per channel that left its range, laid along the etch, ending on how unusual it got. */
-.lanes {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.lane {
-  display: grid;
-  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) 104px;
-  align-items: center;
-  gap: 16px;
-}
-
-.lane-closest {
-  grid-template-columns: minmax(140px, 200px) auto;
-  justify-content: start;
-}
-
-.lane-name {
-  font-size: var(--text-15);
-  overflow-wrap: anywhere;
-}
-
-/* The etch itself, white inside the gray card, so a red stretch reads as time spent out of range. */
-.lane-track {
-  position: relative;
-  height: 22px;
-  border-radius: 2px;
-  background: var(--paper-2);
-}
-
-.lane-span {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  min-width: 2px;
-  border-radius: 2px;
-}
-
-.lane-span.excursion,
-.key-span.excursion {
-  background: var(--signal);
-}
-
-/* A stuck value is hatched as well as brown, so it never rests on color alone: red and brown read alike to a
-   red-green color-blind eye. The stripes repeat down a span's height, so even one 2px wide shows them. */
-.lane-span.hold,
-.key-span.hold {
-  background: repeating-linear-gradient(-45deg, var(--drift) 0 3px, transparent 3px 5px);
-}
-
-.lane-fault {
-  position: absolute;
-  top: -5px;
-  bottom: -5px;
-  border-left: 2px dashed var(--ink);
-}
-
-.lane .meter {
-  justify-self: end;
-}
-
-.lane-axis .lane-track {
-  height: 16px;
-  background: none;
-}
-
-.lane-tick {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
-  font-size: var(--text-12);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
-}
-
-.lane-unit {
-  justify-self: end;
-  font-size: var(--text-12);
-  color: var(--ink-3);
-}
-
-.timeline-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px 24px;
-  font-size: var(--text-13);
-  color: var(--ink-2);
-}
-
-.timeline-key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  color: var(--ink-3);
-}
-
-.timeline-key span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.key-span {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-.key-fault {
-  height: 12px;
-  border-left: 2px dashed var(--ink);
-}
-
-/* On a phone the lane's name and meter share a line, and the etch runs the full width under them. */
-@media (max-width: 640px) {
-  .lane {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px 12px;
-  }
-
-  .lane > .lane-track {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .lane-axis > span:first-child,
-  .lane-axis > .lane-unit {
-    display: none;
-  }
 }
 
 /* A lot's overview: how unusual each wafer was beside how its channels end. */
@@ -2218,11 +2005,6 @@ td .badge {
   box-shadow: inset 0 0 0 1px var(--ring);
 }
 
-.key-excursion {
-  background: color-mix(in srgb, var(--signal) 16%, transparent);
-  box-shadow: inset 0 3px 0 var(--signal);
-}
-
 .chart-frame {
   position: relative;
   min-height: 336px;
@@ -2268,20 +2050,6 @@ td .badge {
 
 .band-area {
   fill: var(--paper-3);
-}
-
-.band-mean {
-  fill: none;
-  stroke: var(--ring);
-  stroke-width: 1;
-}
-
-.excursion-span {
-  fill: color-mix(in srgb, var(--signal) 16%, transparent);
-}
-
-.excursion-cap {
-  fill: var(--signal);
 }
 
 .crosshair {
@@ -2337,19 +2105,6 @@ td .badge {
 .readout dd {
   margin: 0;
   text-align: right;
-}
-
-.head-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  font-size: var(--text-13);
-}
-
-.head-links a {
-  display: inline-block;
-  min-height: 24px;
-  padding: 2px 0;
 }
 
 .chart-head {
@@ -2501,39 +2256,501 @@ td .badge {
   background: var(--signal);
 }
 
-/* A run's lineup: every channel on one how-unusual scale, the limit drawn once, in the detectors' rank. */
-.lineup-rows {
+/* The run page: the lot strip and the sentence with the verdict beside them, then the figures. */
+.run-page {
   display: grid;
+  gap: 48px;
+  min-width: 0;
+}
+
+.run-head {
+  display: grid;
+  min-width: 0;
+}
+
+.run-head .breadcrumb {
+  margin-bottom: 12px;
+}
+
+.run-head-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  align-items: center;
+  gap: 32px 56px;
+}
+
+.run-head-main {
+  min-width: 0;
+}
+
+.run-lead {
+  max-width: 58ch;
+  margin-top: 20px;
+  font-size: var(--text-17);
+  line-height: 1.55;
+}
+
+.run-lead strong {
+  font-weight: 600;
+}
+
+.run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+  margin-top: 16px;
+  font-size: var(--text-13);
+  color: var(--ink-2);
+}
+
+.run-meta .word {
+  margin-left: 0;
+}
+
+.run-meta a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 2px 0;
+  color: var(--ink);
+}
+
+.run-key {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.run-state {
+  margin-top: 0;
+}
+
+.skel-crumb {
+  width: 160px;
+  height: 14px;
+  margin-bottom: 12px;
+}
+
+/* The lot strip: the run's lot as discs, a bracket over its baseline, this wafer larger with its score inside. The
+   padding holds the labels above and the halo around this wafer inside the strip, which scrolls on its own if a long
+   lot will not fit. */
+.lot-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 96px;
+  margin: 0 0 14px -6px;
+  padding: 32px 6px 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.lot-strip.label-below {
+  padding-bottom: 32px;
+}
+
+.lot-strip.placeholder {
+  overflow: hidden;
+}
+
+.skel-strip {
+  width: min(100%, 440px);
+  height: 34px;
+}
+
+.strip-baseline {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-right: 14px;
+}
+
+.strip-bracket {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  left: 0;
+  height: 26px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.strip-bracket::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 10px;
+  border: 2px solid var(--ink);
+  border-bottom: 0;
+}
+
+.strip-here {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  margin: 0 8px;
+}
+
+.strip-here-label {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  translate: -50% 0;
+}
+
+.label-below .strip-here-label {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+/* At either end of the strip the label lines up with the disc's outer edge, so it never runs past the strip. */
+.strip-here:first-child .strip-here-label {
+  left: 0;
+  translate: 0 0;
+}
+
+.lot-strip > .strip-here:last-child .strip-here-label {
+  right: 0;
+  left: auto;
+  translate: 0 0;
+}
+
+/* The verdict: a figure set beside the sentence, not a tile. A rule on its left, no box. */
+.run-verdict {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding: 0 0 4px 24px;
+  border-left: 2px solid var(--ink);
+}
+
+h2.verdict-label {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.verdict-big {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0 6px;
+}
+
+.verdict-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-72);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.verdict-state {
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.run-verdict .score-line {
+  margin-top: 14px;
+}
+
+/* Fig. 1, the timeline: one lane per channel along the etch, a leader at the first moment, the score at the right. */
+.lanes {
+  display: grid;
+  gap: 24px;
   margin: 0;
   padding: 0;
   list-style: none;
-  container-type: inline-size;
 }
 
-/* Too short a track for three labels: keep only the limit, which every dot is read against. */
-@container (width < 310px) {
-  .lineup-tick:not(.limit) {
-    display: none;
-  }
-}
-
-/* Each row is inset 8px, so the selected row's tint stays inside the figure's rule and off its text. */
-.lineup-row {
+.lane {
   display: grid;
-  grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1fr) 44px;
+  grid-template-columns: 200px minmax(0, 1fr) 96px;
   align-items: center;
-  gap: 12px;
-  min-height: 30px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--line);
+  gap: 16px;
 }
 
-.lineup-row.selected {
+.lane-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.lane-label .word {
+  margin-left: 0;
+}
+
+.lane-name {
+  font-size: var(--text-15);
+  overflow-wrap: anywhere;
+}
+
+.lane-track {
+  position: relative;
+  height: 26px;
   background: var(--paper-2);
 }
 
-.lineup-row.selected .lineup-name a {
+.lane-span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2.5px;
+}
+
+.lane-span.excursion,
+.key-span.excursion {
+  background: var(--signal);
+}
+
+/* A stuck value is hatched in ink, so it never reads as a second red and never rests on color alone. */
+.lane-span.hold,
+.key-span.hold {
+  min-width: 5px;
+  background: repeating-linear-gradient(-45deg, var(--ink-2) 0 2px, transparent 2px 5px);
+  box-shadow: inset 0 0 0 1px var(--ink-2);
+}
+
+.lane-fault {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  border-left: 2px dashed var(--ink);
+}
+
+.lane-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-20);
   font-weight: 600;
+  line-height: 1;
+}
+
+.state-dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ring);
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.lane-score.over .state-dot {
+  border: 0;
+  background: var(--signal);
+}
+
+.lane-head {
+  height: 30px;
+  align-items: stretch;
+}
+
+.lane-head .lane-track,
+.lane-axis .lane-track {
+  height: auto;
+  background: none;
+}
+
+.lane-unit {
+  align-self: center;
+  justify-self: end;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+}
+
+/* "First excursion, 407.2 s" on a leader that drops to the first lane. */
+.lane-first {
+  position: absolute;
+  bottom: 10px;
+  padding-left: 7px;
+  font-size: var(--text-13);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.lane-first::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: -10px;
+  left: 0;
+  border-left: 2px solid var(--ink);
+}
+
+.lane-first.flip {
+  padding: 0 7px 0 0;
+  translate: -100% 0;
+}
+
+.lane-first.flip::before {
+  right: 0;
+  left: auto;
+}
+
+.lane-axis {
+  margin-top: 14px;
+}
+
+.lane-axis .lane-track {
+  height: 22px;
+  border-top: 1px solid var(--ink);
+}
+
+.lane-tick {
+  position: absolute;
+  top: 8px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  line-height: 1;
+  translate: -50% 0;
+}
+
+.lane-tick::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  height: 5px;
+  border-left: 1px solid var(--ink);
+}
+
+.lane-tick.unit {
+  left: calc(100% + 10px);
+  translate: 0 0;
+}
+
+.lane-tick.unit::before {
+  display: none;
+}
+
+/* The run no channel left: the closest one, its score on a line with the limit ticked. */
+.lane-closest {
+  padding-bottom: 20px;
+}
+
+.lanes-plain {
+  gap: 0;
+}
+
+.lane-plain {
+  display: block;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.timeline-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 24px;
+  margin-top: 18px;
+  color: var(--ink-2);
+}
+
+.timeline-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.timeline-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.key-span {
+  width: 10px;
+  height: 12px;
+}
+
+.key-fault {
+  height: 14px;
+  border-left: 2px dashed var(--ink);
+}
+
+/* The lineup and the trace side by side, then the two small panels. */
+.run-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: start;
+  gap: 48px;
+}
+
+.run-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 48px;
+}
+
+.panel-small {
+  gap: 12px;
+}
+
+.panel-small h2 {
+  font-size: var(--text-24);
+}
+
+.label-switch button {
+  font-size: var(--text-15);
+}
+
+/* Fig. 2, the lineup: lollipops against one limit line drawn through every row. */
+.lineup-rows {
+  container-type: inline-size;
+}
+
+.lineup-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lineup-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 6px 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Each row is inset 8px, so the open row's tint and its ink bar stay inside the figure's rule and off its text. */
+.lineup-row.selected {
+  background: var(--paper-2);
+  box-shadow: inset 4px 0 0 var(--ink);
 }
 
 .lineup-name {
@@ -2542,83 +2759,421 @@ td .badge {
   align-items: baseline;
   gap: 2px 8px;
   min-width: 0;
-  padding: 4px 0;
+  padding: 5px 0;
   font-size: var(--text-15);
 }
 
+.lineup-name .word {
+  margin-left: 0;
+}
+
+.lineup-row:is(.over, .selected) .lineup-name a {
+  font-weight: 600;
+}
+
+/* The right margin is room for the arrow of a channel past the end of the scale, in every row so the scale stays one. */
 .lineup-track {
   position: relative;
   align-self: stretch;
-  min-height: 16px;
+  min-height: 30px;
+  margin-right: 12px;
 }
 
-/* Under the limit: a thin strip, so the eye reads every dot against the same edge. */
-.lineup-normal {
+.lineup-limit {
   position: absolute;
-  top: 50%;
+  top: 0;
+  bottom: 0;
+  margin-left: -1px;
+  border-left: 2px solid var(--ink);
+}
+
+.lineup-stem {
+  position: absolute;
+  top: calc(50% - 0.5px);
   left: 0;
-  height: 2px;
+  height: 1px;
   background: var(--ring);
-  translate: 0 -50%;
+}
+
+.lineup-row.over .lineup-stem {
+  top: calc(50% - 2px);
+  height: 4px;
+  background: var(--signal);
 }
 
 .lineup-dot {
   position: absolute;
   top: 50%;
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--ink-3);
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ring);
   border-radius: 50%;
   background: var(--paper);
   translate: -50% -50%;
 }
 
-.lineup-dot.over {
-  border-color: var(--signal);
+.lineup-row.over .lineup-dot {
+  width: 16px;
+  height: 16px;
+  border: 0;
   background: var(--signal);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.lineup-row.selected.over .lineup-dot {
+  box-shadow: 0 0 0 2px var(--paper-2);
+}
+
+/* Past the end of the scale: the dot stops at the end and points on. */
+.lineup-row.past .lineup-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 3px);
+  border: 5px solid transparent;
+  border-left: 7px solid var(--signal);
+  translate: 0 -50%;
 }
 
 .lineup-value {
-  font-size: var(--text-13);
+  font-family: var(--font-mono);
+  font-size: var(--text-15);
   text-align: right;
-  color: var(--ink-2);
 }
 
-.lineup-value.over {
-  color: var(--signal);
+.lineup-row.over .lineup-value {
   font-weight: 600;
 }
 
-.lineup-axis {
-  min-height: 24px;
-  border-bottom: 0;
+.lineup-scale {
+  align-items: end;
+  min-height: 0;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.lineup-head {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lineup-scale .lineup-track {
+  min-height: 14px;
 }
 
 .lineup-tick {
   position: absolute;
-  top: 2px;
+  bottom: 0;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
   font-size: var(--text-12);
-  color: var(--ink-3);
+  line-height: 1;
   white-space: nowrap;
   translate: -50% 0;
 }
 
-.lineup-tick:first-child {
+.lineup-tick.start {
   translate: 0 0;
+}
+
+.lineup-tick.end {
+  translate: -100% 0;
 }
 
 .lineup-tick.limit {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: 600;
 }
 
-/* The limit, drawn in every row so it reads as one line down the figure. */
-.lineup-limit {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
+/* A limit near 0 sets its label from the line rightward and takes the 0's place. */
+.lineup-tick.near-start,
+.sl-tick.near-start {
+  margin-left: -1px;
+  translate: 0 0;
+}
+
+/* Too short a track for three labels: keep only the limit, which every dot is read against. */
+@container (width < 330px) {
+  .lineup-tick:not(.limit) {
+    display: none;
+  }
+}
+
+.lineup-more {
+  margin-top: 12px;
+}
+
+.lineup .how,
+.trace-figure .how {
+  margin-top: 12px;
+}
+
+/* Fig. 3, the trace: an ink envelope, red inside excursions, a red rail of ticks above, the band in paper. */
+.trace .chart-frame {
+  min-height: 338px;
+}
+
+.trace .tick {
+  fill: var(--ink-2);
+  font-family: var(--font-mono);
+}
+
+.trace .axis-line,
+.axis-mark {
+  stroke: var(--ink);
+}
+
+.reading {
+  fill: var(--ink);
+  stroke: var(--ink);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.reading.out {
+  fill: var(--signal);
+  stroke: var(--signal);
+  stroke-width: 2.2;
+}
+
+.rail-line {
+  stroke: var(--line);
+}
+
+.rail-tick {
+  fill: var(--signal);
+}
+
+.chart-note {
+  fill: var(--ink-2);
+  font-size: var(--text-12);
+}
+
+.chart-ann {
+  fill: var(--ink);
+  font-size: var(--text-13);
+  font-weight: 600;
+}
+
+.leader {
+  stroke: var(--ink-2);
+  stroke-width: 1;
+}
+
+.leader.dashed {
+  stroke: var(--ink);
+  stroke-dasharray: 2 2;
+}
+
+.rail-hold {
+  stroke: var(--ink-2);
+  stroke-width: 1;
+}
+
+.hatch {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.key-reading {
   background: var(--ink);
+}
+
+.key-excursion {
+  width: 4px;
+  background: var(--signal);
+}
+
+.figure-table {
+  margin-top: 24px;
+}
+
+.figure-table caption {
+  font-size: var(--text-15);
+}
+
+/* Long column heads wrap onto two lines, so the numbers keep the width. */
+.figure-table thead th {
+  white-space: normal;
+}
+
+.figure-table td.num {
+  white-space: nowrap;
+}
+
+.figure-table td.strong {
+  font-weight: 600;
+}
+
+/* Facts: a ruled list, a mono label beside each value. */
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+  font-size: var(--text-15);
+}
+
+.facts dt,
+.facts dd {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.facts dt {
+  padding-right: 24px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  line-height: 1.9;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.facts .word {
+  margin-left: 0;
+}
+
+.facts-aside {
+  margin-left: 12px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-13);
+}
+
+@media (max-width: 1000px) {
+  .run-cols,
+  .run-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .run-head-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  .run-page {
+    gap: 36px;
+  }
+
+  .verdict-num {
+    font-size: var(--text-60);
+  }
+
+  .lot-strip {
+    gap: 4px;
+    min-height: 82px;
+  }
+
+  .lot-strip .disc-strip {
+    --d: 24px;
+  }
+
+  .lot-strip .disc-here {
+    --d: 36px;
+  }
+
+  .lot-strip .disc-here .disc-mark {
+    font-size: var(--text-12);
+  }
+
+  .strip-baseline {
+    gap: 4px;
+    margin-right: 8px;
+  }
+
+  .strip-here {
+    margin: 0 6px;
+  }
+
+  /* On a phone a lane's name and score share a line, and the etch runs the full width under them. */
+  .lane {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+  }
+
+  .lane > .lane-track,
+  .lane-closest > .score-line {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .lane-head > span:first-child,
+  .lane-head > .lane-unit,
+  .lane-axis > span:first-child,
+  .lane-axis > span:last-child {
+    display: none;
+  }
+
+  .lane-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lane-axis {
+    grid-template-columns: minmax(0, 1fr) 14px;
+  }
+
+  .lane-tick.unit {
+    left: calc(100% + 4px);
+  }
+
+  .lane-score {
+    font-size: var(--text-17);
+  }
+
+  .lanes {
+    gap: 14px;
+  }
+
+  .lineup-row {
+    grid-template-columns: minmax(0, 128px) minmax(0, 1fr) 40px;
+    gap: 8px;
+  }
+
+  .lineup-name {
+    font-size: var(--text-13);
+  }
+
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facts dt {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
+/* The narrowest phones: a lot of ten still fits the strip without scrolling. */
+@media (max-width: 360px) {
+  .lot-strip {
+    gap: 2px;
+    padding-right: 0;
+  }
+
+  .lot-strip .disc-here {
+    --d: 32px;
+  }
+
+  .strip-baseline {
+    gap: 2px;
+    margin-right: 6px;
+  }
+
+  .strip-here {
+    margin: 0 5px;
+  }
 }
 
 /* Narrower screens */

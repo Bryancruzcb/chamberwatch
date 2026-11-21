@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, timeLineEnd } from './scale'
+import { linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, timeLineEnd, verdictEnd } from './scale'
 
 describe('linearScale', () => {
   it('maps the domain onto the range and back', () => {
@@ -66,5 +66,13 @@ describe('the ends of the score and time lines', () => {
     expect(timeLineEnd([537, 407.2, 551.4])).toBe(600)
     expect(timeLineEnd([600])).toBe(600)
     expect(timeLineEnd([])).toBe(100)
+  })
+
+  it('ends the verdict line at four limits or past the score, and stops it at ten limits', () => {
+    expect(verdictEnd(18.8, 6)).toBe(25)
+    expect(verdictEnd(3.6, 6)).toBe(25)
+    expect(verdictEnd(27, 6)).toBe(30)
+    expect(verdictEnd(97795, 6)).toBe(60)
+    expect(verdictEnd(4, 0)).toBe(5)
   })
 })
