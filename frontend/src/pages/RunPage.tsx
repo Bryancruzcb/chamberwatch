@@ -31,11 +31,11 @@ import { Loaded } from '../components/Loaded'
 import { LotStrip, LotStripPlaceholder } from '../components/LotStrip'
 import { ScoreLine } from '../components/ScoreLine'
 import {
-  describeCatch, describeChannelTrace, describeFault, describeRun, formatBigScore, formatChannelName, formatDate, formatFaultKind,
+  alignedFormat, describeCatch, describeChannelTrace, describeFault, describeRun, formatAgainstLimit, formatChannelName, formatDate, formatFaultKind,
   formatLabel, formatScore, formatSeconds, formatShortAgainstLimit, formatValue, formatZ, tieUnits,
 } from '../format'
 import {
-  describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle,
+  describeAlignmentNote, describeGap, describePhaseStarts, describeUnscored, describeVerdict, lotStrip, runDetailState, runHeadline, runTitle,
 } from '../run'
 import { NotFound, PageFailure } from './NotFound'
 
@@ -131,8 +131,9 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
   const selected = run.channels.find((channel) => channel.channel === params.get('channel')) ?? run.channels[0]
   const { assessment, baseline } = run
   const [settings] = useResource('/api/settings', settingsSchema)
-  // until the settings arrive the buttons wait; if they never do, the server still refuses a read-only relabel
-  const readOnly = settings.kind === 'ready' ? settings.data.readOnly : settings.kind === 'loading'
+  // until the settings arrive the buttons show disabled; if they never do, they stay usable, since the server still
+  // refuses a relabel when it is read-only
+  const readOnly = settings.kind === 'ready' ? settings.data.readOnly : settings.kind === 'loading' ? 'unknown' : false
   // the lot strip's wafers; a relabel's refit rescores every run, so it asks for them again along with the run
   const [lotRuns, reloadLotRuns] = useResource(withSource(`/api/runs?lot=${run.lotId}`, run.source), runsPageSchema)
   function relabeled() {
@@ -242,7 +243,7 @@ function Lead({ text, first }: { text: string; first: string | null }) {
 function Verdict({ run, score, k }: { run: RunDetail; score: Score; k: number }) {
   const state = runDetailState(run)
   const end = verdictEnd(score.persistentZ, k)
-  const z = formatBigScore(score.persistentZ)
+  const z = formatAgainstLimit(score.persistentZ, k)
   return (
     <section className="run-verdict" aria-labelledby="verdict-title">
       <h2 id="verdict-title" className="verdict-label">How unusual</h2>
@@ -265,7 +266,7 @@ function Verdict({ run, score, k }: { run: RunDetail; score: Score; k: number })
 }
 
 /**
- * The run's lot as a row of discs above the `h1`, each a link to its run, this one larger with its score inside. The
+ * The run's lot as a row of discs above the `h1`, each a link to its run and numbered by position, this one larger. The
  * lot's wafers come from the runs list, since the run's own answer does not carry them; the strip holds its height while
  * that loads and is left out if it fails, unless an earlier answer can stand in.
  */
@@ -361,7 +362,8 @@ function ChannelFigure({ runId, channel }: { runId: number; channel: Channel }) 
         </div>
       )}
     >
-      <Loaded resource={trace}>{(data) => <TraceChart trace={data} holds={channel.holds} />}</Loaded>
+      {/* while a newly picked channel's trace loads the last chart stays up, dimmed; the new holds wait for their own trace */}
+      <Loaded resource={trace}>{(data) => <TraceChart trace={data} holds={data.channel === channel.channel ? channel.holds : []} />}</Loaded>
       <EvidenceTable phases={channel.phases} />
       {channel.holds.length > 0 && <HoldsTable holds={channel.holds} longestHold={channel.longestHold} />}
       {channel.excursions.length > 0 && <ExcursionsTable excursions={channel.excursions} />}
@@ -416,9 +418,16 @@ function TitledTable({ id, title, children }: { id: string; title: string; child
   )
 }
 
-/** Each phase's mean and spread against the good runs', with the z of each; a z past the limit is set in red. */
+/**
+ * Each phase's mean and spread against the good runs', with the z of each in bold. Each column of readings lines its
+ * decimal points up where its values allow it (`alignedFormat`).
+ */
 function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
   const titleId = useId()
+  const mean = alignedFormat(phases.map((phase) => phase.mean))
+  const goodMean = alignedFormat(phases.map((phase) => phase.goodMean))
+  const spread = alignedFormat(phases.map((phase) => phase.sd))
+  const goodSpread = alignedFormat(phases.map((phase) => phase.goodSd))
   return (
     <TitledTable id={titleId} title="Phase statistics against the good runs">
       <table aria-labelledby={titleId}>
@@ -437,11 +446,11 @@ function EvidenceTable({ phases }: { phases: readonly PhaseEvidence[] }) {
           {phases.map((phase) => (
             <tr key={phase.phase}>
               <th scope="row">{phase.phase}</th>
-              <td className="num">{formatValue(phase.mean)}</td>
-              <td className="num">{formatValue(phase.goodMean)}</td>
+              <td className="num">{mean(phase.mean)}</td>
+              <td className="num">{goodMean(phase.goodMean)}</td>
               <td className="num strong">{formatZ(phase.meanZ)}</td>
-              <td className="num">{formatValue(phase.sd)}</td>
-              <td className="num">{formatValue(phase.goodSd)}</td>
+              <td className="num">{spread(phase.sd)}</td>
+              <td className="num">{goodSpread(phase.goodSd)}</td>
               <td className="num strong">{formatZ(phase.sdZ)}</td>
             </tr>
           ))}
@@ -479,7 +488,7 @@ function ExcursionsTable({ excursions }: { excursions: readonly Excursion[] }) {
                 <td className="num">{formatSeconds(excursion.confirmTimeS)}</td>
                 <td className="num">{formatSeconds(excursion.endTimeS)}</td>
                 <td className="num">{excursion.outSamples}</td>
-                <td className="num">{formatScore(excursion.peakZ)}</td>
+                <td className="num">{formatZ(excursion.peakZ)}</td>
               </tr>
             ))}
           </tbody>
@@ -492,7 +501,8 @@ function ExcursionsTable({ excursions }: { excursions: readonly Excursion[] }) {
 function RelabelPanel({ runId, label, readOnly, onRelabeled }: {
   runId: number
   label: Label
-  readOnly: boolean
+  /** Whether the server refuses relabels, or 'unknown' while its settings load. */
+  readOnly: boolean | 'unknown'
   onRelabeled: () => void
 }) {
   const [state, setState] = useState<Relabel>({ kind: 'idle' })
@@ -550,7 +560,7 @@ function RelabelPanel({ runId, label, readOnly, onRelabeled }: {
       <p className="note">
         Good runs teach the baseline. This run is labeled {formatLabel(label)}, so it {LABEL_MEANINGS[label]}
       </p>
-      {readOnly
+      {readOnly === true
         ? <p className="note">Labels cannot be changed on this ChamberWatch, a read-only demo.</p>
         : (
           <div className="segmented label-switch" role="group" aria-label="Label">
@@ -559,7 +569,7 @@ function RelabelPanel({ runId, label, readOnly, onRelabeled }: {
                 key={option}
                 type="button"
                 aria-pressed={option === label}
-                disabled={state.kind === 'saving'}
+                disabled={readOnly === 'unknown' || state.kind === 'saving'}
                 onClick={() => void relabel(option)}
               >
                 {formatLabel(option)}
@@ -668,14 +678,12 @@ function AlignmentFacts({ alignment }: { alignment: Alignment }) {
       rows={[
         ['Status', alignment.status === 'ALIGNED'
           ? 'Aligned cleanly'
-          : <><span className="word warn">Degraded</span>{alignment.note === null ? '' : ` ${alignment.note}`}</>],
+          : <><span className="word warn">Degraded</span>{alignment.note === null ? '' : ` ${describeAlignmentNote(alignment.note)}`}</>],
         ['Etch', `${formatSeconds(alignment.etchStartS)} to ${formatSeconds(alignment.etchEndS)}`],
         ['Cycles', `${alignment.c4f8Phases} C4F8 phases, last cycle ${alignment.lastCycle}`],
         ['Cycle 1', alignment.cycle1Sf6 ? 'Starts with SF6' : 'Starts with C4F8'],
-        ['Phase onsets', `${alignment.onsetsDetected} found, ${alignment.onsetsPredicted} predicted`],
-        ['Largest gap', gap === null
-          ? 'None'
-          : `${formatSeconds(gap.lengthS)} at ${formatSeconds(gap.startS)}, ${gap.insideEtch ? 'inside' : 'outside'} the etch`],
+        ['Phase starts', describePhaseStarts(alignment.onsetsDetected, alignment.onsetsPredicted)],
+        ['Largest gap', gap === null ? 'None' : describeGap(gap)],
         ...(alignment.irregularCycles.length > 0 ? [['Irregular cycles', alignment.irregularCycles.join(', ')] as const] : []),
       ]}
     />

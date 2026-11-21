@@ -235,12 +235,25 @@ describe('lot drift on the runs page', () => {
     expect(describeDrift(drift)).toBe('4 channels are outside the band or heading out, by each lot\'s last wafer.')
   })
 
-  it('answers the drift figure only once a lot has answered', () => {
+  it('answers the drift figure only once every lot has answered', () => {
+    const pressure = { channel: 'Pressure', text: 'heading out in lot 2' }
     expect(describeDrift({ lines: [], groups: [], loading: [1, 2], k: null })).toBeNull()
-    expect(describeDrift({ lines: [], groups: [{ label: 'No drift data', lotNos: [1] }], loading: [], k: null }))
-      .toBe('No channel is outside the band or heading out, by each lot\'s last wafer.')
-    expect(describeDrift({ lines: [{ channel: 'Pressure', text: 'heading out in lot 2' }], groups: [], loading: [], k: 3 }))
+    expect(describeDrift({ lines: [], groups: [{ label: 'No drift data', lotNos: [1] }], loading: [6], k: null })).toBeNull()
+    expect(describeDrift({ lines: [pressure], groups: [], loading: [6], k: 3 })).toBeNull()
+    expect(describeDrift({ lines: [pressure], groups: [], loading: [], k: 3 }))
       .toBe('1 channel is outside the band or heading out, by each lot\'s last wafer.')
+  })
+
+  it('says no channel drifts only when a lot was judged and found quiet', () => {
+    const quiet = { label: 'No channel outside the band or heading out', lotNos: [3] }
+    const none = 'No lot has a drift verdict yet.'
+    expect(describeDrift({ lines: [], groups: [quiet], loading: [], k: 3 }))
+      .toBe('No channel is outside the band or heading out, by each lot\'s last wafer.')
+    expect(describeDrift({ lines: [], groups: [{ label: 'No drift data', lotNos: [1] }], loading: [], k: null })).toBe(none)
+    expect(describeDrift({ lines: [], groups: [{ label: 'Drift did not load', lotNos: [1, 2] }], loading: [], k: null })).toBe(none)
+    expect(describeDrift({ lines: [], groups: [{ label: 'Too few wafers to judge a trend', lotNos: [1, 2] }], loading: [], k: 3 })).toBe(none)
+    expect(describeDrift({ lines: [], groups: [{ label: 'Drift did not load', lotNos: [1] }, quiet], loading: [], k: 3 }))
+      .toBe('No channel is outside the band or heading out, by each lot\'s last wafer.')
   })
 
   it('accounts for every simulated lot, the ones still loading included', () => {

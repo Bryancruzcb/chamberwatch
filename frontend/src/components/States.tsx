@@ -1,3 +1,6 @@
+import { Link } from 'react-router'
+import type { Source } from '../api/schema'
+import { EMPTY_HINTS } from '../sources'
 import { Icon } from './Icon'
 
 /** What the API said when something did not load, in the place of the figure it would fill, with a way to ask again. */
@@ -10,6 +13,21 @@ export function ErrorState({ title, message, onRetry }: { title: string; message
         <Icon name="refresh" />
         Try again
       </button>
+    </div>
+  )
+}
+
+/**
+ * What a page shows where its source has no wafers yet: how that source fills, and the way to the Live page when that
+ * is where its wafers come from. No title, since the page's h1 above already says the source is empty.
+ */
+export function EmptySource({ source }: { source: Source }) {
+  return (
+    <div className="state" role="status">
+      <p>
+        {EMPTY_HINTS[source]}
+        {source === 'LIVE' && <>{' '}<Link to="/live">Open the Live page</Link></>}
+      </p>
     </div>
   )
 }

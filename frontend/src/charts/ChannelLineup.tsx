@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type CSSProperties, useState } from 'react'
 import { Link } from 'react-router'
 import type { Channel } from '../api/schema'
 import { Figure } from '../components/Figure'
@@ -8,6 +8,10 @@ import { endClearsLimit, scoreLineEnd, startClearsLimit } from './scale'
 import { useWidth } from './useWidth'
 
 const percent = (share: number) => `${(share * 100).toFixed(3)}%`
+
+/** A row's score and the limit as shares of its track, the score line's custom properties (see ScoreLine). */
+type TrackStyle = CSSProperties & Record<'--z' | '--k', string>
+const trackStyle = (z: number, k: number): TrackStyle => ({ '--z': percent(z), '--k': percent(k) })
 
 /** A limit closer to 0 than this share of the scale has its label set from the line rightward, and the 0 left off. */
 const NEAR_START = 0.2
@@ -66,7 +70,8 @@ export function ChannelLineup({ channels, selected, k, n, runZ }: {
         <ul className="lineup-list">
           {rows.map((channel) => {
             const over = channel.persistentZ > k
-            const classes = ['lineup-row', over ? 'over' : null, channel === selected ? 'selected' : null, channel.persistentZ > end ? 'past' : null]
+            // a ring under the limit is drawn clear of it (see .under in the stylesheet); a red dot is never moved
+            const classes = ['lineup-row', over ? 'over' : 'under', channel === selected ? 'selected' : null, channel.persistentZ > end ? 'past' : null]
               .filter((name) => name !== null)
               .join(' ')
             return (
@@ -83,10 +88,10 @@ export function ChannelLineup({ channels, selected, k, n, runZ }: {
                   {channel.deviation && <span className="word">Deviates</span>}
                   {channel.holds.length > 0 && <span className="word warn">Stuck</span>}
                 </span>
-                <span className="lineup-track" aria-hidden="true">
+                <span className="lineup-track" aria-hidden="true" style={trackStyle(at(channel.persistentZ), at(k))}>
                   <span className="lineup-limit" style={{ left: percent(at(k)) }} />
-                  <span className="lineup-stem" style={{ width: percent(at(channel.persistentZ)) }} />
-                  <span className="lineup-dot" style={{ left: percent(at(channel.persistentZ)) }} />
+                  <span className="lineup-stem" />
+                  <span className="lineup-dot" />
                 </span>
                 <span className="lineup-value">
                   {formatShortAgainstLimit(channel.persistentZ, k)}

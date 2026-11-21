@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, type Page, test } from '@playwright/test'
 import { serveApi } from './api.ts'
+import { ringsPastLimit } from './locators.ts'
 
 function fixture(name: string) {
   return JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8'))
@@ -50,15 +51,31 @@ test('says in a sentence how a flagged wafer did, with its key on the meta line 
   await expect(verdict).toHaveCSS('border-left-width', '2px')
 })
 
-test('draws the lot above the heading, this wafer larger with its score, each disc a link to its run', async ({ page }) => {
+test('prints a score just under the limit with the decimals that tell it from the limit', async ({ page }) => {
+  await serveApi(page)
+  const run = fixture('run-11.json')
+  await page.route((url) => url.pathname === '/api/runs/11', (route) => route.fulfill({
+    json: { ...run, assessment: { ...run.assessment, persistentZ: 5.96 } },
+  }))
+  await page.goto('/runs/11')
+  const verdict = page.getByRole('region', { name: 'How unusual' })
+
+  await expect(verdict.locator('.verdict-num')).toHaveText('5.96')
+  await expect(verdict.locator('.verdict-state')).toHaveText('In range: under the limit of 6.0')
+  await expect(verdict.getByRole('img')).toHaveAttribute('aria-label', /^5\.96 on a scale/)
+})
+
+test('draws the lot above the heading, this wafer larger, each disc a link to its run numbered by its place', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')
   const strip = page.getByRole('group', { name: 'Lot 6, wafer by wafer' })
 
   await expect(strip.getByRole('link')).toHaveCount(10)
+  // one number means one thing along the row: the score is in the disc's name and in the verdict beside it
+  await expect(strip.locator('.disc-text')).toHaveText(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
   const here = strip.getByRole('link', { name: 'Lot 6, wafer 5: out of range, how unusual 18.8' })
   await expect(here).toHaveAttribute('aria-current', 'page')
-  await expect(here).toHaveText('18.8')
+  await expect(here).toHaveText('5')
   await expect(strip.locator('.strip-here-label')).toHaveText('This wafer')
   await expect(strip.locator('.strip-bracket')).toHaveText('Baseline')
   await expect(strip.locator('.strip-baseline').getByRole('link')).toHaveCount(3)
@@ -180,13 +197,14 @@ test('lists the channels of a run caught only on a phase mean or spread, with no
   await expect(page.getByRole('region', { name: 'Closest to the limit' })).toHaveCount(0)
 })
 
-test('reads one bucket at a time off the chart from the keyboard', async ({ page }) => {
+test('reads one time slice at a time off the chart from the keyboard, in words the key explains', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')
   const trace = page.getByRole('region', { name: 'Platen RF load cap' })
-  const chart = trace.getByRole('img', { name: /^Platen RF load cap across cycles 1 to 100\./ })
+  const chart = trace.getByRole('img', { name: 'Platen RF load cap across cycles 1 to 100. Arrow keys read one time slice at a time.' })
   const readout = page.locator('.readout')
-  // a live region mounted with the chart, empty until a bucket is read, so a screen reader announces each one
+  await expect(trace.getByRole('list', { name: 'Key' }).getByRole('listitem').first()).toHaveText('Reading, lowest to highest in each time slice')
+  // a live region mounted with the chart, empty until a time slice is read, so a screen reader announces each one
   const status = trace.getByRole('status')
   await expect(status).toHaveCount(1)
   await expect(status).toHaveText('')
@@ -205,7 +223,7 @@ test('reads one bucket at a time off the chart from the keyboard', async ({ page
   await expect(status).toHaveText('')
 
   await trace.getByRole('button', { name: 'Show as a table' }).click()
-  await expect(trace.getByRole('table', { name: 'Platen RF load cap, one row per bucket' })).toBeVisible()
+  await expect(trace.getByRole('table', { name: 'Platen RF load cap, one row per time slice' })).toBeVisible()
 })
 
 test('fits the trace past the start-up ramp and says what it clips; the whole record shows everything', async ({ page }) => {
@@ -228,6 +246,25 @@ test('fits the trace past the start-up ramp and says what it clips; the whole re
   await expect(trace.getByRole('img', { name: /across the whole record/ })).toBeVisible()
   await expect(clipped).toHaveCount(0)
   await expect(ticks.first()).toHaveText('0')
+})
+
+test('marks a picked channel\'s stuck values only on its own trace, not on the one still showing while it loads', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/136?channel=Gas7Flow')
+  const trace = page.locator('.trace-figure')
+  await expect(trace.getByRole('img', { name: /^Gas 7 flow across/ })).toBeVisible()
+  const release = await holdBack(page, '/api/runs/136/channels/HeliumBPPressure/trace')
+  await page.getByRole('region', { name: 'Every channel against the limit' }).getByRole('link', { name: 'Helium backside pressure' }).click()
+
+  await expect(page.getByRole('heading', { level: 2, name: 'Helium backside pressure' })).toBeVisible()
+  await expect(trace.getByRole('img', { name: /^Gas 7 flow across/ })).toBeVisible()
+  await expect(trace.getByRole('list', { name: 'Key' })).not.toContainText('Stuck value')
+  await expect(trace.locator('svg')).not.toContainText('Stuck from')
+  release()
+
+  await expect(trace.getByRole('img', { name: /^Helium backside pressure across/ })).toBeVisible()
+  await expect(trace.getByRole('list', { name: 'Key' })).toContainText('Stuck value')
+  await expect(trace.locator('svg')).toContainText('Stuck from')
 })
 
 test('zooms to the cycles around the first excursion', async ({ page }) => {
@@ -323,6 +360,32 @@ test('shows the label without the buttons on a read-only server', async ({ page 
   await expect(panel.locator('.fig-no')).toHaveCount(0)
 })
 
+test('holds the label buttons, disabled, while the settings load, and never calls the server read-only before it says so', async ({ page }) => {
+  await serveApi(page)
+  const release = await holdBack(page, '/api/settings')
+  await page.goto('/runs/55')
+  const panel = page.getByRole('region', { name: 'Label' })
+  const good = page.getByRole('group', { name: 'Label' }).getByRole('button', { name: 'Good' })
+
+  await expect(good).toBeDisabled()
+  await expect(panel).not.toContainText('read-only')
+  release()
+
+  await expect(good).toBeEnabled()
+  await expect(panel).not.toContainText('read-only')
+})
+
+test('keeps the label buttons when the settings fail, since the server still refuses a read-only relabel', async ({ page }) => {
+  await serveApi(page)
+  await page.route((url) => url.pathname === '/api/settings', (route) => route.fulfill({
+    status: 500, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Server error', status: 500 }),
+  }))
+  await page.goto('/runs/55')
+
+  await expect(page.getByRole('group', { name: 'Label' }).getByRole('button', { name: 'Good' })).toBeEnabled()
+  await expect(page.getByRole('region', { name: 'Label' })).not.toContainText('read-only')
+})
+
 test('says when a run does not exist, with the way back to the runs', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/9999')
@@ -366,7 +429,7 @@ test('marks a good run the detectors left alone', async ({ page }) => {
   // this wafer is a baseline wafer, so its label sits under it, clear of the bracket
   const strip = page.getByRole('group', { name: 'Lot 2, wafer by wafer' })
   await expect(strip).toHaveClass(/label-below/)
-  await expect(strip.locator('.strip-baseline [aria-current="page"]')).toHaveText('5.5')
+  await expect(strip.locator('.strip-baseline [aria-current="page"]')).toHaveText('1')
 })
 
 test('keeps the first wafer\'s THIS WAFER label inside the strip on a phone', async ({ page }) => {
@@ -392,6 +455,22 @@ test('says when a run was not scored, with no verdict and no timeline', async ({
   await expect(page.getByRole('region', { name: 'How unusual' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'When channels left their range' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Lot 6, wafer 5: not scored' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('says in the Alignment panel what the phase starts and the largest gap are', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55')
+  const panel = page.getByRole('region', { name: 'Alignment' })
+
+  await expect(panel.locator('dd').nth(4)).toHaveText('198 found, none filled in where a marker was missing')
+  await expect(panel.locator('dt').nth(4)).toHaveText('Phase starts')
+  await expect(panel).toContainText('41.1 s with no samples, at 648.8 s, outside the etch')
+  await expect(panel).not.toContainText(/onset|predicted/)
+
+  await page.goto('/runs/133')
+  await expect(panel).toContainText('Degraded 87 phase starts filled in, the first in cycle 13')
+  await expect(panel).toContainText('filled in where a marker was missing')
+  await expect(panel).not.toContainText(/onset|predicted/)
 })
 
 test('says when a run could not be aligned, and why', async ({ page }) => {
@@ -618,7 +697,7 @@ test('never scrolls sideways on a phone, and fits a lot of ten in its strip', as
   }
 })
 
-test('keeps the trace\'s clip note inside the plot and the time axis\'s unit clear of its last tick on a phone', async ({ page }) => {
+test('keeps the trace\'s clip note inside the plot, clear of the value axis, on a phone', async ({ page }) => {
   await serveApi(page)
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 800 })
@@ -628,17 +707,65 @@ test('keeps the trace\'s clip note inside the plot and the time axis\'s unit cle
     await expect(note).toHaveText('Below 70 until 41.4 s; starts at 6.9')
     const noteBox = await note.boundingBox()
     const plot = await svg.locator('rect.hit').boundingBox()
-    const ticks = await svg.locator('text.tick[text-anchor="end"]').evaluateAll((labels) => Math.max(...labels.map((label) => label.getBoundingClientRect().right)))
+    const ticks = await svg.locator('text.tick[text-anchor="end"]').evaluateAll((labels) => Math.max(...labels
+      .filter((label) => label.closest('.time-axis') === null)
+      .map((label) => label.getBoundingClientRect().right)))
     expect(noteBox?.x ?? 0, `note at ${width}`).toBeGreaterThanOrEqual(ticks)
     expect(noteBox?.x ?? 0, `note at ${width}`).toBeGreaterThanOrEqual(plot?.x ?? 0)
     expect((noteBox?.x ?? 0) + (noteBox?.width ?? 0), `note at ${width}`).toBeLessThanOrEqual((plot?.x ?? 0) + (plot?.width ?? 0))
-
-    await page.goto('/runs/133')
-    const axis = page.getByRole('region', { name: 'When channels left their range' })
-    const last = await axis.locator('.lane-tick:not(.unit)').last().boundingBox()
-    const unit = await axis.locator('.lane-tick.unit').boundingBox()
-    expect((unit?.x ?? 0) - ((last?.x ?? 0) + (last?.width ?? 0)), `unit at ${width}`).toBeGreaterThanOrEqual(2)
   }
+})
+
+test('prints the unit with the last tick of each time axis, and keeps every tick inside its plot and the page', async ({ page }) => {
+  await serveApi(page)
+  for (const width of [1280, 375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    for (const run of [55, 133]) {
+      await page.goto(`/runs/${run}`)
+      const where = `run ${run} at ${width}`
+      const svg = page.locator('.trace-figure figure.chart svg')
+      const plot = await svg.locator('rect.hit').boundingBox()
+      const traceTicks = svg.locator('.time-axis text.tick')
+      await expect(traceTicks.last(), where).toHaveText(/^[\d,.]+ s$/)
+      // the unit once more is noise: only the last tick carries it, and no loose "s" floats past the axis
+      expect((await traceTicks.allTextContents()).filter((text) => text.endsWith(' s')), where).toHaveLength(1)
+      await expect(svg.locator('text.tick').filter({ hasText: /^s$/ }), where).toHaveCount(0)
+      const traceBoxes = await traceTicks.evaluateAll((labels) => labels.map((label) => label.getBoundingClientRect()))
+      for (const box of traceBoxes) {
+        expect(box.right, where).toBeLessThanOrEqual((plot?.x ?? 0) + (plot?.width ?? 0) + 0.5)
+      }
+
+      const axis = page.getByRole('region', { name: 'When channels left their range' }).locator('.lane-axis .lane-track')
+      const laneTicks = axis.locator('.lane-tick')
+      await expect(laneTicks.last(), where).toHaveText(/^\d+ s$/)
+      await expect(axis.locator('.lane-tick.unit'), where).toHaveCount(0)
+      const track = await axis.boundingBox()
+      const laneBoxes = await laneTicks.evaluateAll((labels) => labels.map((label) => label.getBoundingClientRect()))
+      for (const box of [...traceBoxes, ...laneBoxes]) {
+        expect(box.left, where).toBeGreaterThanOrEqual(width < 640 ? 16 : 0)
+        expect(box.right, where).toBeLessThanOrEqual(width < 640 ? width - 16 : width)
+      }
+      for (const box of laneBoxes) {
+        expect(box.right, where).toBeLessThanOrEqual((track?.x ?? 0) + (track?.width ?? 0) + 0.5)
+        // one line each: the unit never wraps under its number
+        expect(box.height, where).toBeLessThan(20)
+      }
+    }
+  }
+})
+
+test('lines up the decimal points of a phase column whose values are close, and prints each z the same way', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/136?channel=HeliumBPPressure')
+  const phases = page.getByRole('table', { name: 'Phase statistics against the good runs' })
+  await expect(phases.locator('tbody tr td:nth-child(5)')).toHaveText(['0.001590', '0.001588'])
+
+  await page.goto('/runs/133')
+  await page.getByText(/^Every excursion/).click()
+  const peaks = await page.getByRole('table', { name: 'Excursions' }).locator('tbody tr td:last-child').allTextContents()
+  expect(peaks.length).toBeGreaterThan(0)
+  // past 100 a z prints whole, in the excursions as in the phase table above them
+  expect(peaks.filter((peak) => /,\d{3}\.\d$/.test(peak))).toEqual([])
 })
 
 test('titles the phase and holds tables above their scrolling boxes, so a title wraps to the phone, not the table', async ({ page }) => {
@@ -697,6 +824,19 @@ test('keeps the trace readable in dark mode: an ink envelope, the band apart fro
   await expect(svg.locator('path.reading').first()).toHaveCSS('fill', 'rgb(242, 236, 224)')
   await expect(svg.locator('path.reading.out').first()).toHaveCSS('fill', 'rgb(255, 90, 71)')
   await expect(svg.locator('path.band-area').first()).toHaveCSS('fill', 'rgb(43, 39, 32)')
+})
+
+test('keeps every in-range ring of the lineup clear of the limit line, on a phone and on a wide page', async ({ page }) => {
+  await serveApi(page)
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/runs/133')
+    await expect(page.locator('.lineup-list .lineup-row')).not.toHaveCount(0)
+
+    const reach = await ringsPastLimit(page)
+    expect(reach.length, `rings at ${width}`).toBeGreaterThan(0)
+    expect(Math.max(...reach), `the furthest ring at ${width}`).toBeLessThanOrEqual(0)
+  }
 })
 
 test('lists the channels by rank, with no limit to line them up against, when there is no baseline', async ({ page }) => {

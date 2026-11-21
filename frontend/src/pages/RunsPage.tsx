@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useMemo } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router'
+import { useLocation, useSearchParams } from 'react-router'
 import { lotsSchema, runsPageSchema, type Source } from '../api/schema'
 import { readSource, withSource } from '../api/source'
 import { useLotDrifts } from '../api/useLotDrifts'
@@ -7,9 +7,8 @@ import { useResource } from '../api/useResource'
 import { LotGrid, LotGridSkeleton } from '../charts/LotGrid'
 import { Figure } from '../components/Figure'
 import { SourceSwitch } from '../components/SourceSwitch'
-import { AnswerSkeleton, ErrorState } from '../components/States'
+import { AnswerSkeleton, EmptySource, ErrorState } from '../components/States'
 import { tieUnits } from '../format'
-import { EMPTY_HINTS } from '../sources'
 import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
 import { AttentionPanel } from './RunsAttention'
 import { RunsTablePanel } from './RunsTable'
@@ -52,6 +51,8 @@ export function RunsPage() {
   const drifts = useLotDrifts(summary === null ? [] : summary.lots.map((group) => group.lotId))
   // the lot list only adds dates and conditioning, so the page waits for it but does without it if it fails
   const ready = page.kind === 'ready' && lots.kind !== 'loading' && summary !== null
+  // lot ids are shared across sources, so a lot this source does not hold, from a stale or edited link, filters nothing
+  const lotId = summary !== null && summary.lots.some((group) => group.lotId === view.lotId) ? view.lotId : null
 
   function update(changes: Record<string, string | null>) {
     setParams((current) => {
@@ -101,7 +102,7 @@ export function RunsPage() {
           : !ready || page.kind !== 'ready'
             ? <LotGridSkeleton source={view.source} />
             : summary.runs.length === 0
-              ? <EmptyState source={view.source} />
+              ? <EmptySource source={view.source} />
               : (
                   <LotGrid
                     runs={summary.runs}
@@ -125,7 +126,7 @@ export function RunsPage() {
                       summary={summary}
                       baseline={page.data.baseline}
                       inRangeOnly={view.tab === 'in'}
-                      lotId={view.lotId}
+                      lotId={lotId}
                       order={view.order}
                       onLot={(lotId) => update({ lot: lotId === null ? null : String(lotId) })}
                       onOrder={(order) => update({ order: order === 'out' ? null : order })}
@@ -214,18 +215,6 @@ function PanelSkeleton() {
         <span className="skel skel-lead" />
         <span className="skel skel-ledger" />
       </div>
-    </div>
-  )
-}
-
-function EmptyState({ source }: { source: Source }) {
-  return (
-    <div className="state" role="status">
-      <p className="state-title">Nothing to check</p>
-      <p>
-        {EMPTY_HINTS[source]}
-        {source === 'LIVE' && <>{' '}<Link to="/live">Open the Live page</Link></>}
-      </p>
     </div>
   )
 }

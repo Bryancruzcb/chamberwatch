@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  endClearsLimit, linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, spreadLabels, startClearsLimit, tickFormat, timeLineEnd, verdictEnd,
+  endClearsLimit, linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, spreadLabels, startClearsLimit, tickFormat, timeAxisLabels, timeLineEnd,
+  verdictEnd,
 } from './scale'
 
 describe('endClearsLimit', () => {
@@ -147,5 +148,36 @@ describe('spreadLabels', () => {
   it('keeps the gap when there is not room, letting the last label run past the bottom', () => {
     expect(spreadLabels([10, 20, 30], 40, 0, 50)).toEqual([0, 40, 80])
     expect(spreadLabels([], 30, 0, 100)).toEqual([])
+  })
+})
+
+describe('timeAxisLabels', () => {
+  it('prints the unit with the last tick only, and centres each label on its mark', () => {
+    const labels = timeAxisLabels([{ x: 100, text: '100' }, { x: 200, text: '200' }, { x: 300, text: '300' }], 's', 12, 400)
+    expect(labels).toEqual([
+      { x: 100, text: '100', anchor: 'middle' },
+      { x: 200, text: '200', anchor: 'middle' },
+      { x: 300, text: '300 s', anchor: 'middle' },
+    ])
+  })
+
+  it('ends a label on its mark when, centred, it would pass the end of the axis', () => {
+    // "700 s" is 36px of 12px mono, so centred at 330 it reaches 348
+    expect(timeAxisLabels([{ x: 330, text: '700' }], 's', 12, 348)).toEqual([{ x: 330, text: '700 s', anchor: 'middle' }])
+    expect(timeAxisLabels([{ x: 331, text: '700' }], 's', 12, 348)).toEqual([{ x: 331, text: '700 s', anchor: 'end' }])
+    expect(timeAxisLabels([{ x: 348, text: '700' }], 's', 12, 348)).toEqual([{ x: 348, text: '700 s', anchor: 'end' }])
+  })
+
+  it('leaves a label out, keeping its mark, where it would run into the longer last one', () => {
+    // at 320px the timeline's 600 and 700 sit 49px apart; "700 s" ending on its mark reaches back to 600's label
+    const labels = timeAxisLabels([{ x: 190, text: '500' }, { x: 239, text: '600' }, { x: 288, text: '700' }], 's', 12, 288)
+    expect(labels.map((label) => label.text)).toEqual(['500', '', '700 s'])
+    expect(labels.map((label) => label.x)).toEqual([190, 239, 288])
+    // with room for a character between them, both stay
+    expect(timeAxisLabels([{ x: 200, text: '600' }, { x: 300, text: '700' }], 's', 12, 400).map((label) => label.text)).toEqual(['600', '700 s'])
+  })
+
+  it('has nothing to label on an axis with no ticks', () => {
+    expect(timeAxisLabels([], 's', 12, 300)).toEqual([])
   })
 })

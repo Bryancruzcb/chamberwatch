@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Channel, depthModelSchema, driftVsDepthSchema } from './api/schema'
 import {
+  alignedFormat,
   columnFormat,
   describeCatch,
   describeChannelTrace,
@@ -14,6 +15,7 @@ import {
   describePrediction,
   describeRun,
   describeWaferDepth,
+  fileNameParts,
   formatAgainstLimit,
   formatBigScore,
   formatChannelName,
@@ -31,6 +33,7 @@ import {
   formatValue,
   formatZ,
   MISSING,
+  splitAround,
   tieUnits,
   waferHeadline,
 } from './format'
@@ -365,6 +368,7 @@ describe("the run page's numbers and notes", () => {
     expect(formatZ(-659.63)).toBe('-660')
     expect(formatZ(403671.9)).toBe('403,672')
     expect(formatZ(1118160.94)).toBe('1,118,161')
+    expect(formatZ(-109881.3)).toBe('-109,881')
     expect(formatZ(null)).toBe(MISSING)
   })
 
@@ -382,6 +386,30 @@ describe("the run page's numbers and notes", () => {
     expect(formatShortAgainstLimit(6, 6)).toBe('6.0')
     expect(formatShortAgainstLimit(97795, 6)).toBe('98K')
     expect(formatShortAgainstLimit(6.04, null)).toBe('6.0')
+  })
+
+  it('adds decimals, up to four, until a value beside its limit no longer prints as the limit', () => {
+    expect(formatAgainstLimit(5.95, 6)).toBe('5.95')
+    expect(formatAgainstLimit(5.96, 6)).toBe('5.96')
+    expect(formatAgainstLimit(5.994, 6)).toBe('5.99')
+    expect(formatAgainstLimit(5.996, 6)).toBe('5.996')
+    expect(formatAgainstLimit(6.004, 6)).toBe('6.004')
+    expect(formatAgainstLimit(6.04, 6)).toBe('6.04')
+    expect(formatAgainstLimit(6, 6)).toBe('6.0')
+    // past four decimals the value cannot be told from the limit in print, and four is where it stops
+    expect(formatAgainstLimit(6.00001, 6)).toBe('6.0000')
+    expect(formatShortAgainstLimit(5.996, 6)).toBe('5.996')
+    expect(formatShortAgainstLimit(6.004, 6)).toBe('6.004')
+  })
+
+  it('compares the size of a fitted z with the band, since a fitted z can be negative', () => {
+    expect(formatAgainstLimit(3.04, 3)).toBe('3.04')
+    expect(formatAgainstLimit(-3.04, 3)).toBe('-3.04')
+    expect(formatAgainstLimit(-2.996, 3)).toBe('-2.996')
+    // on the band's edge, either side
+    expect(formatAgainstLimit(-3, 3)).toBe('-3.0')
+    expect(formatAgainstLimit(3.051, 3)).toBe('3.1')
+    expect(formatAgainstLimit(-1.2, 3)).toBe('-1.2')
   })
 
   it("says what a channel's reading did, for the trace's answer", () => {
@@ -450,6 +478,23 @@ describe('formatShortScore', () => {
     expect(tieUnits('3 samples in 2 sdx lots, 5 stuck')).toBe('3 samples in 2 sdx lots, 5 stuck')
     expect(tieUnits('')).toBe('')
   })
+
+  it('cuts a file name after each underscore, the places a narrow column may break it', () => {
+    expect(fileNameParts('Day_2024_08_01_Wafer_06')).toEqual(['Day_', '2024_', '08_', '01_', 'Wafer_', '06'])
+    expect(fileNameParts('SIM-s7-L901-W05')).toEqual(['SIM-s7-L901-W05'])
+    expect(fileNameParts('a__b_')).toEqual(['a_', '_', 'b_'])
+    expect(fileNameParts('')).toEqual([])
+  })
+
+  it('splits a sentence around a phrase, so the phrase can be kept on one line', () => {
+    expect(splitAround('Lots 6 to 9 hold all 15 out-of-range runs.', 'out-of-range'))
+      .toEqual({ before: 'Lots 6 to 9 hold all 15 ', phrase: 'out-of-range', after: ' runs.' })
+    expect(splitAround('out-of-range', 'out-of-range')).toEqual({ before: '', phrase: 'out-of-range', after: '' })
+    // only the first time it appears; the rest stays in the text after it
+    expect(splitAround('out-of-range or out-of-range', 'out-of-range')).toEqual({ before: '', phrase: 'out-of-range', after: ' or out-of-range' })
+    expect(splitAround('No lots yet.', 'out-of-range')).toBeNull()
+    expect(splitAround('No lots yet.', '')).toBeNull()
+  })
 })
 
 describe('a column of readings', () => {
@@ -464,6 +509,23 @@ describe('a column of readings', () => {
     expect(tuning(null)).toBe(MISSING)
     expect(columnFormat([])(3.25)).toBe('3')
   })
+
+  it('lines a column up only where its values sit within a factor of ten, and prints each at four digits where they spread wider', () => {
+    // lot 6's slopes, 0.0398 to 0.0839, share five decimals
+    const lot6 = [null, 0.08049475363218761, 0.08385113884202333, 0.0521211707797842, 0.0397671458909721]
+    expect(lot6.map(alignedFormat(lot6))).toEqual([MISSING, '0.08049', '0.08385', '0.05212', '0.03977'])
+    // lot 21's run from 0.112 to 35, so lining their points up would invent digits: each keeps four
+    const lot21 = [null, 0.14293040732900408, -0.3670587753571226, -0.11218361689748235, -34.97768825007825, -19.40397006627032, -5.941125069305926]
+    expect(lot21.map(alignedFormat(lot21))).toEqual([MISSING, '0.1429', '-0.3671', '-0.1122', '-34.98', '-19.4', '-5.941'])
+    // a phase table's spread over its good-run spread
+    const spread = [0.0015895454558694758, 0.0015883622033447042]
+    expect(spread.map(alignedFormat([0.00159, 0.001588]))).toEqual(['0.001590', '0.001588'])
+    expect([573.3, 0.0007783].map(alignedFormat([573.3, 0.0007783]))).toEqual(['573.3', '0.0007783'])
+    // zeros and missing values do not count toward the spread
+    expect([0, 2.5, 20].map(alignedFormat([0, null, 2.5, 20]))).toEqual(['0.0', '2.5', '20.0'])
+    expect(alignedFormat([0, null])(0)).toBe('0')
+    expect(alignedFormat([])(3.25)).toBe('3.25')
+  })
 })
 
 describe('a score that rounds to zero', () => {
@@ -476,7 +538,8 @@ describe('a score that rounds to zero', () => {
     expect(formatZ(-0.04)).toBe('0.0')
     expect(formatShortScore(-0.04)).toBe('0.0')
     expect(formatAgainstLimit(-0.04, 6)).toBe('0.0')
-    expect(formatShortAgainstLimit(-0.004, 0)).toBe('0.00')
+    expect(formatShortAgainstLimit(-0.004, 0)).toBe('-0.004')
+    expect(formatShortAgainstLimit(-0.00004, 0)).toBe('0.0000')
     expect(formatValue(-0)).toBe('0')
   })
 })

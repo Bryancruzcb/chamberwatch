@@ -1,4 +1,8 @@
+import type { CSSProperties } from 'react'
 import { formatScore } from '../format'
+
+/** The score's place on the line and the limit's, as shares of it; the stylesheet keeps an in-range ring clear of the limit. */
+type LineStyle = CSSProperties & Record<'--z', string> & Partial<Record<'--k', string>>
 
 /** A limit closer to 0 than this share of the line has its label set from the tick rightward, and the 0 left off. */
 const NEAR_START = 0.2
@@ -24,14 +28,17 @@ export function ScoreLine({ z, k, end, out, size = 'row', ticks = false, label }
 }) {
   const at = (value: number) => `${(100 * Math.min(Math.max(value, 0), end)) / end}%`
   const limitNearStart = k !== null && k / end < NEAR_START
-  const classes = `score-line ${size} ${out ? 'out' : 'in'}${z > end ? ' past' : ''}`
+  // a hollow ring at or under the limit is drawn clear of it; a red dot is never moved
+  const under = !out && k !== null && z <= k
+  const classes = `score-line ${size} ${out ? 'out' : 'in'}${under ? ' under' : ''}${z > end ? ' past' : ''}`
+  const style: LineStyle = k === null ? { '--z': at(z) } : { '--z': at(z), '--k': at(k) }
   return (
-    <span className={classes} role={label === undefined ? undefined : 'img'} aria-label={label} aria-hidden={label === undefined ? true : undefined}>
+    <span className={classes} style={style} role={label === undefined ? undefined : 'img'} aria-label={label} aria-hidden={label === undefined ? true : undefined}>
       <span className="sl-axis" />
-      {!out && <span className="sl-stem" style={{ width: at(z) }} />}
+      {!out && <span className="sl-stem" />}
       {k !== null && <span className="sl-limit" style={{ left: at(k) }} />}
       {out && k !== null && z > k && <span className="sl-bar" style={{ left: at(k), width: `calc(${at(z)} - ${at(k)})` }} />}
-      <span className="sl-point" style={{ left: at(z) }} />
+      <span className="sl-point" />
       {ticks && (
         <>
           {/* a limit near 0 takes the start's place, since its label would cover the 0 */}

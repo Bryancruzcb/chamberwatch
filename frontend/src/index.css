@@ -1,7 +1,8 @@
 /*
   Tokens. DESIGN.md at the repository root is the style file: "Cassette", a lab notebook in true ink on warm paper,
-  where a wafer is a disc and one red, --signal, means out of range and nothing else. Dark mode is the same token set
-  swapped: it follows the system unless the theme button picked one, which sets data-theme on <html>.
+  where a wafer is a disc and one red, --signal, means out of range. On the ink masthead it also underlines the page in
+  view and dots the wordmark; on the paper it means nothing else. Dark mode is the same token set swapped: it follows
+  the system unless the theme button picked one, which sets data-theme on <html>.
 */
 :root {
   color-scheme: light;
@@ -51,6 +52,10 @@
 
   /* the space between one figure and the next, on every page */
   --figure-gap: 48px;
+  /* the slot of one mini disc on the Lots table; the bracket, the not-run dashes and the skeleton count in it */
+  --mini-pitch: 26px;
+  /* the room the miss bars keep at the right for the value printed past each bar */
+  --miss-label: 84px;
 
   font-family: var(--font-sans);
   line-height: 1.5;
@@ -203,6 +208,11 @@ code {
 
 .num {
   font-variant-numeric: tabular-nums;
+}
+
+/* A phrase a line must not break inside, such as "out-of-range" in a headline, whose hyphens are break points. */
+.keep-whole {
+  white-space: nowrap;
 }
 
 .visually-hidden {
@@ -607,7 +617,7 @@ a.disc:focus-visible .disc-mark {
 
 .disc-mini {
   --d: 18px;
-  width: 26px;
+  width: var(--mini-pitch);
   height: 32px;
 }
 
@@ -634,8 +644,26 @@ a.disc:focus-visible .disc-mark {
   margin-right: 8px;
 }
 
-.score-line.past {
+/* A line past its end needs room for its arrow, and so does every line in its column, so their limit ticks line up. */
+.score-line.past,
+:is(table, ul):has(.score-line.past) .score-line {
   margin-right: 20px;
+}
+
+/*
+ * --z is the score's place along the line and --k the limit's, set by the component; --dot is the ring's size. A
+ * ring at or under the limit stops short of it by its radius, the limit's half width and a 2px gap, so it never sits
+ * on or across the line; the number beside it carries the size. A red dot is never moved.
+ */
+.score-line,
+.lineup-track {
+  --at: var(--z);
+  --dot: 12px;
+}
+
+.score-line.under,
+.lineup-row.under .lineup-track {
+  --at: min(var(--z), calc(var(--k) - var(--dot) / 2 - 3px));
 }
 
 .sl-axis,
@@ -667,6 +695,7 @@ a.disc:focus-visible .disc-mark {
   position: absolute;
   top: calc(50% - 1px);
   left: 0;
+  width: var(--at);
   height: 2px;
   background: var(--ring);
 }
@@ -675,8 +704,9 @@ a.disc:focus-visible .disc-mark {
 .lineup-dot {
   position: absolute;
   top: 50%;
-  width: 12px;
-  height: 12px;
+  left: var(--at);
+  width: var(--dot);
+  height: var(--dot);
   border: 2px solid var(--ring);
   border-radius: 50%;
   background: var(--paper);
@@ -702,6 +732,7 @@ a.disc:focus-visible .disc-mark {
 }
 
 .score-line.verdict {
+  --dot: 18px;
   height: 46px;
 }
 
@@ -728,8 +759,6 @@ a.disc:focus-visible .disc-mark {
 
 .score-line.verdict .sl-point {
   top: 13px;
-  width: 18px;
-  height: 18px;
 }
 
 .score-line.verdict.out .sl-point {
@@ -1405,10 +1434,6 @@ tbody tr.selected a {
   width: 30%;
 }
 
-.c-chan .word {
-  margin-left: 8px;
-}
-
 /* "Left at" on one scale for the whole ledger: the tick steps left as a lot's wafers leave earlier. */
 .time-line {
   position: relative;
@@ -1500,6 +1525,7 @@ tbody tr.selected a {
   display: block;
   color: var(--ink-3);
   font-size: var(--text-12);
+  white-space: nowrap;
 }
 
 .state-cell {
@@ -1735,7 +1761,7 @@ tbody tr.selected a {
   position: absolute;
   top: 2px;
   left: 0;
-  width: calc(var(--base) * 26px);
+  width: calc(var(--base) * var(--mini-pitch));
   height: 10px;
   border: 2px solid var(--ink);
   border-bottom: 0;
@@ -1757,13 +1783,13 @@ tbody tr.selected a {
 /* A slot the lot never ran: a short dash centred in each slot's width. */
 .mini-none {
   flex: none;
-  width: calc(var(--span) * 26px);
+  width: calc(var(--span) * var(--mini-pitch));
   height: 32px;
-  background: repeating-linear-gradient(to right, transparent 0 8px, var(--ring) 8px 18px, transparent 18px 26px) center / 100% 2px no-repeat;
+  background: repeating-linear-gradient(to right, transparent 0 8px, var(--ring) 8px 18px, transparent 18px var(--mini-pitch)) center / 100% 2px no-repeat;
 }
 
 .skel-minis {
-  width: calc(var(--positions) * 26px + 10px);
+  width: calc(var(--positions) * var(--mini-pitch) + 10px);
   height: 18px;
 }
 
@@ -1855,7 +1881,7 @@ tbody tr.selected a {
   position: absolute;
   top: 2px;
   left: 0;
-  width: calc((100% - 84px) * var(--share));
+  width: calc((100% - var(--miss-label)) * var(--share));
   height: 18px;
   border-radius: 2px;
   background: var(--ink);
@@ -1869,7 +1895,7 @@ tbody tr.selected a {
 .miss-value {
   position: absolute;
   top: 50%;
-  left: calc((100% - 84px) * var(--share) + 8px);
+  left: calc((100% - var(--miss-label)) * var(--share) + 8px);
   font-family: var(--font-mono);
   font-weight: 600;
   white-space: nowrap;
@@ -1884,7 +1910,7 @@ tbody tr.selected a {
   position: relative;
   display: block;
   height: 20px;
-  margin-right: 84px;
+  margin-right: var(--miss-label);
   border-top: 1px solid var(--ring);
 }
 
@@ -2806,6 +2832,7 @@ h2.verdict-label {
   font-family: var(--font-mono);
   font-size: var(--text-12);
   line-height: 1;
+  white-space: nowrap;
   translate: -50% 0;
 }
 
@@ -2818,15 +2845,13 @@ h2.verdict-label {
   border-left: 1px solid var(--ink);
 }
 
-/* the margin keeps the unit off a last tick label that hangs past the axis's end */
-.lane-tick.unit {
-  left: calc(100% + 10px);
-  margin-left: 4px;
-  translate: 0 0;
+/* The last tick carries the unit ("700 s"), and ends on its mark where, centred, it would pass the axis's end. */
+.lane-tick.end {
+  translate: -100% 0;
 }
 
-.lane-tick.unit::before {
-  display: none;
+.lane-tick.end::before {
+  left: 100%;
 }
 
 /* The run no channel left: the closest one, its score on a line with the limit ticked. */
@@ -2969,6 +2994,7 @@ h2.verdict-label {
   position: absolute;
   top: calc(50% - 0.5px);
   left: 0;
+  width: var(--at);
   height: 1px;
   background: var(--ring);
 }
@@ -2980,8 +3006,7 @@ h2.verdict-label {
 }
 
 .lineup-row.over .lineup-dot {
-  width: 16px;
-  height: 16px;
+  --dot: 16px;
   border: 0;
   background: var(--signal);
   box-shadow: 0 0 0 2px var(--paper);
@@ -3335,14 +3360,6 @@ h2.verdict-label {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .lane-axis {
-    grid-template-columns: minmax(0, 1fr) 14px;
-  }
-
-  .lane-tick.unit {
-    left: calc(100% + 4px);
-  }
-
   .lane-score {
     font-size: var(--text-17);
   }
@@ -3437,6 +3454,11 @@ h2.verdict-label {
     right: 0;
     z-index: 2;
     background: var(--paper);
+  }
+
+  /* closer set, so "OUT" fits its one-pitch column and stays clear of the last position's number */
+  .lot-map .map-out-head {
+    letter-spacing: -0.06em;
   }
 
   .map-lot a {
@@ -3585,20 +3607,24 @@ h2.verdict-label {
     display: inline;
   }
 
-  .ledger-run .c-at::before {
-    content: 'Left at ';
-  }
-
-  .ledger-run .c-exc::before {
-    content: 'Excursions ';
-  }
-
   .score-cell {
     min-width: 0;
   }
 
+  /* a fixed name column wide enough for the longest wafer name, Lot 901 Wafer 10, so a long state never squeezes the name and the discs
+     line up row to row; the state's words wrap under its disc */
   .runs-table tbody tr {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 128px minmax(0, 1fr);
+  }
+
+  .runs-table .state-cell {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  /* a public file name is wider than the column, so it takes a second line after an underscore */
+  .runs-table .c-wafer .key {
+    white-space: normal;
   }
 
   .runs-table .c-wafer {
@@ -3627,9 +3653,12 @@ h2.verdict-label {
     justify-self: end;
   }
 
-  .runs-table td[data-label]::before {
+  /* every phone ledger names its fields the same way: the cell's own label, in the text face, a step lighter than the
+     value */
+  :is(.ledger-run, .runs-table) td[data-label]::before {
     content: attr(data-label) ' ';
     color: var(--ink-3);
+    font-family: var(--font-sans);
   }
 
   /* a run that left no range has no first channel and no time: two lines of dashes say nothing */
@@ -3637,15 +3666,9 @@ h2.verdict-label {
     display: none;
   }
 
-  /* a lot's wafers: a fixed name column, so a long state never covers the name and the discs line up row to row; the
-     state's words wrap under its disc */
+  /* a lot's own wafers are named "Wafer 5" alone, so its name column is narrower */
   .lot-runs tbody tr {
     grid-template-columns: 88px minmax(0, 1fr);
-  }
-
-  .lot-runs .state-cell {
-    flex-wrap: wrap;
-    row-gap: 2px;
   }
 
   /* The lot table on a phone: each lot on two lines, its name and out count over its wafers at full size. */
@@ -3709,6 +3732,11 @@ h2.verdict-label {
     display: none;
   }
 
+  /* the axis now starts on the page's gutter, so its 0 is set from its mark rightward rather than hang past it */
+  .miss-tick:first-child {
+    translate: 0 0;
+  }
+
   .drift-counts {
     gap: 8px 20px;
   }
@@ -3729,7 +3757,7 @@ h2.verdict-label {
     display: none;
   }
 
-  :is(.lot-runs .c-wafer, .drift-points td:first-child) a {
+  :is(.runs-table .c-wafer, .drift-points td:first-child) a {
     white-space: nowrap;
   }
 }

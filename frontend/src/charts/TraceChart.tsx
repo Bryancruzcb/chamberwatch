@@ -1,7 +1,7 @@
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, useId, useMemo, useState } from 'react'
 import type { Hold, Trace, TracePoint } from '../api/schema'
 import { describeClip, formatChannelName, formatScore, formatSeconds, formatValue, MISSING } from '../format'
-import { type LinearScale, linearScale, niceInterval, niceTicks, tickFormat } from './scale'
+import { type LinearScale, linearScale, niceInterval, niceTicks, tickFormat, timeAxisLabels } from './scale'
 import {
   bandAt,
   bandSegments,
@@ -41,6 +41,8 @@ const NOTE_CHAR = 6.5
 const ANN_CHAR = 7.5
 /** The narrowest an excursion's tick on the rail is drawn, so one sample still shows. */
 const MIN_TICK = 2.5
+/** The axes' tick labels, in px of mono type. */
+const TICK_PX = 12
 
 interface Label {
   readonly x: number
@@ -145,11 +147,15 @@ export function TraceChart({ trace, holds = [] }: {
   const name = formatChannelName(trace.channel)
   const yTick = tickFormat(layout?.yTicks ?? [])
   const xTick = tickFormat(layout?.xTicks ?? [])
+  // the unit rides on the last tick's label, which ends on its mark rather than pass the plot's edge
+  const xLabels = layout === null
+    ? []
+    : timeAxisLabels(layout.xTicks.map((tick) => ({ x: layout.x.map(tick), text: xTick(tick) })), 's', TICK_PX, layout.right)
 
   return (
     <figure className="chart trace">
       <ul className="chart-key" aria-label="Key">
-        <li><span className="key-swatch key-reading" />Reading, lowest to highest per bucket</li>
+        <li><span className="key-swatch key-reading" />Reading, lowest to highest in each time slice</li>
         {trace.k !== null && <li><span className="key-swatch key-band" />Good-run range</li>}
         {inView.length > 0 && <li><span className="key-swatch key-excursion" />Out of the range</li>}
         {stuckInView.length > 0 && <li><span className="key-swatch key-span hold" />Stuck value</li>}
@@ -160,7 +166,7 @@ export function TraceChart({ trace, holds = [] }: {
             viewBox={`0 0 ${width} ${HEIGHT}`}
             height={HEIGHT}
             role="img"
-            aria-label={`${name} across ${range}. Arrow keys read one bucket at a time.`}
+            aria-label={`${name} across ${range}. Arrow keys read one time slice at a time.`}
             tabIndex={0}
             onKeyDown={step}
             onFocus={() => setActive((current) => current ?? startIndex(trace.points, inView))}
@@ -222,13 +228,14 @@ export function TraceChart({ trace, holds = [] }: {
               <Annotation label={layout.bandLabel} className="chart-note">{bandText(trace.k)}</Annotation>
             )}
             <line className="axis-line" x1={layout.left} x2={layout.right} y1={layout.bottom} y2={layout.bottom} />
-            {layout.xTicks.map((tick) => (
-              <g key={tick}>
-                <line className="axis-mark" x1={layout.x.map(tick)} x2={layout.x.map(tick)} y1={layout.bottom} y2={layout.bottom + 5} />
-                <text className="tick" x={layout.x.map(tick)} y={layout.bottom + 19} textAnchor="middle">{xTick(tick)}</text>
-              </g>
-            ))}
-            <text className="tick" x={layout.right + 4} y={layout.bottom + 19}>s</text>
+            <g className="time-axis">
+              {xLabels.map((label) => (
+                <g key={label.x}>
+                  <line className="axis-mark" x1={label.x} x2={label.x} y1={layout.bottom} y2={layout.bottom + 5} />
+                  <text className="tick" x={label.x} y={layout.bottom + 19} textAnchor={label.anchor}>{label.text}</text>
+                </g>
+              ))}
+            </g>
             {point !== undefined && (
               <g aria-hidden="true">
                 <line
@@ -339,7 +346,7 @@ function TraceTable({ trace, name }: { trace: Trace; name: string }) {
   return (
     <div className="table-wrap table-scroll">
       <table>
-        <caption className="visually-hidden">{`${name}, one row per bucket`}</caption>
+        <caption className="visually-hidden">{`${name}, one row per time slice`}</caption>
         <thead>
           <tr>
             <th scope="col" className="num">Time</th>

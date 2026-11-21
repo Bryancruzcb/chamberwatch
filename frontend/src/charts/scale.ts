@@ -111,6 +111,49 @@ export function endClearsLimit(width: number, share: number, limitText: string, 
   return endText.length * advance + gap <= (1 - share) * width - limitReach
 }
 
+/** A tick on a time axis: its mark's place in px and its text. */
+export interface AxisTick {
+  readonly x: number
+  readonly text: string
+}
+
+/**
+ * A time axis's tick labels: each tick's text, the last with the unit after it ("700 s"), so the unit is never a loose
+ * letter beside the number. A label centred on its mark that would pass `right`, the axis's end, ends on its mark
+ * instead, so no part of the axis runs past the plot. A label that would come within a character of the next one shown
+ * is left empty, its mark kept. Labels are mono at `px`; `x` and `right` are in px. Anything else a tick carries comes
+ * back with it.
+ */
+export function timeAxisLabels<T extends AxisTick>(ticks: readonly T[], unit: string, px: number, right: number): Array<T & { readonly anchor: 'middle' | 'end' }> {
+  const advance = MONO_ADVANCE * px
+  const labels = ticks.map((tick, index) => {
+    const text = index === ticks.length - 1 ? `${tick.text} ${unit}` : tick.text
+    const anchor: 'middle' | 'end' = tick.x + (text.length * advance) / 2 > right ? 'end' : 'middle'
+    return { ...tick, text, anchor }
+  })
+  const extent = (label: { x: number; text: string; anchor: 'middle' | 'end' }) => {
+    const width = label.text.length * advance
+    const left = label.anchor === 'end' ? label.x - width : label.x - width / 2
+    return { left, right: left + width }
+  }
+  // from the last label back, since the last is the one the unit makes longer
+  let next = Number.POSITIVE_INFINITY
+  for (let index = labels.length - 1; index >= 0; index--) {
+    const label = labels[index]
+    if (label === undefined) {
+      continue
+    }
+    const { left, right: end } = extent(label)
+    if (end + advance > next) {
+      labels[index] = { ...label, text: '' }
+    }
+    else {
+      next = left
+    }
+  }
+  return labels
+}
+
 /** A score line's end runs past the limit by at most this many limits, so one step change cannot flatten the rest. */
 const SCORE_LINE_LIMITS = 10
 

@@ -7,9 +7,9 @@ import { Figure } from '../components/Figure'
 import { Stat } from '../components/Stat'
 import { AnswerSkeleton, ErrorState } from '../components/States'
 import { formatChannelName, formatCount, formatFaultKind, formatSeconds, MISSING, tieUnits } from '../format'
-import { liveAnswer, showsHowToStart } from '../live'
+import { liveAnswer, notesReadOnly, READ_ONLY, type ReadOnly, showsHowToStart } from '../live'
 
-/** How often the page asks the server what the chamber is doing. One tick of the recipe is 0.2 s. */
+/** How long the page waits after each answer before it asks the server again. One tick of the recipe is 0.2 s. */
 const POLL_MS = 500
 
 /**
@@ -24,14 +24,17 @@ export function LivePage() {
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const recording = session.kind === 'ready' && session.data.recording
+  const refreshing = session.kind === 'ready' && session.refreshing
 
+  // ask again only once the last answer is in: a new request cancels the one in flight, so a clock that ticked faster
+  // than the server answers would cancel every answer and leave the page on its first reading
   useEffect(() => {
-    if (!recording) {
+    if (!recording || refreshing) {
       return undefined
     }
-    const timer = setInterval(reload, POLL_MS)
-    return () => clearInterval(timer)
-  }, [recording, reload])
+    const timer = setTimeout(reload, POLL_MS)
+    return () => clearTimeout(timer)
+  }, [recording, refreshing, reload])
 
   const act = useCallback(async (action: () => Promise<unknown>) => {
     setBusy(true)
@@ -49,15 +52,19 @@ export function LivePage() {
   }, [reload])
 
   const live = session.kind === 'ready' ? session.data : null
-  const answer = live === null ? null : liveAnswer(live)
+  const readOnly: ReadOnly = settings.kind === 'loading' ? 'unknown' : settings.kind === 'ready' && settings.data.readOnly
+  const answer = live === null ? null : liveAnswer(live, readOnly)
   // the instructions are the page's one next step when nothing has happened yet; a read-only instance cannot use them
-  const howOpen = live !== null && settings.kind !== 'loading' && showsHowToStart(live, settings.kind === 'ready' && settings.data.readOnly)
+  const howOpen = live !== null && showsHowToStart(live, readOnly)
+  const title = session.kind === 'error' ? 'The live session did not load.' : answer?.title ?? null
   return (
     <div className="sheet">
       <title>Live · ChamberWatch</title>
-      <header className="answer" aria-live="polite">
+      <header className="answer">
+        {/* only the title is announced: it changes a few times a run, while the lead's clock changes on every poll */}
+        <p className="visually-hidden" role="status">{title ?? ''}</p>
         {session.kind === 'error'
-          ? <h1>The live session did not load.</h1>
+          ? <h1>{title}</h1>
           : answer === null
             ? <AnswerSkeleton name="Live chamber" lead={false} />
             : (
@@ -88,14 +95,14 @@ export function LivePage() {
               <Stat label="Step" value={live.state ?? MISSING} compact detail={`Cycle ${live.cycle} of 100`} />
               <Stat label="Samples" value={formatCount(live.samples)} detail={formatSeconds(live.timeS)} />
             </dl>
-            {settings.kind === 'ready' && settings.data.readOnly
-              ? <p className="figure-note live-note">This ChamberWatch is read-only, so it does not record live runs.</p>
+            {readOnly === true
+              ? notesReadOnly(live, readOnly) && <p className="figure-note live-note">{READ_ONLY}</p>
               : (
                   <div className="actions" role="group" aria-label="Live recording">
                     <button
                       type="button"
                       className="button"
-                      disabled={busy || live.recording || settings.kind === 'loading'}
+                      disabled={busy || live.recording || readOnly === 'unknown'}
                       onClick={() => void act(() => postJson('/api/live/start', { host: '127.0.0.1', port: 5610 }, liveSessionSchema))}
                     >
                       Record from 127.0.0.1:5610

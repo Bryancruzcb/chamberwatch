@@ -7,22 +7,21 @@ import {
 import { readSource, withSource } from '../api/source'
 import { type Resource, useResource } from '../api/useResource'
 import { PositionChart, type PositionPoint, type PositionSeries } from '../charts/PositionChart'
-import { niceInterval, niceTicks } from '../charts/scale'
+import { niceInterval, niceTicks, tickFormat } from '../charts/scale'
 import { Disc } from '../components/Disc'
 import { Figure } from '../components/Figure'
 import { SourceSwitch } from '../components/SourceSwitch'
-import { AnswerSkeleton, ErrorState } from '../components/States'
+import { AnswerSkeleton, EmptySource, ErrorState } from '../components/States'
 import {
   describeDepthModel, describeDepthTrend, describeEveryWafer, formatConditioning, formatDate, formatDepthFeature, formatDepthMethod,
-  formatMicrons, formatShortScore, MISSING, tieUnits,
+  formatMicrons, formatShortScore, MISSING, splitAround, tieUnits,
 } from '../format'
 import { type GridRow, gridKinds, type LotGrid, lotGrid, rowSegments } from '../grid'
-import { describeRunsByPosition, describeWaferKey, lotsAnswer, thinPositions } from '../lotSummary'
-import { EMPTY_HINTS, SOURCE_LINES } from '../sources'
+import { describeRunsByPosition, describeWaferKey, lotColumns, lotsAnswer, thinPositions } from '../lotSummary'
+import { SOURCE_LINES } from '../sources'
 
 const twoDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const threeDecimals = new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
-const oneDecimal = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
 const STATE_WORDS = { out: 'out of range', in: 'in range', failed: 'not aligned', unscored: 'not scored' } as const
 
@@ -46,7 +45,7 @@ export function LotsPage() {
   const [params, setParams] = useSearchParams()
   const source = readSource(params)
   const [lots, reloadLots] = useResource('/api/lots', lotsSchema)
-  const [runs] = useResource(withSource('/api/runs', source), runsPageSchema)
+  const [runs, reloadRuns] = useResource(withSource('/api/runs', source), runsPageSchema)
   const [report, reloadReport] = useResource(withSource('/api/reports/drift-vs-depth', source), driftVsDepthSchema)
   const sourceLots = lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === source) : null
   // the runs of the source just picked; the last source's runs never stand in for them
@@ -66,7 +65,7 @@ export function LotsPage() {
             ? <AnswerSkeleton name="Lots" />
             : (
                 <>
-                  <h1>{tieUnits(answer.title)}</h1>
+                  <h1><KeepWhole text={tieUnits(answer.title)} phrase="out-of-range" /></h1>
                   {answer.lead !== null && <p className="answer-next">{tieUnits(answer.lead)}</p>}
                 </>
               )}
@@ -84,13 +83,8 @@ export function LotsPage() {
             : sourceLots === null
               ? <span className="skel skel-lots" aria-hidden="true" />
               : empty
-                ? (
-                    <div className="state" role="status">
-                      <p className="state-title">No lots yet</p>
-                      <p>{EMPTY_HINTS[source]}</p>
-                    </div>
-                  )
-                : <LotsTable lots={sourceLots} grid={grid} runsFailed={runs.kind === 'error'} source={source} />}
+                ? <EmptySource source={source} />
+                : <LotsTable lots={sourceLots} grid={grid} runsFailed={runs.kind === 'error'} onRetryRuns={reloadRuns} source={source} />}
         </Figure>
         {!empty && !failed && <DriftFigure report={report} onRetry={reloadReport} baseline={grid?.baseline ?? null} />}
         {source === 'PUBLIC' && !failed && (
@@ -102,15 +96,28 @@ export function LotsPage() {
   )
 }
 
+/** A sentence with one phrase held on a single line: "out-of-range" would otherwise break at a hyphen in a 36px headline. */
+function KeepWhole({ text, phrase }: { text: string; phrase: string }) {
+  const parts = splitAround(text, phrase)
+  return parts === null ? text : <>{parts.before}<span className="keep-whole">{parts.phrase}</span>{parts.after}</>
+}
+
 /**
  * The lot list, each lot's wafers drawn as small discs from the source's runs: a bracket over the baseline positions
- * when every lot keeps them first, or a centre dot in each baseline disc when not. The discs wait for the runs, and
- * stay out if they fail; the rest of the table needs only the lot list.
+ * when every lot keeps them first, or a centre dot in each baseline disc when not. The discs wait for the runs; if they
+ * fail, one line in the key's place says so and asks again, since the rest of the table needs only the lot list.
  */
-function LotsTable({ lots, grid, runsFailed, source }: { lots: readonly Lot[]; grid: LotGrid | null; runsFailed: boolean; source: Source }) {
+function LotsTable({ lots, grid, runsFailed, onRetryRuns, source }: {
+  lots: readonly Lot[]
+  grid: LotGrid | null
+  runsFailed: boolean
+  onRetryRuns: () => void
+  source: Source
+}) {
   const positions = grid?.positions ?? PLANNED
   const bracket = grid?.baseline ?? null
   const style: WafersStyle = { '--positions': positions, '--base': bracket ?? 0 }
+  const columns = lotColumns(lots)
   return (
     <>
       <div className="table-wrap">
@@ -119,12 +126,12 @@ function LotsTable({ lots, grid, runsFailed, source }: { lots: readonly Lot[]; g
           <thead>
             <tr>
               <th scope="col">Lot</th>
-              <th scope="col" className="c-date">Date</th>
+              {columns.date && <th scope="col" className="c-date">Date</th>}
               <th scope="col" className="c-wafers">
                 {bracket !== null && <span className="wafers-bracket" aria-hidden="true" />}
                 {`Wafers 1 to ${positions}`}
               </th>
-              <th scope="col" className="c-cond">Conditioning</th>
+              {columns.conditioning && <th scope="col" className="c-cond">Conditioning</th>}
               <th scope="col" className="num c-runs">Runs</th>
               <th scope="col" className="num c-out">Out of range</th>
             </tr>
@@ -133,17 +140,19 @@ function LotsTable({ lots, grid, runsFailed, source }: { lots: readonly Lot[]; g
             {lots.map((lot) => (
               <tr key={lot.id}>
                 <th scope="row" className="c-lot"><Link className="lot-name" to={`/lots/${lot.id}`}>{`Lot ${lot.lotNo}`}</Link></th>
-                <td className="c-date">{lot.runDate === null ? MISSING : formatDate(lot.runDate)}</td>
+                {columns.date && <td className="c-date">{lot.runDate === null ? MISSING : formatDate(lot.runDate)}</td>}
                 <td className="c-wafers">
                   {grid === null
                     ? (runsFailed ? null : <span className="skel skel-minis" aria-hidden="true" />)
                     : <MiniDiscs row={grid.rows.find((row) => row.lotId === lot.id) ?? null} bracket={bracket} />}
                 </td>
-                <td className="c-cond">
-                  {lot.conditioningCount === null || lot.conditioningSurface === null
-                    ? MISSING
-                    : formatConditioning(lot.conditioningCount, lot.conditioningSurface)}
-                </td>
+                {columns.conditioning && (
+                  <td className="c-cond">
+                    {lot.conditioningCount === null || lot.conditioningSurface === null
+                      ? MISSING
+                      : formatConditioning(lot.conditioningCount, lot.conditioningSurface)}
+                  </td>
+                )}
                 <td className="num c-runs">{lot.runs}</td>
                 <td className={lot.flaggedRuns === 0 ? 'num c-out zero' : 'num c-out'}>
                   {/* the count opens the lot's rows in the runs page's out-of-range ledger */}
@@ -155,6 +164,12 @@ function LotsTable({ lots, grid, runsFailed, source }: { lots: readonly Lot[]; g
         </table>
       </div>
       {grid !== null && <p className="figure-note lots-key">{describeWaferKey(gridKinds(grid), bracket)}</p>}
+      {grid === null && runsFailed && (
+        <p className="figure-note" role="alert">
+          The wafers did not load.{' '}
+          <button type="button" className="link-button" onClick={onRetryRuns}>Try again</button>
+        </p>
+      )}
     </>
   )
 }
@@ -209,10 +224,12 @@ function DriftFigure({ report, onRetry, baseline }: { report: Resource<DriftVsDe
   // while another source's report loads, the last one's answer would speak for the wrong wafers
   const settled = report.kind === 'ready' && !report.refreshing ? report.data : null
   const answer = settled === null ? null : describeDepthTrend(settled) ?? describeRunsByPosition(settled.positions)
+  // a source with no measured depth draws the drift alone, so the title names only what is drawn
+  const depthless = settled !== null && !settled.positions.some((position) => position.depth.length > 0)
   return (
     <Figure
       id="report"
-      title="Drift and depth by wafer position"
+      title={depthless ? 'Drift by wafer position' : 'Drift and depth by wafer position'}
       answer={answer}
       busy={report.kind === 'loading' || (report.kind === 'ready' && report.refreshing)}
     >
@@ -473,6 +490,8 @@ function MissBars({ model, reference }: { model: DepthModel; reference: number |
   const worst = Math.max(...misses.map((miss) => miss.um))
   const end = niceInterval([0, Math.max(worst, 0.1)], 4)[1]
   const share = (um: number) => um / end
+  const ticks = niceTicks([0, end], 4)
+  const tickText = tickFormat(ticks)
   return (
     <table className="miss-bars">
       <caption>
@@ -499,8 +518,8 @@ function MissBars({ model, reference }: { model: DepthModel; reference: number |
           <td />
           <td>
             <span className="miss-axis">
-              {niceTicks([0, end], 4).map((tick) => (
-                <span key={tick} className="miss-tick" style={shareStyle(share(tick))}>{oneDecimal.format(tick)}</span>
+              {ticks.map((tick) => (
+                <span key={tick} className="miss-tick" style={shareStyle(share(tick))}>{tickText(tick)}</span>
               ))}
             </span>
           </td>

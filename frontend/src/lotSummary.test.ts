@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { type DriftChannel, type DriftState, driftVsDepthSchema, type Lot, lotDriftSchema, lotsSchema, type RunRow, runsPageSchema } from './api/schema'
 import {
   describeHiddenDriftChannels, describeLotScores, describeRunsByPosition, describeWaferKey, driftCounts, driftWarns, fittedZ, lotHeadline, lotLead,
-  lotsAnswer, splitDriftChannels, thinPositions,
+  lotColumns, lotsAnswer, splitDriftChannels, thinPositions,
 } from './lotSummary'
 
 const fixtures = import.meta.glob('../e2e/fixtures/*.json', { eager: true, import: 'default' })
@@ -269,6 +269,21 @@ describe("the lot's channel table fold", () => {
     expect(describeHiddenDriftChannels(withStates(['NO_TREND', 'NO_TREND']), true)).toBe('Hide the 2 channels with no trend')
     expect(describeHiddenDriftChannels(few, true)).toBe('Hide the channel with too few wafers to judge')
     expect(describeHiddenDriftChannels(mixed, true)).toBe('Hide the 3 channels with no trend or too few wafers to judge')
+  })
+})
+
+describe('the lot table columns', () => {
+  it('keeps the date and conditioning columns only when some lot has one', () => {
+    expect(lotColumns(publicLots)).toEqual({ date: true, conditioning: true })
+    expect(lotColumns(simulatedLots)).toEqual({ date: false, conditioning: false })
+    expect(lotColumns([])).toEqual({ date: false, conditioning: false })
+    const [first] = simulatedLots
+    if (first === undefined) {
+      throw new Error('no simulated lot')
+    }
+    expect(lotColumns([...simulatedLots, { ...first, runDate: '2024-08-01' }])).toEqual({ date: true, conditioning: false })
+    // a count with no surface prints as missing, so it does not keep the column
+    expect(lotColumns([{ ...first, conditioningCount: 3, conditioningSurface: null }])).toEqual({ date: false, conditioning: false })
   })
 })
 
