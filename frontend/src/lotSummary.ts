@@ -54,6 +54,14 @@ export function lotsAnswer(lots: readonly Lot[], scored: boolean | 'loading' | '
   return { title, lead: `${rest} ${wafers} ${wafers === 1 ? 'wafer' : 'wafers'} with none out of range.` }
 }
 
+/** Which of the lot table's optional columns hold anything: a column of dashes alone is left out. */
+export function lotColumns(lots: readonly Lot[]): { readonly date: boolean; readonly conditioning: boolean } {
+  return {
+    date: lots.some((lot) => lot.runDate !== null),
+    conditioning: lots.some((lot) => lot.conditioningCount !== null && lot.conditioningSurface !== null),
+  }
+}
+
 /** A wafer position and how many lots ran a wafer there. */
 export interface PositionRuns {
   readonly position: number
@@ -247,7 +255,7 @@ export function describeHiddenDriftChannels(hidden: readonly DriftChannel[], ope
 }
 
 /** The drift verdicts in the order a reader should meet them: out first, then heading out, then the quiet ones. */
-export const DRIFT_ORDER: readonly DriftState[] = ['OUT_OF_BAND', 'WILL_EXIT', 'STAYS_IN', 'NO_TREND', 'INSUFFICIENT_RUNS']
+const DRIFT_ORDER: readonly DriftState[] = ['OUT_OF_BAND', 'WILL_EXIT', 'STAYS_IN', 'NO_TREND', 'INSUFFICIENT_RUNS']
 
 export interface DriftCount {
   readonly state: DriftState

@@ -1,6 +1,6 @@
 import { type Channel, isFlagged, type RunDetail, type RunRow, type Score } from './api/schema'
 import { baselinePrefix } from './baseline'
-import { formatChannelName, formatScore, formatShortAgainstLimit, formatShortScore } from './format'
+import { formatChannelName, formatScore, formatSeconds, formatShortAgainstLimit, formatShortScore } from './format'
 import { type RunState, runState } from './summary'
 
 // What the run page says about its run, and how it lays out the run's lot and channels. Only calculations: the page
@@ -57,6 +57,32 @@ export function describeUnscored(run: Pick<RunDetail, 'alignment' | 'baseline'>)
 }
 
 /**
+ * The Alignment panel's phase starts: how many the aligner found, and how many it filled in where the record had no
+ * marker, walking on at the measured rhythm (the API calls those predicted).
+ */
+export function describePhaseStarts(detected: number, filled: number): string {
+  return `${detected === 0 ? 'None' : detected} found, ${filled === 0 ? 'none' : filled} filled in where a marker was missing`
+}
+
+/** The Alignment panel's largest gap, said as what it is: a stretch of the record with no samples. */
+export function describeGap(gap: { lengthS: number; startS: number; insideEtch: boolean }): string {
+  return `${formatSeconds(gap.lengthS)} with no samples, at ${formatSeconds(gap.startS)}, ${gap.insideEtch ? 'inside' : 'outside'} the etch`
+}
+
+/** The aligner's note on filled-in phase starts, which the API words as "87 phase onsets predicted, the first in cycle 13". */
+const PREDICTED_NOTE = /^(\d+) phase onsets predicted, the first in cycle (\d+)$/
+
+/** A degraded alignment's note in the panel's words. Other notes pass through as the aligner wrote them. */
+export function describeAlignmentNote(note: string): string {
+  const match = PREDICTED_NOTE.exec(note)
+  if (match === null) {
+    return note
+  }
+  const [, count, cycle] = match
+  return count === '1' ? `1 phase start filled in, in cycle ${cycle}` : `${count} phase starts filled in, the first in cycle ${cycle}`
+}
+
+/**
  * The verdict's sentence beside its big numeral. A stuck value or a phase mean or spread can put a run out of range
  * while its score stays under the limit, and then the sentence says which.
  */
@@ -81,7 +107,7 @@ export interface StripSlot {
   readonly state: RunState
   readonly good: boolean
   readonly current: boolean
-  /** What the disc prints: the wafer number, or this wafer's score when it has one. */
+  /** What the disc prints: the wafer number, this wafer's too; the score is in the label. */
   readonly text: string
   /** The disc's name for a screen reader, the same words the cassette map uses. */
   readonly label: string
@@ -151,7 +177,8 @@ function slot({ id, position, lotNo, state, good, z, current }: {
   const score = z === null ? null : formatShortScore(z)
   const label = [`Lot ${lotNo}, wafer ${position}: ${STATE_WORDS[state]}`, ...(score === null ? [] : [`how unusual ${score}`]), ...(good ? ['baseline run'] : [])]
     .join(', ')
-  return { id, position, state, good, current, text: current && score !== null ? score : String(position), label }
+  // one number means one thing along the row, so a red disc's number is never taken for a score
+  return { id, position, state, good, current, text: String(position), label }
 }
 
 /** The lineup shows this many channels by rank before the rest fold away. */

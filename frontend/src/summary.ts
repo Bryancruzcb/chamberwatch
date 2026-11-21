@@ -368,15 +368,24 @@ export interface DriftSummary {
   readonly k: number | null
 }
 
-export const NO_DRIFT_DATA = 'No drift data'
+const NO_DRIFT_DATA = 'No drift data'
 const DRIFT_FAILED = 'Drift did not load'
 const TOO_FEW = 'Too few wafers to judge a trend'
 const NOTHING_DRIFTING = 'No channel outside the band or heading out'
 
-/** The drift figure's answer, or null while every lot is still loading. */
+/**
+ * The drift figure's answer, or null while any lot is still loading, since a late lot can add a channel.
+ * "No channel" is said only when some lot was judged and found quiet: a lot with no data, too few
+ * wafers or a failed call judged nothing.
+ */
 export function describeDrift(drift: DriftSummary): string | null {
+  if (drift.loading.length > 0) {
+    return null
+  }
   if (drift.lines.length === 0) {
-    return drift.groups.length === 0 ? null : 'No channel is outside the band or heading out, by each lot\'s last wafer.'
+    return drift.groups.some((group) => group.label === NOTHING_DRIFTING)
+      ? 'No channel is outside the band or heading out, by each lot\'s last wafer.'
+      : 'No lot has a drift verdict yet.'
   }
   const count = drift.lines.length
   return `${count} ${count === 1 ? 'channel is' : 'channels are'} outside the band or heading out, by each lot's last wafer.`

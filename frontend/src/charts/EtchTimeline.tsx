@@ -4,13 +4,16 @@ import { Figure } from '../components/Figure'
 import { ScoreLine } from '../components/ScoreLine'
 import { describeEvidence, formatChannelName, formatSeconds, formatShortAgainstLimit } from '../format'
 import { describeClosest } from '../run'
-import { closestChannel, deviatingChannels, etchTimeline, type Lane, positionIn } from '../timeline'
-import { verdictEnd } from './scale'
+import { closestChannel, deviatingChannels, etchTimeline, type Lane, positionIn, type Tick } from '../timeline'
+import { timeAxisLabels, verdictEnd } from './scale'
+import { useWidth } from './useWidth'
 
 const percent = (share: number) => `${(share * 100).toFixed(3)}%`
 
 /** Past this share of the etch the first-moment label sits left of its leader, so it never runs off the lane. */
 const LABEL_FLIP = 0.4
+/** The axis's tick labels, in px of mono type. */
+const TICK_PX = 12
 
 /**
  * When each channel left its range, along the etch: one lane per channel in rank order, solid red for an excursion past
@@ -108,16 +111,7 @@ export function EtchTimeline({ assessment, channels, k, etch, fault }: {
           </li>
         ))}
       </ul>
-      <div className="lane lane-axis" aria-hidden="true">
-        <span />
-        <span className="lane-track">
-          {timeline.ticks.map((tick) => (
-            <span key={tick.s} className="lane-tick" style={{ left: percent(tick.at) }}>{tick.s}</span>
-          ))}
-          <span className="lane-tick unit">s</span>
-        </span>
-        <span />
-      </div>
+      <LaneAxis ticks={timeline.ticks} />
       <div className="figure-foot timeline-foot">
         {timeline.hidden > 0 && (
           <p>{`${timeline.hidden} more ${timeline.hidden === 1 ? 'channel' : 'channels'} left the range; the lineup lists every one.`}</p>
@@ -129,6 +123,28 @@ export function EtchTimeline({ assessment, channels, k, etch, fault }: {
         </p>
       </div>
     </Figure>
+  )
+}
+
+/**
+ * The time axis under the lanes, its last tick carrying the unit ("700 s"). That label ends on its mark rather than
+ * pass the track's end, so on a phone nothing hangs in the page's gutter; the track is measured for it.
+ */
+function LaneAxis({ ticks }: { ticks: readonly Tick[] }) {
+  const [width, measure] = useWidth()
+  const labels = timeAxisLabels(ticks.map((tick) => ({ at: tick.at, x: tick.at * width, text: String(tick.s) })), 's', TICK_PX, width)
+  return (
+    <div className="lane lane-axis" aria-hidden="true">
+      <span />
+      <span className="lane-track" ref={measure}>
+        {labels.map((label) => (
+          <span key={label.at} className={label.anchor === 'end' ? 'lane-tick end' : 'lane-tick'} style={{ left: percent(label.at) }}>
+            {label.text}
+          </span>
+        ))}
+      </span>
+      <span />
+    </div>
   )
 }
 

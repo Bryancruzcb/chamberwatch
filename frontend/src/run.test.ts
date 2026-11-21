@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Channel, runDetailSchema, type RunDetail, runsPageSchema, type Score } from './api/schema'
 import {
-  describeClosest, describeHiddenChannels, describeUnscored, describeVerdict, lotStrip, lotWafers, runDetailState, runHeadline, runTitle,
+  describeAlignmentNote, describeClosest, describeGap, describeHiddenChannels, describePhaseStarts, describeUnscored, describeVerdict, lotStrip, lotWafers, runDetailState, runHeadline, runTitle,
   splitLineup,
 } from './run'
 
@@ -76,21 +76,24 @@ describe('the run page head', () => {
 })
 
 describe('the lot strip', () => {
-  it('lays out the run\'s lot in order, this wafer with its score, under one bracket over wafers 1 to 3', () => {
+  it('lays out the run\'s lot in order, every disc with its wafer number, under one bracket over wafers 1 to 3', () => {
     const strip = lotStrip(publicRuns, run55)
 
     expect(strip.baseline).toBe(3)
-    expect(strip.slots.map((slot) => slot.text)).toEqual(['1', '2', '3', '4', '18.8', '6', '7', '8', '9', '10'])
+    // one number means one thing along the row: this wafer's score is in its label and in the verdict beside it
+    expect(strip.slots.map((slot) => slot.text)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'])
     expect(strip.slots.map((slot) => slot.state).join(' ')).toBe('in in in out out out out out out out')
     expect(strip.slots.filter((slot) => slot.current).map((slot) => slot.id)).toEqual([55])
     expect(strip.slots[0]?.label).toBe('Lot 6, wafer 1: in range, how unusual 3.0, baseline run')
     expect(strip.slots[4]?.label).toBe('Lot 6, wafer 5: out of range, how unusual 18.8')
   })
 
-  it('prints a step change short enough for its disc', () => {
+  it('names a step change short in its disc\'s label, and prints the wafer number in the disc', () => {
     const strip = lotStrip(simulatedRuns, run133)
+    const here = strip.slots.find((slot) => slot.current)
 
-    expect(strip.slots.find((slot) => slot.current)?.text).toBe('98K')
+    expect(here?.text).toBe(String(run133.positionInLot))
+    expect(here?.label).toMatch(/how unusual 98K$/)
     expect(strip.slots).toHaveLength(10)
   })
 
@@ -174,5 +177,25 @@ describe('the lineup', () => {
     expect(describeHiddenChannels([channel('A', 11, 2.9), channel('B', 12, 1)])).toBe('2 more channels, all under 3.0')
     expect(describeHiddenChannels([channel('A', 11, 3)])).toBe('1 more channel, under 4.0')
     expect(describeHiddenChannels([])).toBe('')
+  })
+})
+
+describe("the alignment panel's words", () => {
+  it('says how many phase starts were found and how many were filled in where a marker was missing', () => {
+    expect(describePhaseStarts(198, 0)).toBe('198 found, none filled in where a marker was missing')
+    expect(describePhaseStarts(110, 87)).toBe('110 found, 87 filled in where a marker was missing')
+    expect(describePhaseStarts(199, 1)).toBe('199 found, 1 filled in where a marker was missing')
+    expect(describePhaseStarts(0, 0)).toBe('None found, none filled in where a marker was missing')
+  })
+
+  it('says what the largest gap is: a stretch with no samples', () => {
+    expect(describeGap({ lengthS: 41.1, startS: 648.8, insideEtch: false })).toBe('41.1 s with no samples, at 648.8 s, outside the etch')
+    expect(describeGap({ lengthS: 0.4, startS: 120.2, insideEtch: true })).toBe('0.4 s with no samples, at 120.2 s, inside the etch')
+  })
+
+  it("puts the aligner's note on filled-in phase starts in the panel's words, and leaves its other notes alone", () => {
+    expect(describeAlignmentNote('87 phase onsets predicted, the first in cycle 13')).toBe('87 phase starts filled in, the first in cycle 13')
+    expect(describeAlignmentNote('1 phase onsets predicted, the first in cycle 40')).toBe('1 phase start filled in, in cycle 40')
+    expect(describeAlignmentNote('recording gap inside the etch')).toBe('recording gap inside the etch')
   })
 })

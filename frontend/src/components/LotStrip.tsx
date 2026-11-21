@@ -3,8 +3,9 @@ import { Disc } from './Disc'
 
 /**
  * A lot as a row of discs, each a link to its run: one bracket over the baseline wafers when they are the lot's first
- * N, or a centre dot in each baseline disc when they are not. The run page sets its own wafer larger with its score
- * inside and a "This wafer" label; a lot's own page marks none. The strip scrolls on its own if a long lot will not fit.
+ * N, or a centre dot in each baseline disc when they are not. Every disc prints its wafer number. The run page sets its
+ * own wafer larger with a "This wafer" label; a lot's own page marks none. The strip scrolls on its own if a long lot
+ * will not fit.
  */
 export function LotStrip({ strip, lotNo }: { strip: Strip; lotNo: number }) {
   const n = strip.baseline

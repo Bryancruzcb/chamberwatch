@@ -1,10 +1,11 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router'
 import type { Baseline } from '../api/schema'
 import { scoreLineEnd } from '../charts/scale'
 import { Disc } from '../components/Disc'
 import { ScoreLine } from '../components/ScoreLine'
 import { Segmented } from '../components/Segmented'
-import { formatChannelName, formatDate, formatLabel, formatScore, formatSeconds, formatShortScore, MISSING } from '../format'
+import { fileNameParts, formatChannelName, formatDate, formatLabel, formatScore, formatSeconds, formatShortScore, MISSING } from '../format'
 import { leftNoRange, type RunsSummary, runState, sortRuns, type TableOrder } from '../summary'
 import { Words } from './RunsAttention'
 
@@ -70,7 +71,10 @@ export function RunsTablePanel({ summary, baseline, inRangeOnly, lotId, order, o
                 <tr key={run.id} className={state === 'out' ? 'out-row' : undefined}>
                   <td className="c-wafer">
                     <Link to={`/runs/${run.id}`}>{`Lot ${run.lotNo} · Wafer ${run.positionInLot}`}</Link>
-                    <span className="key">{run.key}</span>
+                    {/* a phone's name column is narrower than a public file name, which may break after an underscore */}
+                    <span className="key">
+                      {fileNameParts(run.key).map((part, index) => <Fragment key={index}>{index > 0 && <wbr />}{part}</Fragment>)}
+                    </span>
                   </td>
                   <td className="c-state">
                     <span className="state-cell">

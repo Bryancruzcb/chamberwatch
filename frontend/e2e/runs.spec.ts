@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { serveApi } from './api.ts'
+import { limitEdgesByColumn } from './locators.ts'
 
 test.beforeEach(async ({ page }) => {
   await serveApi(page)
@@ -327,6 +328,16 @@ for (const width of [320, 360, 375, 700]) {
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((frame?.x ?? 0) + (frame?.width ?? 0) + 0.5)
     }
     if (width < 640) {
+      // the last position's number and the Out head read as two words, never "10OUT"
+      const textBox = (cell: Element) => {
+        const range = document.createRange()
+        range.selectNodeContents(cell)
+        const box = range.getBoundingClientRect()
+        return { left: box.left, right: box.right }
+      }
+      const ten = await grid.locator('thead th.map-col').last().evaluate(textBox)
+      const out = await grid.locator('thead th.map-out-head').evaluate(textBox)
+      expect(out.left - ten.right).toBeGreaterThanOrEqual(6)
       // too small to print a score in: it stays in the disc's name, and the key stops promising one
       await expect(grid.getByRole('link', { name: 'Lot 6, wafer 5: out of range, how unusual 18.8' }).locator('.disc-text')).toBeHidden()
       await expect(grid.getByRole('link', { name: 'Lot 6', exact: true })).toHaveText('6', { useInnerText: true })
@@ -354,9 +365,49 @@ for (const width of [320, 375]) {
     const at = ledger.locator('.ledger-run').first().locator('.c-at')
     await expect(at.locator('.time-line')).toBeHidden()
     await expect(at).toHaveText('537.0 s')
-    expect(await at.evaluate((cell) => getComputedStyle(cell, '::before').content)).toBe('"Left at "')
+    await expect(at).toHaveAttribute('data-label', 'Left at')
   })
 }
+
+for (const width of [320, 375]) {
+  for (const source of ['PUBLIC', 'SYNTHETIC']) {
+    test(`lines up every row of the ${source} All runs ledger on a ${width}px page, each wafer's name on one line`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 })
+      await page.goto(source === 'PUBLIC' ? '/?show=all' : '/?show=all&source=SYNTHETIC')
+      const rows = page.locator('table.runs-table tbody tr')
+      await expect(rows).toHaveCount(source === 'PUBLIC' ? 96 : 40)
+      await page.evaluate(() => document.fonts.ready)
+
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+      const discs = await page.locator('table.runs-table .c-state .disc').evaluateAll((all) => all.map((disc) => Math.round(disc.getBoundingClientRect().x * 10) / 10))
+      expect(new Set(discs).size).toBe(1)
+      const names = await page.locator('table.runs-table .c-wafer a').evaluateAll((all) => all.map((link) => link.getBoundingClientRect().height))
+      expect(Math.max(...names)).toBeLessThan(25)
+      // a file name stays inside the name column, never under the state's words
+      const keys = await page.locator('table.runs-table .c-wafer .key').evaluateAll((all) => all.map((key) => key.getBoundingClientRect().right))
+      expect(Math.max(...keys)).toBeLessThanOrEqual(Math.min(...discs))
+    })
+  }
+}
+
+test('labels the fields of every phone ledger in one face and one colour on every page', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  const looks: string[] = []
+  for (const [path, rows] of [['/', '.ledger-run'], ['/?show=all', 'table.runs-table tbody tr'], ['/lots/6', 'table.runs-table tbody tr']] as const) {
+    await page.goto(path)
+    await expect(page.locator(rows).first()).toBeVisible()
+    const seen = await page.locator('td[data-label]').evaluateAll((cells) => cells
+      .filter((cell) => cell.getClientRects().length > 0)
+      .map((cell) => {
+        const label = getComputedStyle(cell, '::before')
+        return `${label.fontFamily} | ${label.color}`
+      }))
+    expect(seen.length).toBeGreaterThan(0)
+    looks.push(...seen)
+  }
+  const sans = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim())
+  expect(new Set(looks)).toEqual(new Set([`${sans} | rgb(92, 85, 71)`]))
+})
 
 test('scrolls a long lot inside the map rather than shrink its discs', async ({ page }) => {
   const answer = publicRuns()
@@ -412,6 +463,18 @@ test('puts every out-of-range run on one score scale and one time scale', async 
   expect(new Set(limits).size).toBe(1)
 })
 
+test('draws the limit at one x down a ledger whose rows run past the end of the line', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/?source=SYNTHETIC')
+  await expect(page.locator('.score-line.past')).not.toHaveCount(0)
+
+  const columns = await limitEdgesByColumn(page)
+  expect(columns.length).toBeGreaterThan(0)
+  for (const edges of columns) {
+    expect(edges).toHaveLength(1)
+  }
+})
+
 test('opens a link to one lot on its rows in the ledger', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/#lot-9')
@@ -431,6 +494,35 @@ test('brings the lot drift onto the page and says which lots have no drift data'
   await expect(drift).toHaveAttribute('aria-busy', 'false')
   await expect(drift.locator('.figure-answer')).toHaveText('4 channels are outside the band or heading out, by each lot\'s last wafer.')
   await expect(drift.getByRole('link', { name: 'All lots' })).toHaveAttribute('href', '/lots')
+})
+
+test('gives no drift answer while a lot\'s drift is still on its way', async ({ page }) => {
+  let release = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route((url) => url.pathname === '/api/lots/6/drift', async (route) => {
+    await held
+    await route.fallback()
+  })
+  await page.goto('/')
+  const drift = page.getByRole('region', { name: 'Drift along the lots' })
+
+  await expect(drift).toContainText('No drift dataLots 1 to 5 and 7 to 10')
+  await expect(drift).toHaveAttribute('aria-busy', 'true')
+  await expect(drift.locator('.figure-answer')).not.toContainText('No channel')
+  await expect(drift.locator('.figure-answer .skel')).toHaveCount(1)
+  release()
+  await expect(drift.locator('.figure-answer')).toHaveText('4 channels are outside the band or heading out, by each lot\'s last wafer.')
+})
+
+test('says no lot has a drift verdict when every lot\'s drift fails, never that nothing drifts', async ({ page }) => {
+  await page.route((url) => /^\/api\/lots\/\d+\/drift$/.test(url.pathname), (route) => route.fulfill({ status: 500, json: { message: 'down' } }))
+  await page.goto('/')
+  const drift = page.getByRole('region', { name: 'Drift along the lots' })
+
+  await expect(drift).toContainText('Drift did not loadLots 1 to 10')
+  await expect(drift.locator('.figure-answer')).toHaveText('No lot has a drift verdict yet.')
 })
 
 test('keeps the page\'s words in a closed disclosure', async ({ page }) => {
@@ -512,6 +604,21 @@ test('filters to one lot', async ({ page }) => {
   await expect(page).toHaveURL(/lot=6/)
 })
 
+test('reads a lot this source does not have as no filter', async ({ page }) => {
+  // lot 21 is the simulated lot 901, so on the public source the address names no lot of its own
+  await page.goto('/?lot=21')
+
+  await expect(page.getByRole('tab', { name: /All runs/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('table.runs-table tbody tr')).toHaveCount(96)
+  await expect(page.getByRole('combobox', { name: 'Lot' })).toHaveValue('')
+  await expect(page.getByText('No runs match these filters.')).toHaveCount(0)
+
+  await page.goto('/?lot=21&source=SYNTHETIC')
+  await expect(page.locator('table.runs-table tbody tr')).toHaveCount(10)
+  await expect(page.getByRole('combobox', { name: 'Lot' })).toHaveValue('21')
+  await expect(page.getByRole('combobox', { name: 'Lot' }).locator('option:checked')).toHaveText('Lot 901, 5 out of range')
+})
+
 test('orders the runs by persistent z and opens one', async ({ page }) => {
   await page.goto('/?show=all&order=z')
 
@@ -584,7 +691,11 @@ test('says when a source has no runs yet', async ({ page }) => {
   await page.goto('/?source=LIVE')
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('No runs stored for this source yet.')
-  await expect(page.getByRole('status').filter({ hasText: 'Nothing to check' })).toContainText('Open the Live page')
+  // the h1 already says the source is empty, so the figure gives only the way to fill it
+  const figure = page.getByRole('region', { name: 'Every wafer, lot by lot' })
+  await expect(figure.getByRole('status')).toHaveText('A wafer recorded on the Live page shows up here when its run ends. Open the Live page')
+  await expect(figure.getByRole('link', { name: 'Open the Live page' })).toHaveAttribute('href', '/live')
+  await expect(figure.locator('.state-title')).toHaveCount(0)
   await expect(page.locator('.figure.numbered')).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Source' }).getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true')
 })

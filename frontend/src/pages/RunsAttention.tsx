@@ -168,7 +168,7 @@ function OutRow({ run, k, end, timeEnd }: { run: RunRow; k: number | null; end: 
         {score?.firstChannel === undefined || score.firstChannel === null ? 'No channel named' : formatChannelName(score.firstChannel)}
         <Words run={run} />
       </td>
-      <td className="c-at">
+      <td className="c-at" data-label="Left at">
         {at === null
           ? MISSING
           : (
@@ -178,7 +178,7 @@ function OutRow({ run, k, end, timeEnd }: { run: RunRow; k: number | null; end: 
               </span>
             )}
       </td>
-      <td className="c-exc num">{score?.limitFlags ?? MISSING}</td>
+      <td className="c-exc num" data-label="Excursions">{score?.limitFlags ?? MISSING}</td>
     </tr>
   )
 }

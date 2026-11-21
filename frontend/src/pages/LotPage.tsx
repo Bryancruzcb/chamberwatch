@@ -15,7 +15,7 @@ import { ScoreLine } from '../components/ScoreLine'
 import { Segmented } from '../components/Segmented'
 import { ErrorState } from '../components/States'
 import {
-  columnFormat, formatChannelName, formatConditioning, formatDate, formatDriftState, formatScore, formatSeconds, formatShortScore, formatValue, formatZ,
+  alignedFormat, formatAgainstLimit, formatChannelName, formatConditioning, formatDate, formatDriftState, formatScore, formatSeconds, formatShortScore, formatValue, formatZ,
   MISSING, tieUnits,
 } from '../format'
 import {
@@ -325,7 +325,7 @@ function DriftChannels({ channels, selected, rule, phase }: {
                   </Link>
                 </td>
                 <td><DriftWord state={channel.state} /></td>
-                <td className="num">{formatZ(fittedZ(channel))}</td>
+                <td className="num">{formatFittedZ(fittedZ(channel), rule.k)}</td>
               </tr>
             ))}
           </tbody>
@@ -345,6 +345,11 @@ function DriftChannels({ channels, selected, rule, phase }: {
     search.set('channel', name)
     return search.toString()
   }
+}
+
+/** A fitted z beside the band's edge k, so 3.04 never prints as the 3.0 it is past. */
+function formatFittedZ(z: number | null, k: number): string {
+  return z === null ? MISSING : formatAgainstLimit(z, k)
 }
 
 /** The words the lot page's drift figures use, closed until asked for, with the numbers of the lot's drift rule. */
@@ -393,8 +398,9 @@ function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
     ? `This lot's first ${referenceWafers} wafers ± ${formatScore(rule.k)} sd of the good runs`
     : `Good-run band, mean ± ${formatScore(rule.k)} sd`
   const positions = Math.max(rule.plannedLotSize, last?.position ?? 0)
-  // one count of decimals down the whole mean column, so the decimal points line up
-  const formatMean = columnFormat(channel.points.map((point) => point.value))
+  // one count of decimals down a column whose values sit close enough to line their decimal points up
+  const formatMean = alignedFormat(channel.points.map((point) => point.value))
+  const formatSlope = alignedFormat(channel.points.map((point) => point.fit?.slope ?? null))
   const projecting = last !== undefined && (last.state === 'WILL_EXIT' || last.state === 'STAYS_IN')
   const fit: PositionFit | null = last === undefined || last.fit === null
     ? null
@@ -421,6 +427,8 @@ function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
         band={{ low: channel.low, high: channel.high, mean: channel.bandMean, label: bandLabel }}
         fit={fit}
         baseline={reference === 'LOT' ? referenceWafers : null}
+        // the band's reference is the lot's first wafers by position, which need not be its baseline runs
+        zoneLabel={`FIRST ${referenceWafers}`}
         formatValue={formatValue}
         details={(position) => {
           const point = channel.points.find((candidate) => candidate.position === position)
@@ -446,7 +454,7 @@ function DriftFigure({ channel, rule, phase, reference, referenceWafers }: {
                 <td><Link to={`/runs/${point.runId}`}>{`Wafer ${point.position}`}</Link></td>
                 <td className="num">{formatMean(point.value)}</td>
                 <td className="num">{formatZ(point.z)}</td>
-                <td className="num c-slope">{formatValue(point.fit?.slope ?? null)}</td>
+                <td className="num c-slope">{formatSlope(point.fit?.slope ?? null)}</td>
                 <td className="num c-t">{formatScore(point.fit?.tStat ?? null)}</td>
                 <td><DriftWord state={point.state} /></td>
               </tr>

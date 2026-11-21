@@ -147,6 +147,24 @@ export function columnFormat(values: readonly number[]): (value: number | null) 
   return (value) => (value === null ? MISSING : fixed.format(value))
 }
 
+/** Values further apart than this factor are not printed to one count of decimals. */
+const ALIGNED_SPREAD = 10
+
+/**
+ * A formatter for one table column of readings. Where every value sits within a factor of ten of the others, they share
+ * one count of decimals (`columnFormat`), so the decimal points line up: 0.001590 over 0.001588. Where they spread wider,
+ * each prints at four significant digits (`formatValue`), since lining up 573.3 and 0.0007783 would invent digits on
+ * the larger one. Zeros and missing values do not count toward the spread.
+ */
+export function alignedFormat(values: ReadonlyArray<number | null>): (value: number | null) => string {
+  const present = values.filter((value) => value !== null)
+  const sizes = present.filter((value) => value !== 0).map(Math.abs)
+  if (sizes.length === 0 || Math.max(...sizes) > ALIGNED_SPREAD * Math.min(...sizes)) {
+    return formatValue
+  }
+  return columnFormat(present)
+}
+
 /** A count of things, grouped and without decimals: 2,400, not 2,400.0. */
 export function formatCount(value: number): string {
   return whole.format(value)
@@ -360,6 +378,20 @@ export function tieUnits(text: string): string {
   return text.replace(/(\d) (s|µm|sd|sccm)(?![\p{L}\p{N}_])/gu, '$1\u00a0$2')
 }
 
+/** A file name cut after each underscore: where a narrow column may break a name that has no spaces. */
+export function fileNameParts(name: string): string[] {
+  return name.match(/[^_]*_|[^_]+$/g) ?? []
+}
+
+/**
+ * A sentence split around the first time a phrase appears in it, so the page can keep that phrase on one line without
+ * changing the text a reader copies or a screen reader hears. Null when the phrase is not there.
+ */
+export function splitAround(text: string, phrase: string): { readonly before: string; readonly phrase: string; readonly after: string } | null {
+  const at = phrase === '' ? -1 : text.indexOf(phrase)
+  return at < 0 ? null : { before: text.slice(0, at), phrase, after: text.slice(at + phrase.length) }
+}
+
 /** A z-score or a t-statistic, to one decimal. */
 export function formatScore(value: number | null): string {
   return value === null ? MISSING : oneDecimal.format(value)
@@ -373,13 +405,40 @@ export function formatBigScore(value: number): string {
   return Math.abs(value) >= 100 ? whole.format(value) : oneDecimal.format(value)
 }
 
+/** Two, three and four decimals, the steps `apartFromLimit` takes. */
+const finer = [2, 3, 4].map((decimals) => new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: decimals, maximumFractionDigits: decimals, signDisplay: 'negative',
+}))
+
 /**
- * A short score printed at the end of a lane or row against the limit k: as `formatShortScore`, but with two decimals
- * where one would print it as the limit itself, so 6.04 and 5.96 never both read "6.0".
+ * A value printed beside its limit k, starting from `text`, its usual print. When that would print the value's size as
+ * the limit's, decimals are added, up to four, until the two differ, so 5.996 under a limit of 6.0 reads 5.996, not
+ * 6.0 or 6.00. Sizes are compared because a fitted z of -3.04 is past a band of 3.0 as surely as 3.04 is. A value the
+ * size of the limit keeps its text.
+ */
+function apartFromLimit(value: number, k: number, text: string): string {
+  const size = Math.abs(value)
+  const limit = Math.abs(k)
+  if (size === limit || text.replace(/^-/, '') !== formatScore(limit)) {
+    return text
+  }
+  let printed = text
+  for (const format of finer) {
+    printed = format.format(value)
+    if (format.format(size) !== format.format(limit)) {
+      break
+    }
+  }
+  return printed
+}
+
+/**
+ * A short score printed at the end of a lane or row against the limit k: as `formatShortScore`, with the decimals
+ * `apartFromLimit` adds where one would print it as the limit itself, so 6.04 and 5.96 never both read "6.0".
  */
 export function formatShortAgainstLimit(value: number, k: number | null): string {
   const text = formatShortScore(value)
-  return k !== null && value !== k && text === formatScore(k) ? twoDecimals.format(value) : text
+  return k === null ? text : apartFromLimit(value, k, text)
 }
 
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 2, signDisplay: 'negative' })
@@ -398,13 +457,12 @@ export function formatShortScore(value: number): string {
 }
 
 /**
- * A how-unusual value printed beside the limit k, as `formatBigScore` prints it, or with two decimals when one would
- * print it as the limit itself. A channel at 6.04 is past a limit of 6.0 and one at 5.96 is under it, and "6.0" would
- * say neither.
+ * A how-unusual value or a fitted z printed beside the limit k, as `formatBigScore` prints it, with the decimals
+ * `apartFromLimit` adds where one would print it as the limit itself. A channel at 6.04 is past a limit of 6.0 and one
+ * at 5.96 is under it, and "6.0" would say neither.
  */
 export function formatAgainstLimit(value: number, k: number): string {
-  const text = formatBigScore(value)
-  return value !== k && text === formatScore(k) ? twoDecimals.format(value) : text
+  return apartFromLimit(value, k, formatBigScore(value))
 }
 
 /** A z in a table: as `formatBigScore`, so a step change's z of 403,671.9 prints whole. */
