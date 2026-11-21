@@ -104,3 +104,29 @@ export function verdictEnd(z: number, k: number): number {
   }
   return Math.min(roundUpTo(Math.max(VERDICT_LIMITS * k, z), 5), roundUpTo(SCORE_LINE_LIMITS * k, 5))
 }
+
+/**
+ * Labels set at the ends of lines, moved apart so that no two sit closer than `gap`, keeping their order and staying
+ * between `low` and `high` (both pixel positions, low the smaller). Of two that collide the lower one moves down, unless
+ * that would pass `high`. When there is not room for every gap, they keep the gap and the last one runs past `high`.
+ */
+export function spreadLabels(wanted: readonly number[], gap: number, low: number, high: number): number[] {
+  const order = wanted.map((y, index) => ({ y, index })).sort((a, b) => a.y - b.y || a.index - b.index)
+  const placed = order.map((entry) => Math.min(Math.max(entry.y, low), high))
+  // push down from the top, then back up from the bottom, then down once more from the top edge
+  for (let i = 1; i < placed.length; i++) {
+    placed[i] = Math.max(placed[i] ?? 0, (placed[i - 1] ?? 0) + gap)
+  }
+  for (let i = placed.length - 1; i >= 0; i--) {
+    const below = i === placed.length - 1 ? high : (placed[i + 1] ?? high) - gap
+    placed[i] = Math.min(placed[i] ?? 0, below)
+  }
+  for (let i = 0; i < placed.length; i++) {
+    placed[i] = Math.max(placed[i] ?? 0, i === 0 ? low : (placed[i - 1] ?? low) + gap)
+  }
+  const result = new Array<number>(wanted.length).fill(0)
+  order.forEach((entry, rank) => {
+    result[entry.index] = placed[rank] ?? entry.y
+  })
+  return result
+}

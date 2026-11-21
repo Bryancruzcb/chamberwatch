@@ -6,20 +6,26 @@ test('watches a wafer being etched and links to the run it stored', async ({ pag
   await serveApi(page)
   await page.goto('/live')
 
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Live chamber')
-  await expect(page.getByRole('heading', { level: 2, name: 'Nothing is being etched' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing is being etched.')
+  await expect(page.locator('.answer-next')).toHaveText('Start the chamber simulator, then record from it here.')
+  await expect(page).toHaveTitle('Live · ChamberWatch')
+  await expect(page.getByRole('button', { name: 'Stop recording' })).toBeDisabled()
 
   await page.getByRole('button', { name: /Record from/ }).click()
 
-  await expect(page.getByRole('heading', { level: 2, name: 'Etching now' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A wafer is being etched now.')
+  await expect(page.locator('.answer-next')).toHaveText('LIVE-s7-L1-W01, at cycle 12 of 100, 128.0 s in.')
   await expect(stat(page, 'Wafer')).toHaveText('LIVE-s7-L1-W01')
   await expect(stat(page, 'Step')).toHaveText('ETCH_SF6')
 
   // the page polls while it streams, and the stand-in answers with the finished run next
   await expect(page.getByRole('heading', { level: 2, name: 'The last wafer it recorded' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing is being etched.')
+  await expect(page.locator('.answer-next')).toHaveText('The last wafer it recorded, LIVE-s7-L1-W01, is stored as a run.')
   await expect(stat(page, 'Fault put in')).toHaveText('Gas flow stuck low')
   await expect(stat(page, 'Alignment')).toHaveText('ALIGNED')
   await expect(page.getByRole('link', { name: 'open its page' })).toHaveAttribute('href', '/runs/4242')
+  expect(await page.locator('.figure.numbered h2').allTextContents()).toEqual(['The chamber now', 'The last wafer it recorded'])
 })
 
 test('a read-only ChamberWatch says it does not record live runs', async ({ page }) => {
@@ -30,6 +36,32 @@ test('a read-only ChamberWatch says it does not record live runs', async ({ page
   await expect(page.getByRole('button', { name: /Record from/ })).toHaveCount(0)
 })
 
+test('says why the chamber could not be reached, with a way to ask again', async ({ page }) => {
+  await serveApi(page)
+  let fail = true
+  await page.route((url) => url.pathname === '/api/live/session', (route) => (fail
+    ? route.fulfill({ status: 502, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Bad Gateway', detail: 'the server is restarting' }) })
+    : route.fallback()))
+  await page.goto('/live')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('The live session did not load.')
+  await expect(page.getByRole('alert')).toContainText('the server is restarting')
+  fail = false
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing is being etched.')
+})
+
+test('says a recording stopped without a run, and why', async ({ page }) => {
+  await serveApi(page)
+  await page.route((url) => url.pathname === '/api/live/session', (route) => route.fulfill({
+    json: { recording: false, run: 'LIVE-s7-L1-W02', state: null, cycle: 40, samples: 1200, timeS: 240, stored: null, failure: 'the simulator closed the connection' },
+  }))
+  await page.goto('/live')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('The last recording stopped.')
+  await expect(page.getByRole('region', { name: 'The last recording stopped' }).getByRole('alert')).toHaveText('the simulator closed the connection')
+})
+
 test('the live page is reachable from every page', async ({ page }) => {
   await serveApi(page)
   await page.goto('/')
@@ -37,5 +69,27 @@ test('the live page is reachable from every page', async ({ page }) => {
   await page.getByRole('link', { name: 'Live', exact: true }).click()
 
   await expect(page).toHaveURL(/\/live$/)
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Live chamber')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing is being etched.')
+})
+
+for (const width of [320, 375]) {
+  test(`fits the live page on a ${width}px phone without sideways scroll`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await serveApi(page)
+    await page.goto('/live')
+
+    await expect(page.getByRole('button', { name: /Record from/ })).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+  })
+}
+
+test('says nothing is at an address the app has no page for', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/nowhere')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing is at this address.')
+  await expect(page).toHaveTitle('Not found · ChamberWatch')
+  await page.getByRole('link', { name: 'Back to the runs' }).click()
+  await expect(page).toHaveURL(/\/$/)
 })

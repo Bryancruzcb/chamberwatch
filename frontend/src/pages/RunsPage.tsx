@@ -6,8 +6,9 @@ import { useLotDrifts } from '../api/useLotDrifts'
 import { useResource } from '../api/useResource'
 import { LotGrid, LotGridSkeleton } from '../charts/LotGrid'
 import { Figure } from '../components/Figure'
-import { Icon } from '../components/Icon'
 import { SourceSwitch } from '../components/SourceSwitch'
+import { AnswerSkeleton, ErrorState } from '../components/States'
+import { EMPTY_HINTS } from '../sources'
 import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
 import { AttentionPanel } from './RunsAttention'
 import { RunsTablePanel } from './RunsTable'
@@ -20,12 +21,6 @@ const TABS = [
   { id: 'all', text: 'All runs' },
   { id: 'in', text: 'In range' },
 ] as const satisfies ReadonlyArray<{ id: Tab; text: string }>
-
-const EMPTY_HINTS = {
-  PUBLIC: 'The public wafers show up here once the ingest command has loaded them.',
-  SYNTHETIC: 'The simulated wafers show up here once the simulate-lot command has stored them.',
-  LIVE: 'A wafer recorded on the Live page shows up here when its run ends.',
-} as const satisfies Record<Source, string>
 
 interface View {
   readonly source: Source
@@ -88,7 +83,7 @@ export function RunsPage() {
         {failed
           ? <h1>The runs did not load.</h1>
           : !ready
-            ? <AnswerSkeleton />
+            ? <AnswerSkeleton name="Runs" />
             : <Answer summary={summary} />}
       </section>
       {/* one figure throughout, so the Source switch keeps its place and its focus while a source loads */}
@@ -101,7 +96,7 @@ export function RunsPage() {
         control={<SourceSwitch value={view.source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />}
       >
         {page.kind === 'error'
-          ? <ErrorState message={page.error.message} onRetry={reload} />
+          ? <ErrorState title="Could not load the runs" message={page.error.message} onRetry={reload} />
           : !ready || page.kind !== 'ready'
             ? <LotGridSkeleton source={view.source} />
             : summary.runs.length === 0
@@ -163,18 +158,6 @@ function Answer({ summary }: { summary: RunsSummary }) {
   )
 }
 
-function AnswerSkeleton() {
-  return (
-    <>
-      <h1 className="visually-hidden">Runs</h1>
-      <p className="visually-hidden" role="status">Loading runs</p>
-      <span className="skel skel-title" aria-hidden="true" />
-      <span className="skel skel-title short" aria-hidden="true" />
-      <span className="skel skel-lead" aria-hidden="true" />
-    </>
-  )
-}
-
 function Tabs({ tab, summary, onChoose }: { tab: Tab; summary: RunsSummary | null; onChoose: (tab: Tab) => void }) {
   const counts: Record<Tab, number | null> = summary === null
     ? { attention: null, all: null, in: null }
@@ -230,20 +213,6 @@ function PanelSkeleton() {
         <span className="skel skel-lead" />
         <span className="skel skel-ledger" />
       </div>
-    </div>
-  )
-}
-
-/** What the API said when the runs did not load, in the figure's place, with a way to ask again. */
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="state" role="alert">
-      <p className="state-title">Could not load the runs</p>
-      <p>{message}</p>
-      <button type="button" className="button" onClick={onRetry}>
-        <Icon name="refresh" />
-        Try again
-      </button>
     </div>
   )
 }

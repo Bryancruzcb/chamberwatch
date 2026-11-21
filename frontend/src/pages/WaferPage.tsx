@@ -1,13 +1,17 @@
 import { Link, useParams, useSearchParams } from 'react-router'
-import { type Measurements, type MeasurementSet, measurementsSchema, runDepthSchema, runDetailSchema } from '../api/schema'
+import {
+  type Measurements, type MeasurementSet, measurementsSchema, runDepthSchema, runDetailSchema, type RunDetail,
+} from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
 import { PredictionStrip } from '../charts/PredictionStrip'
 import { RadialProfile } from '../charts/RadialProfile'
 import { WaferMap } from '../charts/WaferMap'
-import { Loaded } from '../components/Loaded'
+import { Figure } from '../components/Figure'
 import { Segmented } from '../components/Segmented'
-import { describePrediction, describeWaferDepth, formatMicrons } from '../format'
+import { Stat } from '../components/Stat'
+import { ErrorState } from '../components/States'
+import { describePrediction, describeWaferDepth, formatDate, formatMicrons, formatMeasurementSet, waferHeadline } from '../format'
 import { NotFound } from './NotFound'
 
 const SETS = [['EIGHTY_NINE_POINT', '89-point'], ['NINE_POINT', '9-point']] as const
@@ -20,57 +24,109 @@ export function WaferPage() {
   return <WaferView key={runId} runId={Number(runId)} />
 }
 
+/**
+ * A wafer's measured depth. The answer says where it etched deeper, its edge or its center; then the map of its sites
+ * and, for a public wafer, the depth its telemetry predicts. The measurement set is chosen in the first figure's head.
+ */
 function WaferView({ runId }: { runId: number }) {
   const [params, setParams] = useSearchParams()
   const set: MeasurementSet = params.get('set') === 'NINE_POINT' ? 'NINE_POINT' : 'EIGHTY_NINE_POINT'
-  const [run] = useResource(`/api/runs/${runId}`, runDetailSchema)
-  const [measurements] = useResource(`/api/runs/${runId}/measurements?set=${set}`, measurementsSchema)
+  const [run, reloadRun] = useResource(`/api/runs/${runId}`, runDetailSchema)
+  const [measurements, reloadMeasurements] = useResource(`/api/runs/${runId}/measurements?set=${set}`, measurementsSchema)
+  // a new set keeps the last set's sites on hand until its own arrive; they never stand in for the new set's answer
+  const current = measurements.kind === 'ready' && !measurements.refreshing ? measurements.data : null
+  if (run.kind === 'error') {
+    return (
+      <div className="sheet">
+        <title>Measured depth · ChamberWatch</title>
+        <ErrorState title="This wafer did not load" message={run.error.message} onRetry={reloadRun} />
+      </div>
+    )
+  }
   return (
-    <>
-      <header className="page-head">
-        <Loaded resource={run}>
-          {(detail) => (
+    <div className="sheet">
+      {run.kind === 'loading'
+        ? <WaferHeadSkeleton />
+        : <WaferHead run={run.data} measurements={current} />}
+      <Figure
+        id="wafer"
+        title="Etch depth across the wafer"
+        answer={current === null ? undefined : describeWaferDepth(current)}
+        busy={measurements.kind === 'loading'}
+        control={(
+          <Segmented
+            label="Measurement set"
+            value={set}
+            options={SETS}
+            onChange={(next) => setParams(next === 'EIGHTY_NINE_POINT' ? {} : { set: next }, { replace: true, preventScrollReset: true })}
+          />
+        )}
+      >
+        {measurements.kind === 'loading' && <span className="skel skel-wafer" aria-hidden="true" />}
+        {measurements.kind === 'error' && (
+          <ErrorState title="Could not load the measurements" message={measurements.error.message} onRetry={reloadMeasurements} />
+        )}
+        {measurements.kind === 'ready' && (
+          <div className={measurements.refreshing ? 'figure-body refreshing' : 'figure-body'} aria-busy={measurements.refreshing || undefined}>
+            <MeasurementsView measurements={measurements.data} />
+          </div>
+        )}
+      </Figure>
+      {run.kind === 'ready' && run.data.source === 'PUBLIC' && <PredictedDepth runId={runId} set={set} />}
+    </div>
+  )
+}
+
+function WaferHead({ run, measurements }: { run: RunDetail; measurements: Measurements | null }) {
+  return (
+    <header className="page-head">
+      <title>{`Lot ${run.lotNo}, wafer ${run.positionInLot} depth · ChamberWatch`}</title>
+      <p className="breadcrumb">
+        <Link to={withSource('/', run.source)}>Runs</Link>
+        <span aria-hidden="true"> / </span>
+        <Link to={`/lots/${run.lotId}`}>{`Lot ${run.lotNo}`}</Link>
+        <span aria-hidden="true"> / </span>
+        <Link to={`/runs/${run.id}`}>{`Wafer ${run.positionInLot}`}</Link>
+        <span aria-hidden="true"> / </span>
+        Depth
+      </p>
+      {measurements === null
+        ? (
             <>
-              <title>{`${detail.key} depth · ChamberWatch`}</title>
-              <p className="breadcrumb">
-                <Link to={withSource('/', detail.source)}>Runs</Link>
-                <span aria-hidden="true"> / </span>
-                <Link to={`/lots/${detail.lotId}`}>{`Lot ${detail.lotNo}`}</Link>
-                <span aria-hidden="true"> / </span>
-                <Link to={`/runs/${detail.id}`}>{`Wafer ${detail.positionInLot}`}</Link>
-              </p>
-              <h1>Measured depth</h1>
-              <p className="subtitle key">{detail.key}</p>
+              <h1 className="visually-hidden">Measured depth</h1>
+              <span className="skel skel-title" aria-hidden="true" />
+              <span className="skel skel-title short" aria-hidden="true" />
             </>
-          )}
-        </Loaded>
-      </header>
-      <Segmented
-        label="Measurement set"
-        value={set}
-        options={SETS}
-        onChange={(next) => setParams(next === 'EIGHTY_NINE_POINT' ? {} : { set: next }, { replace: true, preventScrollReset: true })}
-      />
-      <Loaded resource={measurements}>{(data) => <MeasurementsView measurements={data} />}</Loaded>
-      <Loaded resource={run}>{(detail) => (detail.source === 'PUBLIC' ? <PredictedDepth runId={runId} set={set} /> : null)}</Loaded>
-    </>
+          )
+        : <h1>{waferHeadline(run, measurements)}</h1>}
+      <p className="page-meta">
+        {run.runDate !== null && <span>{formatDate(run.runDate)}</span>}
+        <span className="run-key">{run.key}</span>
+        <Link to={`/runs/${run.id}`}>Its run</Link>
+      </p>
+    </header>
+  )
+}
+
+function WaferHeadSkeleton() {
+  return (
+    <div className="page-head" role="status">
+      <span className="visually-hidden">Loading…</span>
+      <span className="skel skel-crumb" aria-hidden="true" />
+      <span className="skel skel-title" aria-hidden="true" />
+      <span className="skel skel-title short" aria-hidden="true" />
+    </div>
   )
 }
 
 /** What the wafer's telemetry says its depth should be, from a model that never saw its lot. Public wafers only. */
 function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) {
-  const [depth] = useResource(`/api/runs/${runId}/depth?set=${set}`, runDepthSchema)
+  const [depth, reload] = useResource(`/api/runs/${runId}/depth?set=${set}`, runDepthSchema)
   return (
-    <section className="panel" aria-labelledby="predicted-title">
-      <h2 id="predicted-title">Predicted from the telemetry</h2>
-      <Loaded resource={depth}>
-        {(data) => (
-          <>
-            <p className="panel-answer">{describePrediction(data)}</p>
-            <PredictionStrip predictedUm={data.predictedUm} measuredUm={data.measuredUm} missUm={data.lotRmseUm} />
-          </>
-        )}
-      </Loaded>
+    <Figure id="predicted" title="Predicted from the telemetry" answer={depth.kind === 'ready' ? describePrediction(depth.data) : undefined}>
+      {depth.kind === 'loading' && <span className="skel skel-strip-wide" aria-hidden="true" />}
+      {depth.kind === 'error' && <ErrorState title="Could not load the prediction" message={depth.error.message} onRetry={reload} />}
+      {depth.kind === 'ready' && <PredictionStrip predictedUm={depth.data.predictedUm} measuredUm={depth.data.measuredUm} missUm={depth.data.lotRmseUm} />}
       <details className="how">
         <summary>How this is counted</summary>
         <p>
@@ -80,26 +136,23 @@ function PredictedDepth({ runId, set }: { runId: number; set: MeasurementSet }) 
           <Link to="/lots">The lots page</Link> compares the model with two simpler guesses.
         </p>
       </details>
-    </section>
+    </Figure>
   )
 }
 
 function MeasurementsView({ measurements }: { measurements: Measurements }) {
   const depths = measurements.values.map((site) => site.depthUm)
-  const answer = describeWaferDepth(measurements)
   return (
-    <section className="panel" aria-labelledby="wafer-title">
-      <h2 id="wafer-title">Etch depth across the wafer</h2>
-      {answer !== null && <p className="panel-answer">{answer}</p>}
-      {measurements.points === 0
-        ? <p className="status-line">No measured depth in this set.</p>
+    <>
+      {measurements.values.length === 0
+        ? <p className="state">{`This wafer has no ${formatMeasurementSet(measurements.set)} measurements.`}</p>
         : (
           <WaferMap measurements={measurements}>
-            <dl className="wafer-facts">
-              <div><dt>Mean</dt><dd className="num">{formatMicrons(measurements.meanDepthUm)}</dd></div>
-              <div><dt>Spread (sd)</dt><dd className="num">{formatMicrons(measurements.sdDepthUm)}</dd></div>
-              <div><dt>Range</dt><dd className="num">{formatMicrons(Math.max(...depths) - Math.min(...depths))}</dd></div>
-              <div><dt>Sites</dt><dd className="num">{measurements.points}</dd></div>
+            <dl className="stats wafer-facts">
+              <Stat label="Mean" value={formatMicrons(measurements.meanDepthUm)} />
+              <Stat label="Spread (sd)" value={formatMicrons(measurements.sdDepthUm)} />
+              <Stat label="Range" value={formatMicrons(Math.max(...depths) - Math.min(...depths))} />
+              <Stat label="Sites" value={measurements.points} />
             </dl>
             <RadialProfile sites={measurements.values} />
           </WaferMap>
@@ -113,6 +166,6 @@ function MeasurementsView({ measurements }: { measurements: Measurements }) {
           distance is never split.
         </p>
       </details>
-    </section>
+    </>
   )
 }

@@ -16,7 +16,7 @@ On 96 public wafers it did not find scrap. It found the tool changing through th
 
 Depth *does* follow lot position: mean depth loss grows to 0.90 µm by wafer 10, and the SF6-phase mean of the platen tuning capacitor correlates at −0.80 with measured depth inside lots. By the last wafer of every lot that capacitor is outside the good-run band.
 
-![The lots page: flags start at lot 6; drift score and depth loss climb together with wafer position](docs/images/lots.png)
+![The lots page opens on its answer: lots 6 to 9 hold all 15 out-of-range runs. Every lot shows its ten wafers as small discs, the out-of-range ones solid red; below, the drift score and depth loss climb together with wafer position, and the telemetry predicts depth closer than either simpler guess](docs/images/lots.png)
 
 The public set has no labeled faults, so a seeded simulator plants five known failures in 1,000 synthetic runs. Detectors catch a stuck gas flow and a sensor dropout every time, a frozen sensor 24 times in 25, and some of the short pressure spikes and slow reflected-power rises. They name the right channel when they catch it. A stuck flow also drags the simulated foreline pressure down, by the 0.21 per sccm the public wafers show, and the flow still ranks above the pressure it moved in all 23 runs where both are flagged. About 8% of clean synthetic runs still get flagged. A stored simulated lot shows the same thing in the app, with the planted fault next to what the detectors called.
 

@@ -14,7 +14,7 @@ const BINS = 6
 const READOUT_WIDTH = 240
 
 /**
- * Etch depth at each measured site, placed where it sits on the wafer and shaded by depth on one blue ramp. The
+ * Etch depth at each measured site, placed where it sits on the wafer and shaded by depth on one ink ramp. The
  * pointer or the arrow keys read one site at a time, and the table view lists every site.
  */
 export function WaferMap({ measurements, children }: { measurements: Measurements; children?: ReactNode }) {
@@ -24,7 +24,7 @@ export function WaferMap({ measurements, children }: { measurements: Measurement
   const { values } = measurements
 
   if (values.length === 0) {
-    return <p className="status-line">{`This wafer has no ${formatMeasurementSet(measurements.set)} measurements.`}</p>
+    return <p className="state">{`This wafer has no ${formatMeasurementSet(measurements.set)} measurements.`}</p>
   }
 
   const depths = values.map((site) => site.depthUm)

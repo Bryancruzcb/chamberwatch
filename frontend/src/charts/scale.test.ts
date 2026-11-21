@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, timeLineEnd, verdictEnd } from './scale'
+import { linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, spreadLabels, timeLineEnd, verdictEnd } from './scale'
 
 describe('linearScale', () => {
   it('maps the domain onto the range and back', () => {
@@ -74,5 +74,27 @@ describe('the ends of the score and time lines', () => {
     expect(verdictEnd(27, 6)).toBe(30)
     expect(verdictEnd(97795, 6)).toBe(60)
     expect(verdictEnd(4, 0)).toBe(5)
+  })
+})
+
+describe('spreadLabels', () => {
+  it('leaves labels that are far enough apart where they are', () => {
+    expect(spreadLabels([40, 120, 80], 30, 0, 200)).toEqual([40, 120, 80])
+  })
+
+  it('moves the lower of two colliding labels down, keeping the order they came in', () => {
+    // the 89-point line ends at 0.90 just above the 9-point line's 0.84
+    expect(spreadLabels([52, 40], 34, 0, 200)).toEqual([74, 40])
+    expect(spreadLabels([100, 100, 100], 20, 0, 400)).toEqual([100, 120, 140])
+  })
+
+  it('pushes labels back up from the bottom edge and keeps them under the top one', () => {
+    expect(spreadLabels([190, 195], 30, 0, 200)).toEqual([170, 200])
+    expect(spreadLabels([-10, 5], 30, 0, 200)).toEqual([0, 30])
+  })
+
+  it('keeps the gap when there is not room, letting the last label run past the bottom', () => {
+    expect(spreadLabels([10, 20, 30], 40, 0, 50)).toEqual([0, 40, 80])
+    expect(spreadLabels([], 30, 0, 100)).toEqual([])
   })
 })

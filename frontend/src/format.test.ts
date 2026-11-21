@@ -4,14 +4,13 @@ import {
   describeCatch,
   describeChannelTrace,
   describeClip,
-  describeDepthLoss,
   describeDepthModel,
   describeDepthTrend,
   describeEvidence,
+  describeEveryWafer,
   describeFault,
   describeLineup,
   describePrediction,
-  describeResidual,
   describeRun,
   describeWaferDepth,
   formatAgainstLimit,
@@ -30,6 +29,7 @@ import {
   formatShortScore,
   formatValue,
   MISSING,
+  waferHeadline,
 } from './format'
 
 describe('format', () => {
@@ -69,23 +69,10 @@ describe('format', () => {
     expect(formatFaultKind('SENSOR_STUCK')).toBe('Sensor stuck')
   })
 
-  it('says how the depth of a wafer compares with the first wafers of its lot', () => {
-    const depth = { set: 'EIGHTY_NINE_POINT', points: 89, meanDepthUm: 43.6913, lossUm: 0.31345, referenceWafers: 3 } as const
-
-    expect(describeDepthLoss(depth)).toBe('0.31 µm shallower than wafers 1 to 3 of its lot, 89-point set')
-    expect(describeDepthLoss({ ...depth, set: 'NINE_POINT', lossUm: -0.0154 }))
-      .toBe('0.02 µm deeper than wafers 1 to 3 of its lot, 9-point set')
-    expect(describeDepthLoss({ ...depth, lossUm: null }))
-      .toBe("89-point set, none of its lot's first 3 wafers was measured")
-  })
-
-  it('names the depth model\'s features and methods, and says how a prediction missed', () => {
+  it('names the depth model\'s features and methods', () => {
     expect(formatDepthFeature('ForeLinePressure/C4F8/spread')).toBe('Foreline pressure, C4F8 spread')
     expect(formatDepthFeature('NotAFeature')).toBe('NotAFeature')
     expect(formatDepthMethod('FIRST_WAFERS')).toBe("The lot's first wafers")
-    expect(describeResidual(-0.0627)).toBe('Predicted 0.06 µm shallower than measured')
-    expect(describeResidual(0.2)).toBe('Predicted 0.20 µm deeper than measured')
-    expect(describeResidual(null)).toBe('Not measured in this set')
   })
 
   it('names an emission line by its wavelength and what it reports', () => {
@@ -228,6 +215,15 @@ describe('format', () => {
     expect(describeDepthModel({ ...model, methods: model.methods.filter((method) => method.method !== 'POSITION') })).toBeNull()
   })
 
+  it('notes the misses over every measured wafer for the guesses that can score them all', () => {
+    const model = depthModelSchema.parse(fixture('depth-model.json'))
+
+    expect(describeEveryWafer(model)).toBe('Over every measured wafer: telemetry model 0.16 µm and position in the lot 0.22 µm.')
+    expect(describeEveryWafer({ ...model, methods: model.methods.filter((method) => method.method === 'TELEMETRY') }))
+      .toBe('Over every measured wafer: telemetry model 0.16 µm.')
+    expect(describeEveryWafer({ ...model, methods: model.methods.filter((method) => method.method === 'FIRST_WAFERS') })).toBeNull()
+  })
+
   it('counts every rule that caught a run in one line, and says nothing for a run none caught', () => {
     const score = { limitFlags: 25, deviationFlags: 0, stuckFlags: 0, persistentZ: 18.8, firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 407.2 }
     const two = [channel('PlatenRFLoadCapacitor', { excursions: 21 }), channel('PlatenRFTuningCapacitor', { excursions: 4 })]
@@ -252,6 +248,24 @@ describe('format', () => {
     expect(describeWaferDepth(measurements)).toBe('42.63 µm deep on average across 4 sites. Sites near the edge etched 2.50 µm shallower than sites near the center.')
     expect(describeWaferDepth({ ...measurements, points: 2, values: sites.slice(0, 2) })).toBe('42.63 µm deep on average across 2 sites.')
     expect(describeWaferDepth({ ...measurements, points: 0, meanDepthUm: null, values: [] })).toBeNull()
+  })
+
+  it('heads the depth page with the side of the wafer that etched deepest, in the run page\'s words', () => {
+    const at = (xMm: number, depthUm: number) => ({
+      pointNo: 1, locId: null, xUm: xMm * 1000, yUm: 0, preoxUm: 0, postoxUm: 0, postoxMeasured: true, stepheightUm: depthUm, depthUm,
+    })
+    const run = { positionInLot: 5, lotNo: 6 }
+    const sites = [at(0, 44), at(20, 43), at(60, 42), at(90, 41.5)]
+    const measurements = { set: 'NINE_POINT', points: 4, meanDepthUm: 42.63, sdDepthUm: 1.1, values: sites } as const
+
+    expect(waferHeadline(run, measurements)).toBe('Wafer 5 of Lot\u00a06 etched deepest at its center.')
+    expect(waferHeadline(run, { ...measurements, values: [at(0, 41), at(20, 42), at(60, 43), at(90, 44)] }))
+      .toBe('Wafer 5 of Lot\u00a06 etched deepest at its edge.')
+    // 0.001 µm apart prints as the same depth, so neither side is called deeper
+    expect(waferHeadline(run, { ...measurements, values: [at(0, 42.001), at(20, 42.001), at(60, 42), at(90, 42)] }))
+      .toBe('Wafer 5 of Lot\u00a06 etched evenly from center to edge.')
+    expect(waferHeadline(run, { ...measurements, points: 2, values: sites.slice(0, 2) })).toBe('Wafer 5 of Lot\u00a06 etched 42.63 µm deep on average.')
+    expect(waferHeadline(run, { ...measurements, points: 0, meanDepthUm: null, values: [] })).toBe('Wafer 5 of Lot\u00a06 has no 9-point measurements.')
   })
 
   it('answers the prediction with its miss on this wafer and the lot\'s typical miss', () => {

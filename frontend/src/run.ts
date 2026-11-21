@@ -114,18 +114,28 @@ export function lotStrip(rows: readonly RunRow[], run: RunDetail): LotStrip {
     z: run.assessment?.persistentZ ?? null,
     current: true,
   })
-  const others = rows
-    .filter((row) => row.lotId === run.lotId && row.id !== run.id)
-    .map((row) => slot({
-      id: row.id,
-      position: row.positionInLot,
-      lotNo: row.lotNo,
-      state: runState(row),
-      good: row.good,
-      z: row.score?.persistentZ ?? null,
-      current: false,
-    }))
-  const slots = [...others, here].sort((a, b) => a.position - b.position)
+  return strip([...rowSlots(rows.filter((row) => row.lotId === run.lotId && row.id !== run.id)), here])
+}
+
+/** A lot's own strip, for its page: every wafer of the lot in position order, none of them marked as this one. */
+export function lotWafers(rows: readonly RunRow[], lotId: number): LotStrip {
+  return strip(rowSlots(rows.filter((row) => row.lotId === lotId)))
+}
+
+function rowSlots(rows: readonly RunRow[]): StripSlot[] {
+  return rows.map((row) => slot({
+    id: row.id,
+    position: row.positionInLot,
+    lotNo: row.lotNo,
+    state: runState(row),
+    good: row.good,
+    z: row.score?.persistentZ ?? null,
+    current: false,
+  }))
+}
+
+function strip(unordered: readonly StripSlot[]): LotStrip {
+  const slots = [...unordered].sort((a, b) => a.position - b.position)
   return { slots, baseline: baselinePrefix([slots.map((wafer) => ({ positionInLot: wafer.position, good: wafer.good }))]) }
 }
 
