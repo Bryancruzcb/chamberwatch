@@ -250,10 +250,10 @@ export function describeLineup(channels: readonly Channel[], k: number): string 
     return 'No channel was scored.'
   }
   if (over.length === 0) {
-    return `No channel went past the limit of ${formatScore(k)}. The closest was ${formatChannelName(furthest.channel)}, at ${formatUnusual(furthest.persistentZ)}.`
+    return `No channel went past the limit of ${formatScore(k)}. The closest was ${formatChannelName(furthest.channel)}, at ${formatAgainstLimit(furthest.persistentZ, k)}.`
   }
   return `${over.length} of ${channels.length} channels went past the limit of ${formatScore(k)}. `
-    + `${formatChannelName(furthest.channel)} went furthest, to ${formatUnusual(furthest.persistentZ)}.`
+    + `${formatChannelName(furthest.channel)} went furthest, to ${formatAgainstLimit(furthest.persistentZ, k)}.`
 }
 
 /**
@@ -342,6 +342,15 @@ export function formatUnusual(value: number | null): string {
     return `<-${UNUSUAL_CAP}`
   }
   return formatScore(value)
+}
+
+/**
+ * A how-unusual value printed beside the limit k: one decimal, or two when one would print it as the limit itself. A
+ * channel at 6.04 is past a limit of 6.0 and one at 5.96 is under it, and "6.0" would say neither.
+ */
+export function formatAgainstLimit(value: number, k: number): string {
+  const text = formatUnusual(value)
+  return value !== k && text === formatScore(k) ? twoDecimals.format(value) : text
 }
 
 /** A record time, in seconds to one decimal. */

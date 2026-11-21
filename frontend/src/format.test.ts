@@ -12,6 +12,7 @@ import {
   describeResidual,
   describeRun,
   describeWaferDepth,
+  formatAgainstLimit,
   formatChannelName,
   formatCount,
   formatConditioning,
@@ -268,6 +269,21 @@ describe('format', () => {
     expect(describeLineup([scored('Gas7Flow', 3.56), scored('Gas1Flow', 6)], 6))
       .toBe('No channel went past the limit of 6.0. The closest was Gas 1 flow, at 6.0.')
     expect(describeLineup([], 6)).toBe('No channel was scored.')
+  })
+
+  it('prints two decimals where one would print a value as the limit itself', () => {
+    const scored = (name: string, persistentZ: number): Channel => ({ ...channel(name), persistentZ })
+
+    expect(describeLineup([scored('Gas1Flow', 6.04), scored('Gas7Flow', 2.2)], 6))
+      .toBe('1 of 2 channels went past the limit of 6.0. Gas 1 flow went furthest, to 6.04.')
+    expect(describeLineup([scored('Gas1Flow', 5.96)], 6)).toBe('No channel went past the limit of 6.0. The closest was Gas 1 flow, at 5.96.')
+    expect(formatAgainstLimit(6.04, 6)).toBe('6.04')
+    expect(formatAgainstLimit(5.96, 6)).toBe('5.96')
+    // exactly at the limit, and anywhere the one-decimal text already differs from it, nothing changes
+    expect(formatAgainstLimit(6, 6)).toBe('6.0')
+    expect(formatAgainstLimit(6.06, 6)).toBe('6.1')
+    expect(formatAgainstLimit(18.81, 6)).toBe('18.8')
+    expect(formatAgainstLimit(97795.1, 6)).toBe('>20')
   })
 
   it('marks a missing value', () => {

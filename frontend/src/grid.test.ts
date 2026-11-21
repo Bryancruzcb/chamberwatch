@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { lotsSchema, type RunRow, runsPageSchema } from './api/schema'
-import { lotGrid, shadeOf } from './grid'
+import { gridKinds, hasStop, lotGrid, nextStop, shadeOf } from './grid'
 
 const fixtures = import.meta.glob('../e2e/fixtures/*.json', { eager: true, import: 'default' })
 
@@ -82,5 +82,67 @@ describe('grid', () => {
     expect(grid.rows).toHaveLength(1)
     expect(grid.rows[0]?.lot).toBeNull()
     expect(lotGrid([], [], K)).toEqual({ rows: [], positions: 10 })
+  })
+
+  it('keeps an unscored and a misaligned wafer in their own slots, out of the count', () => {
+    const runs = page.runs.map((run): RunRow => {
+      if (run.lotNo !== 6) {
+        return run
+      }
+      if (run.positionInLot === 4) {
+        return { ...run, score: null }
+      }
+      if (run.positionInLot === 5) {
+        return { ...run, alignment: 'FAILED', score: null }
+      }
+      // a misaligned run that still carries a score is misaligned first
+      return run.positionInLot === 6 ? { ...run, alignment: 'FAILED' } : run
+    })
+    const lot6 = lotGrid(runs, lots, K).rows[5]
+
+    expect(lot6?.cells.map((cell) => cell?.state)).toEqual(['in', 'in', 'in', 'unscored', 'failed', 'failed', 'out', 'out', 'out', 'out'])
+    expect(lot6?.cells[3]?.shade).toBe(1)
+    expect(lot6?.cells[4]?.shade).toBe(1)
+    expect(lot6?.out).toBe(4)
+  })
+
+  it('shades every wafer the lightest without a baseline, and still counts the out-of-range ones', () => {
+    const grid = lotGrid(page.runs, lots, null)
+
+    expect(grid.rows.flatMap((row) => row.cells).every((cell) => cell === null || cell.shade === 1)).toBe(true)
+    expect(grid.rows.map((row) => row.out)).toEqual([0, 0, 0, 0, 0, 7, 3, 1, 4, 0])
+  })
+
+  it('says which kinds of cell a grid holds, so the key names only those', () => {
+    // the public wafers: in range, out of range, baseline runs, and lot 7's four missing positions
+    expect(gridKinds(lotGrid(page.runs, lots, K))).toEqual({ inRange: true, outOfRange: true, unmeasured: false, missing: true, baseline: true })
+    const unscored = page.runs.filter((run) => run.lotNo === 1).map((run): RunRow => ({ ...run, score: null, good: false }))
+    expect(gridKinds(lotGrid(unscored, lots, null))).toEqual({ inRange: false, outOfRange: false, unmeasured: true, missing: false, baseline: false })
+    expect(gridKinds(lotGrid([], [], K))).toEqual({ inRange: false, outOfRange: false, unmeasured: false, missing: false, baseline: false })
+  })
+
+  it("moves the keyboard between the grid's links, skipping positions a lot never ran", () => {
+    const grid = lotGrid(page.runs, lots, K)
+
+    expect(nextStop(grid, { row: 0, col: 0 }, 'ArrowRight', false)).toEqual({ row: 0, col: 1 })
+    // at an edge the focus stays where it is
+    expect(nextStop(grid, { row: 0, col: 0 }, 'ArrowLeft', false)).toEqual({ row: 0, col: 0 })
+    expect(nextStop(grid, { row: 0, col: 0 }, 'ArrowUp', false)).toEqual({ row: 0, col: 0 })
+    expect(nextStop(grid, { row: 9, col: 10 }, 'ArrowDown', false)).toEqual({ row: 9, col: 10 })
+    // lot 7, row 6, ran six wafers: down from lot 6 wafer 8 lands on lot 8, and its row ends at wafer 6
+    expect(nextStop(grid, { row: 5, col: 8 }, 'ArrowDown', false)).toEqual({ row: 7, col: 8 })
+    expect(nextStop(grid, { row: 7, col: 8 }, 'ArrowUp', false)).toEqual({ row: 5, col: 8 })
+    expect(nextStop(grid, { row: 6, col: 0 }, 'End', false)).toEqual({ row: 6, col: 6 })
+    expect(nextStop(grid, { row: 6, col: 6 }, 'ArrowRight', false)).toEqual({ row: 6, col: 6 })
+    expect(nextStop(grid, { row: 4, col: 5 }, 'Home', false)).toEqual({ row: 4, col: 0 })
+    expect(nextStop(grid, { row: 4, col: 5 }, 'Home', true)).toEqual({ row: 0, col: 0 })
+    expect(nextStop(grid, { row: 4, col: 5 }, 'End', true)).toEqual({ row: 9, col: 10 })
+    // a key the grid has no use for is left to the browser
+    expect(nextStop(grid, { row: 0, col: 0 }, 'Enter', false)).toBeNull()
+    expect(nextStop(grid, { row: 0, col: 0 }, 'Tab', false)).toBeNull()
+    expect(hasStop(grid, { row: 6, col: 6 })).toBe(true)
+    expect(hasStop(grid, { row: 6, col: 7 })).toBe(false)
+    expect(hasStop(grid, { row: 10, col: 0 })).toBe(false)
+    expect(hasStop(grid, { row: 0, col: 11 })).toBe(false)
   })
 })

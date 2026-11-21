@@ -72,3 +72,73 @@ export function lotGrid(runs: readonly RunRow[], lots: readonly Lot[], k: number
   })
   return { rows: rows.sort((a, b) => a.lotNo - b.lotNo), positions }
 }
+
+/** Which kinds of cell a grid holds, so its key names only what is on the page. */
+export interface GridKinds {
+  readonly inRange: boolean
+  readonly outOfRange: boolean
+  /** A wafer that was not scored or could not be aligned. */
+  readonly unmeasured: boolean
+  /** A position where a lot ran no wafer. */
+  readonly missing: boolean
+  readonly baseline: boolean
+}
+
+export function gridKinds(grid: LotGrid): GridKinds {
+  const cells = grid.rows.flatMap((row) => row.cells)
+  return {
+    inRange: cells.some((cell) => cell?.state === 'in'),
+    outOfRange: cells.some((cell) => cell?.state === 'out'),
+    unmeasured: cells.some((cell) => cell?.state === 'failed' || cell?.state === 'unscored'),
+    missing: cells.some((cell) => cell === null),
+    baseline: cells.some((cell) => cell?.run.good === true),
+  }
+}
+
+/** A keyboard stop in the grid: column 0 is the lot's link, column c the wafer at position c. */
+export interface GridStop {
+  readonly row: number
+  readonly col: number
+}
+
+/** Whether a stop has a link to focus: every lot has its own, a position only where the lot ran a wafer. */
+export function hasStop(grid: LotGrid, { row, col }: GridStop): boolean {
+  const cells = grid.rows[row]?.cells
+  return cells !== undefined && col >= 0 && col <= grid.positions && (col === 0 || (cells[col - 1] ?? null) !== null)
+}
+
+/**
+ * Where a key moves the focus from a stop: an arrow to the next link that way, skipping positions a lot never ran and
+ * staying put at an edge; Home and End to the row's first and last link, or the grid's with Ctrl. Null for a key the
+ * grid leaves alone.
+ */
+export function nextStop(grid: LotGrid, from: GridStop, key: string, ctrl: boolean): GridStop | null {
+  const scan = (start: GridStop, rowStep: number, colStep: number): GridStop => {
+    let row = start.row + rowStep
+    let col = start.col + colStep
+    while (row >= 0 && row < grid.rows.length && col >= 0 && col <= grid.positions) {
+      if (hasStop(grid, { row, col })) {
+        return { row, col }
+      }
+      row += rowStep
+      col += colStep
+    }
+    return from
+  }
+  switch (key) {
+    case 'ArrowRight':
+      return scan(from, 0, 1)
+    case 'ArrowLeft':
+      return scan(from, 0, -1)
+    case 'ArrowDown':
+      return scan(from, 1, 0)
+    case 'ArrowUp':
+      return scan(from, -1, 0)
+    case 'Home':
+      return { row: ctrl ? 0 : from.row, col: 0 }
+    case 'End':
+      return scan({ row: ctrl ? grid.rows.length - 1 : from.row, col: grid.positions + 1 }, 0, -1)
+    default:
+      return null
+  }
+}

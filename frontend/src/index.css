@@ -18,16 +18,15 @@
   --focus: #1f4e9c;
   --skel: #e9e3d6;
 
-  /* Data colors, each with a wash for tags. */
+  /* Data colors. --drift-wash backs the warning tag and the hatch of a stuck value; --chan-wash the text selection
+     and the prediction band. --dot-in is the in-range dot and meter fill: 3.75:1 on the paper, 3.05:1 on a track. */
   --out: #b3261e;
-  --out-wash: #f6ddd6;
   --drift: #8a5300;
   --drift-wash: #f3e6cc;
   --ok: #2c6e49;
-  --ok-wash: #dcebdf;
   --chan: #1f4e9c;
   --chan-wash: #dde5f2;
-  --dot-in: #9a917f;
+  --dot-in: #857c6a;
 
   /* The lot grid: in range by how close a wafer came to the limit, out of range by how far past it went. */
   --grid-in-1: #ebe5d8;
@@ -36,6 +35,8 @@
   --grid-out-1: #e3a090;
   --grid-out-2: #cc5a45;
   --grid-out-3: #9e1f17;
+  /* The edge of every grid cell and key swatch, 3.07:1 on the paper, so the faintest shade still has a boundary. */
+  --grid-edge: #948b78;
 
   /* Charts. Blue and orange series stay apart for color vision deficiency; one blue ramp for magnitude. */
   --series-1: #1f4e9c;
@@ -91,11 +92,9 @@
     --focus: #8fb0e8;
     --skel: #2a2720;
     --out: #ff8a7d;
-    --out-wash: #3b1c19;
     --drift: #f2b452;
     --drift-wash: #36290f;
     --ok: #74cf91;
-    --ok-wash: #15301f;
     --chan: #8fb0e8;
     --chan-wash: #1c2638;
     --dot-in: #7d7566;
@@ -105,6 +104,7 @@
     --grid-out-1: #5c2a23;
     --grid-out-2: #a8473a;
     --grid-out-3: #ff8a7d;
+    --grid-edge: #6f6757;
     --series-1: #8fb0e8;
     --series-2: #ec8350;
     /* The ramp flips in dark mode, so the shallow end sits near the surface. */
@@ -135,11 +135,9 @@
   --focus: #8fb0e8;
   --skel: #2a2720;
   --out: #ff8a7d;
-  --out-wash: #3b1c19;
   --drift: #f2b452;
   --drift-wash: #36290f;
   --ok: #74cf91;
-  --ok-wash: #15301f;
   --chan: #8fb0e8;
   --chan-wash: #1c2638;
   --dot-in: #7d7566;
@@ -149,6 +147,7 @@
   --grid-out-1: #5c2a23;
   --grid-out-2: #a8473a;
   --grid-out-3: #ff8a7d;
+  --grid-edge: #6f6757;
   --series-1: #8fb0e8;
   --series-2: #ec8350;
   /* The ramp flips in dark mode, so the shallow end sits near the surface. */
@@ -224,7 +223,6 @@ a:hover {
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 button,
@@ -285,7 +283,7 @@ a.key {
 .wordmark {
   padding: 6px 0;
   font-family: var(--font-serif);
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   letter-spacing: -0.01em;
   text-decoration: none;
@@ -405,7 +403,6 @@ ol.features {
 /* Loading: gray blocks in the shape of what comes */
 .skel {
   display: block;
-  border-radius: 4px;
   background: var(--skel);
 }
 
@@ -428,7 +425,6 @@ ol.features {
 .skel-panel {
   height: 240px;
   margin-top: 8px;
-  border-radius: 0;
 }
 
 .skel-title {
@@ -445,7 +441,6 @@ ol.features {
 
 .skel-card {
   height: 340px;
-  border-radius: 0;
 }
 
 /* Controls */
@@ -671,10 +666,6 @@ table.compact td {
   padding-left: 8px;
 }
 
-table.compact .meter-track {
-  width: 48px;
-}
-
 tbody tr:hover,
 tbody tr.selected {
   background: var(--card-2);
@@ -744,7 +735,7 @@ tbody tr.selected a {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 7px;
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--card-2);
   color: var(--ink-2);
   font-size: var(--text-xs);
@@ -777,19 +768,14 @@ td .badge {
   position: relative;
   width: 56px;
   height: 6px;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--card-2);
-}
-
-.panel .meter-track,
-.card .meter-track {
-  background: var(--line-strong);
 }
 
 .meter-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--dot-in);
 }
 
@@ -1005,7 +991,7 @@ td .badge {
   gap: 2px;
   height: 14px;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
 .share {
@@ -1111,11 +1097,7 @@ td .badge {
 .strip-track {
   position: relative;
   height: 10px;
-  border-radius: 5px;
-  background: var(--card-2);
-}
-
-.panel .strip-track {
+  border-radius: 2px;
   background: var(--line);
 }
 
@@ -1129,7 +1111,7 @@ td .badge {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 5px;
+  border-radius: 2px;
 }
 
 .strip-mark {
@@ -1183,7 +1165,7 @@ td .badge {
 .strip-swatch {
   width: 18px;
   height: 10px;
-  border-radius: 5px;
+  border-radius: 2px;
 }
 
 .runs-bar {
@@ -1246,7 +1228,7 @@ td .badge {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
-  gap: 40px 32px;
+  gap: 32px 40px;
 }
 
 /* A lot or a summary on the Runs page: a figure like any other, under its own ink rule. */
@@ -1461,13 +1443,13 @@ td .badge {
 .bar-track {
   height: 8px;
   margin-top: 6px;
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--card-2);
 }
 
 .bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 2px;
   background: var(--chan);
 }
 
@@ -1501,7 +1483,7 @@ td .badge {
 .lot-pills li {
   padding: 8px 12px;
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: var(--text-sm);
   color: var(--ink-2);
 }
@@ -1650,7 +1632,6 @@ td .badge {
 .key-line {
   width: 16px;
   height: 2px;
-  border-radius: 1px;
   background: var(--series-1);
 }
 
@@ -1739,7 +1720,7 @@ td .badge {
 
 .marker {
   fill: var(--series-1);
-  stroke: var(--card);
+  stroke: var(--bg);
   stroke-width: 2;
 }
 
@@ -1843,7 +1824,7 @@ td .badge {
 
 .dot {
   fill: var(--series);
-  stroke: var(--card);
+  stroke: var(--bg);
   stroke-width: 2;
 }
 
@@ -1981,8 +1962,12 @@ td .badge {
     padding: 6px 8px;
   }
 
+  .wordmark {
+    font-size: var(--text-lg);
+  }
+
   .page {
-    gap: 20px;
+    gap: 24px;
     padding: 24px 16px 48px;
   }
 
@@ -1993,10 +1978,6 @@ td .badge {
   .answer-next,
   .subtitle {
     font-size: 1rem;
-  }
-
-  .panel {
-    padding: 16px;
   }
 
   .runs-bar {
@@ -2044,7 +2025,6 @@ td .badge {
 
   .table-card {
     padding: 0;
-    background: none;
   }
 
   .runs-table,
@@ -2066,12 +2046,16 @@ td .badge {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 12px;
-    padding: 12px 0;
+    padding: 12px 8px;
     border-top: 1px solid var(--line);
   }
 
+  .runs-table tbody tr:first-child {
+    border-top: 0;
+  }
+
   .runs-table tbody tr:hover {
-    background: var(--card);
+    background: var(--card-2);
   }
 
   .runs-table td {
@@ -2106,7 +2090,7 @@ td .badge {
   }
 
   .state-box {
-    padding: 20px;
+    padding: 20px 0;
   }
 }
 
@@ -2118,14 +2102,22 @@ td .badge {
   border-top: 1px solid var(--ink);
 }
 
-/* Fixed layout: the lot column and the count keep their width, and the ten wafer columns share the rest. */
+/* The table's spacing would push the lot labels in from the figure's edge. The wrap gives it back as a negative
+   margin, so the labels sit flush, the table is never wider than its wrap, and a focus ring is not clipped. */
+.lot-grid .table-wrap {
+  margin: 0 -4px;
+}
+
+/* Fixed layout: the lot column and the count keep their width, and the wafer columns share the rest. A lot longer
+   than ten wafers widens the table rather than squeeze a cell under 24px, and the wrap scrolls. */
 .grid-table {
-  width: calc(100% + 8px);
+  width: 100%;
   max-width: 768px;
+  /* 156 + 40 for the lot and the count, 24 a position, and 4px of spacing at positions + 3 places */
+  min-width: calc(208px + 28px * var(--positions, 10));
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 4px;
-  margin: 0 -4px;
 }
 
 .grid-table th,
@@ -2133,6 +2125,11 @@ td .badge {
   padding: 0;
   border: 0;
   font-weight: 400;
+}
+
+/* The tables' row hover would fill the lot's label and its empty slots, and a missing wafer would look in range. */
+.grid-table tbody tr:hover {
+  background: none;
 }
 
 .grid-corner,
@@ -2180,27 +2177,57 @@ td .badge {
   border-radius: 2px;
 }
 
-.cell-empty {
-  border: 1px dashed var(--line);
+/* No wafer at this position: no box, only a short dash where one would sit. */
+.cell-empty,
+.swatch.empty {
+  border: 0;
+  background: linear-gradient(var(--ink-3), var(--ink-3)) center / 8px 1px no-repeat;
 }
 
+/* A wafer: a box with an edge that reads against the paper, whatever its shade. */
 .cell {
   position: relative;
-  outline-offset: 2px;
+  border: 1px solid var(--grid-edge);
 }
 
 .cell:hover {
-  box-shadow: 0 0 0 2px var(--ink);
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
+.cell:focus-visible {
+  outline-color: var(--focus);
+}
+
+/* --out-mark is the color that reads on each red: ink on the two lighter ones, paper on the darkest. */
 .in-1 { background: var(--grid-in-1); }
 .in-2 { background: var(--grid-in-2); }
 .in-3 { background: var(--grid-in-3); }
-.out-1 { background: var(--grid-out-1); }
-.out-2 { background: var(--grid-out-2); }
-.out-3 { background: var(--grid-out-3); }
+.out-1 { background: var(--grid-out-1); --out-mark: var(--ink); }
+.out-2 { background: var(--grid-out-2); --out-mark: var(--ink); }
+.out-3 { background: var(--grid-out-3); --out-mark: var(--bg); }
 
-.cell.none {
+/* Out of range: a corner flag as well as a red, so the state never rests on hue alone. The corner keeps it clear of
+   the baseline ring at the center. */
+:is(.cell, .swatch):is(.out-1, .out-2, .out-3)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  background: var(--out-mark);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+.swatch:is(.out-1, .out-2, .out-3)::before {
+  width: 6px;
+  height: 6px;
+}
+
+/* Not scored or not aligned: the box is there but has no fill. */
+.cell.none,
+.swatch.none {
   border: 1px dashed var(--ink-3);
 }
 
@@ -2215,6 +2242,18 @@ td .badge {
   border: 1.5px solid var(--ink-2);
   border-radius: 50%;
   translate: -50% -50%;
+}
+
+.cell.ring:is(.out-1, .out-2, .out-3)::after {
+  border-color: var(--out-mark);
+}
+
+/* Forced colors drop the fills, so the flag is what still tells out of range from in range. */
+@media (forced-colors: active) {
+  :is(.cell, .swatch):is(.out-1, .out-2, .out-3)::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
 }
 
 td.grid-count {
@@ -2271,16 +2310,36 @@ td.grid-count {
 .swatch {
   position: relative;
   display: inline-block;
+  flex: none;
   width: 16px;
   height: 12px;
+  border: 1px solid var(--grid-edge);
   border-radius: 2px;
 }
 
+/* The grid's place while the runs load or the source changes, sized to the public wafers so the page under it holds
+   still. Ten lots: a 22px header row and ten 28px rows with 4px between and around them, 4 + 22 + 4 + 10 x 32 = 350px.
+   The key is four entries, one of them on two lines beside the grid. */
+.skel-grid {
+  max-width: 768px;
+  height: 350px;
+}
+
+.skel-key {
+  max-width: 280px;
+  height: 122px;
+}
+
 @media (max-width: 640px) {
+  /* 2px of spacing now, so the wrap's 4px margin is half padding */
+  .lot-grid .table-wrap {
+    padding: 0 2px 2px;
+  }
+
   .grid-table {
     border-spacing: 2px;
-    margin: 0 -2px;
-    width: calc(100% + 4px);
+    /* 52 + 28, 24 a position, and 2px of spacing at positions + 3 places */
+    min-width: calc(86px + 26px * var(--positions, 10));
   }
 
   .grid-table .grid-corner {
@@ -2299,6 +2358,15 @@ td.grid-count {
   .grid-date {
     display: none;
   }
+
+  /* 2 + 20 + 2 + 10 x 26, and the wrap's 2px under the table; the key's four entries take a line each */
+  .skel-grid {
+    height: 286px;
+  }
+
+  .skel-key {
+    height: 102px;
+  }
 }
 
 /* A run's lineup: every channel on one how-unusual scale, the limit drawn once, in the detectors' rank. */
@@ -2307,20 +2375,29 @@ td.grid-count {
   margin: 0;
   padding: 0;
   list-style: none;
+  container-type: inline-size;
 }
 
+/* Too short a track for three labels: keep only the limit, which every dot is read against. */
+@container (width < 310px) {
+  .lineup-tick:not(.limit) {
+    display: none;
+  }
+}
+
+/* Each row is inset 8px, so the selected row's tint stays inside the figure's rule and off its text. */
 .lineup-row {
   display: grid;
   grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1fr) 44px;
   align-items: center;
   gap: 12px;
   min-height: 30px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
 }
 
 .lineup-row.selected {
   background: var(--card);
-  box-shadow: -8px 0 0 var(--card), 8px 0 0 var(--card);
 }
 
 .lineup-row.selected .lineup-name a {
@@ -2410,4 +2487,20 @@ td.grid-count {
   bottom: 0;
   width: 1px;
   background: var(--ink);
+}
+
+/* The narrowest phones: the wordmark, three links and the theme button still fit one row without the page scrolling sideways. */
+@media (max-width: 360px) {
+  .masthead-in {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  .masthead nav {
+    gap: 0;
+  }
+
+  .masthead nav a {
+    padding: 6px;
+  }
 }
