@@ -257,7 +257,7 @@ test('tints the open channel\'s row inside the figure, with no shadow reaching p
   expect((name?.x ?? 0) - (row?.x ?? 0)).toBeGreaterThanOrEqual(8)
   // the meter track is the same tint in every figure, now that figures have no card behind them
   const timeline = page.getByRole('region', { name: 'When channels left their range' })
-  await expect(timeline.locator('.meter-track').first()).toHaveCSS('background-color', 'rgb(228, 221, 205)')
+  await expect(timeline.locator('.meter-track').first()).toHaveCSS('background-color', 'rgb(224, 213, 189)')
 })
 
 test('starts every figure of the run on the phone\'s gutter and keeps the scale readable', async ({ page }) => {

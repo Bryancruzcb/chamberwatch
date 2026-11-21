@@ -330,6 +330,20 @@ export function formatScore(value: number | null): string {
   return value === null ? MISSING : oneDecimal.format(value)
 }
 
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 2 })
+
+/**
+ * A score short enough to print inside a wafer's disc, four characters at most, and the same everywhere else the disc's
+ * score is read: one decimal under 100, whole under 10,000, then compact, so a step change of 97,795 prints as 98K.
+ */
+export function formatShortScore(value: number): string {
+  const size = Math.abs(value)
+  if (size >= 10_000) {
+    return compact.format(value)
+  }
+  return size >= 100 ? String(Math.round(value)) : oneDecimal.format(value)
+}
+
 /** A z-score for a card or meter: values past 20 print as a bound, not 97,812.4. */
 export function formatUnusual(value: number | null): string {
   if (value === null) {

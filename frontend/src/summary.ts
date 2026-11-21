@@ -29,10 +29,19 @@ export interface LotRuns {
   readonly maxZ: number
 }
 
-/** How many out-of-range runs name a channel first. `channel` is null for runs that name none. */
+/** How many out-of-range runs name a channel first, and which. `channel` is null for runs that name none. */
 export interface ChannelCount {
   readonly channel: string | null
   readonly count: number
+  /** The runs, by lot and wafer. */
+  readonly runs: readonly RunRow[]
+}
+
+/** Runs of one lot, kept together so a figure can cluster them. */
+export interface LotCluster {
+  readonly lotId: number
+  readonly lotNo: number
+  readonly runs: readonly RunRow[]
 }
 
 export interface RunsSummary {
@@ -90,14 +99,33 @@ function groupByLot(runs: readonly RunRow[], lots: readonly Lot[]): LotRuns[] {
 }
 
 function countFirstChannels(out: readonly RunRow[]): ChannelCount[] {
-  const counts = new Map<string | null, number>()
+  const byChannel = new Map<string | null, RunRow[]>()
   for (const run of out) {
     const channel = run.score?.firstChannel ?? null
-    counts.set(channel, (counts.get(channel) ?? 0) + 1)
+    byChannel.set(channel, [...(byChannel.get(channel) ?? []), run])
   }
-  return [...counts.entries()]
-    .map(([channel, count]) => ({ channel, count }))
+  return [...byChannel.entries()]
+    .map(([channel, runs]) => ({ channel, count: runs.length, runs: [...runs].sort(byLotAndWafer) }))
     .sort((a, b) => b.count - a.count || channelOrder(a.channel, b.channel))
+}
+
+function byLotAndWafer(a: RunRow, b: RunRow): number {
+  return a.lotNo - b.lotNo || a.positionInLot - b.positionInLot || a.id - b.id
+}
+
+/** Runs grouped by lot in lot order, wafers in order inside each, for a figure that clusters them. */
+export function clusterByLot(runs: readonly RunRow[]): LotCluster[] {
+  const clusters: LotCluster[] = []
+  for (const run of [...runs].sort(byLotAndWafer)) {
+    const last = clusters.at(-1)
+    if (last !== undefined && last.lotId === run.lotId) {
+      clusters[clusters.length - 1] = { ...last, runs: [...last.runs, run] }
+    }
+    else {
+      clusters.push({ lotId: run.lotId, lotNo: run.lotNo, runs: [run] })
+    }
+  }
+  return clusters
 }
 
 function channelOrder(a: string | null, b: string | null): number {
@@ -115,42 +143,37 @@ export type Start =
 export interface Headline {
   /** The one sentence at the top. */
   readonly lead: string
+  /** The start of the lead to set in the out-of-range color: the count, when any run is out of range. */
+  readonly signal: string | null
   readonly start: Start | null
   /** The words to set in bold at the start of the start sentence, empty for a tie. */
   readonly startStrong: string
   /** The rest of the start sentence. */
   readonly startText: string
-  /** Which channel left its range first, counted over the out-of-range runs. */
-  readonly channelText: string | null
   /** For a page with nothing out of range: how the runs split, when not all of them are in range. */
   readonly detail: string | null
 }
+
+const QUIET = { signal: null, start: null, startStrong: '', startText: '', detail: null } as const
 
 export function headline(summary: RunsSummary): Headline {
   const total = summary.runs.length
   const outCount = summary.out.length
   if (total === 0) {
-    return { lead: 'No runs stored for this source yet.', start: null, startStrong: '', startText: '', channelText: null, detail: null }
+    return { ...QUIET, lead: 'No runs stored for this source yet.' }
   }
   if (outCount === 0) {
     return summary.inRange === total
-      ? { lead: `All ${total} runs are in range.`, start: null, startStrong: '', startText: '', channelText: null, detail: null }
-      : {
-          lead: `None of the ${total} runs are out of range.`,
-          start: null,
-          startStrong: '',
-          startText: '',
-          channelText: null,
-          detail: describeSplit(summary),
-        }
+      ? { ...QUIET, lead: `All ${total} runs are in range.` }
+      : { ...QUIET, lead: `None of the ${total} runs are out of range.`, detail: describeSplit(summary) }
   }
   const start = startOf(summary.attention)
   const lots = describeLots(summary.attention.map((group) => group.lotNo))
   return {
     lead: `${outCount} of ${total} runs are out of range, all in ${lots}.`,
+    signal: String(outCount),
     start,
     ...startSentence(start),
-    channelText: describeFirstChannels(summary.firstChannels, outCount),
     detail: null,
   }
 }
@@ -168,11 +191,11 @@ function startOf(attention: readonly LotRuns[]): Start {
 function startSentence(start: Start): { startStrong: string; startText: string } {
   if (start.kind === 'one') {
     return {
-      startStrong: `Start with Lot ${start.lotNo}`,
-      startText: `, which has the most out-of-range runs: ${describeWafers(start.wafers)} of ${start.of}.`,
+      startStrong: `Start with Lot ${start.lotNo}:`,
+      startText: ` ${describeWafers(start.wafers)} of ${start.of} ${start.wafers.length === 1 ? 'is' : 'are'} out.`,
     }
   }
-  return { startStrong: '', startText: `Lots ${listWords(start.lotNos.map(String))} tie for the most out-of-range runs, ${start.count} each.` }
+  return { startStrong: '', startText: `Lots ${listWords(start.lotNos.map(String))} tie for the most: ${start.count} out each.` }
 }
 
 function describeSplit(summary: RunsSummary): string {
@@ -185,10 +208,10 @@ function describeSplit(summary: RunsSummary): string {
 }
 
 /**
- * "First channel to leave its range: Platen RF load cap in 10 of the 15 runs and Platen RF tuning cap in 5." Channels
+ * Which channel left its range first: "Platen RF load cap in 10 of the 15 runs and Platen RF tuning cap in 5." Channels
  * named first by a single run are counted together once there are two or more of them.
  */
-export function describeFirstChannels(counts: readonly ChannelCount[], outCount: number): string {
+export function describeFirstChannels(counts: ReadonlyArray<Pick<ChannelCount, 'channel' | 'count'>>, outCount: number): string {
   const named = counts.filter((entry): entry is { channel: string; count: number } => entry.channel !== null)
   const unnamed = counts.find((entry) => entry.channel === null)?.count ?? 0
   const none = unnamed === 0 ? '' : ` ${unnamed} ${unnamed === 1 ? 'run names' : 'runs name'} no first channel.`
@@ -203,7 +226,22 @@ export function describeFirstChannels(counts: readonly ChannelCount[], outCount:
     ? []
     : singles.length === 1 ? [`${formatChannelName(single.channel)} in 1`] : [`${singles.length} other channels in 1 each`]
   const first = `${formatChannelName(top.channel)} in ${top.count} of the ${outCount} ${outCount === 1 ? 'run' : 'runs'}`
-  return `First channel to leave its range: ${listWords([first, ...several, ...tail])}.${none}`
+  return `${listWords([first, ...several, ...tail])}.${none}`
+}
+
+/** The lots with nothing out of range, in one line: "Lots 1 to 5 and 10: 60 wafers, none out of range." */
+export function describeClean(clean: readonly LotRuns[]): string | null {
+  if (clean.length === 0) {
+    return null
+  }
+  const wafers = clean.reduce((total, group) => total + group.runs.length, 0)
+  const lots = describeLots(clean.map((group) => group.lotNo))
+  return `${capitalize(lots)}: ${wafers} ${wafers === 1 ? 'wafer' : 'wafers'}, none out of range.`
+}
+
+/** "lots 6 to 9" at the start of a sentence. */
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 /** "a", "a and b", "a, b and c". */
@@ -245,7 +283,7 @@ export type TableOrder = 'out' | 'lot' | 'z'
 
 /** The runs table's orders: out of range first, by lot and wafer, or most unusual first. Ties keep lot order. */
 export function sortRuns(runs: readonly RunRow[], order: TableOrder): RunRow[] {
-  const byLot = (a: RunRow, b: RunRow) => a.lotNo - b.lotNo || a.positionInLot - b.positionInLot || a.id - b.id
+  const byLot = byLotAndWafer
   const sorted = [...runs]
   switch (order) {
     case 'out':
@@ -292,6 +330,15 @@ export const NO_DRIFT_DATA = 'No drift data'
 const DRIFT_FAILED = 'Drift did not load'
 const TOO_FEW = 'Too few wafers to judge a trend'
 const NOTHING_DRIFTING = 'No channel outside the band or heading out'
+
+/** The drift figure's answer, or null while every lot is still loading. */
+export function describeDrift(drift: DriftSummary): string | null {
+  if (drift.lines.length === 0) {
+    return drift.groups.length === 0 ? null : 'No channel is outside the band or heading out, by each lot\'s last wafer.'
+  }
+  const count = drift.lines.length
+  return `${count} ${count === 1 ? 'channel is' : 'channels are'} outside the band or heading out, by each lot's last wafer.`
+}
 
 /** The drift of every lot of the source by its last wafer, with each lot accounted for once, never left blank. */
 export function summarizeDrift(lots: readonly LotRuns[], answers: ReadonlyMap<number, LotDriftAnswer>): DriftSummary {

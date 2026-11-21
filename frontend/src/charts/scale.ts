@@ -64,3 +64,28 @@ function roundToStep(value: number, step: number): number {
   const decimals = Math.max(0, -Math.floor(Math.log10(step)))
   return Number(value.toFixed(decimals))
 }
+
+/** The value rounded up to the next multiple of `step`, and never below one step, so a scale never ends at 0. */
+export function roundUpTo(value: number, step: number): number {
+  return Math.max(step, Math.ceil(value / step - 1e-9) * step)
+}
+
+/** A score line's end runs past the limit by at most this many limits, so one step change cannot flatten the rest. */
+const SCORE_LINE_LIMITS = 10
+
+/**
+ * Where a column of score lines ends: the largest score rounded up to the next 5, and past the limit so its tick shows.
+ * A score of tens of thousands, a step change, would push every other mark against 0, so the end stops at ten times
+ * the limit and `past` counts the scores that run off it.
+ */
+export function scoreLineEnd(scores: readonly number[], k: number | null): { end: number; past: number } {
+  const largest = Math.max(0, ...scores)
+  const cap = k === null || k <= 0 ? Number.POSITIVE_INFINITY : roundUpTo(SCORE_LINE_LIMITS * k, 5)
+  const end = Math.min(roundUpTo(Math.max(largest, k ?? 0), 5), cap)
+  return { end, past: scores.filter((score) => score > end).length }
+}
+
+/** Where a column of time lines ends: the latest time rounded up to the next 100 s. */
+export function timeLineEnd(seconds: readonly number[]): number {
+  return roundUpTo(Math.max(0, ...seconds), 100)
+}

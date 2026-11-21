@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linearScale, niceInterval, niceTicks } from './scale'
+import { linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, timeLineEnd } from './scale'
 
 describe('linearScale', () => {
   it('maps the domain onto the range and back', () => {
@@ -36,5 +36,35 @@ describe('niceTicks', () => {
 describe('niceInterval', () => {
   it('grows outward to round values', () => {
     expect(niceInterval([85.04, 97.2], 5)).toEqual([84, 98])
+  })
+})
+
+describe('the ends of the score and time lines', () => {
+  it('rounds up to the next step and never ends at 0', () => {
+    expect(roundUpTo(24.9, 5)).toBe(25)
+    expect(roundUpTo(25, 5)).toBe(25)
+    expect(roundUpTo(25.01, 5)).toBe(30)
+    expect(roundUpTo(0, 5)).toBe(5)
+    expect(roundUpTo(551.4, 100)).toBe(600)
+  })
+
+  it('ends a score line past the largest score and past the limit', () => {
+    expect(scoreLineEnd([12.3, 24.9, 9.6], 6)).toEqual({ end: 25, past: 0 })
+    // every score under the limit: the line still reaches past it, so the tick shows
+    expect(scoreLineEnd([3.1, 4.2], 6)).toEqual({ end: 10, past: 0 })
+    expect(scoreLineEnd([], 6)).toEqual({ end: 10, past: 0 })
+    expect(scoreLineEnd([], null)).toEqual({ end: 5, past: 0 })
+  })
+
+  it('stops a score line at ten limits and counts what runs past it', () => {
+    // the simulated lot 901 holds a step change at 97,795
+    expect(scoreLineEnd([9.4, 32.5, 97795.1, 9805.6], 6)).toEqual({ end: 60, past: 2 })
+    expect(scoreLineEnd([97795.1], null)).toEqual({ end: 97800, past: 0 })
+  })
+
+  it('ends a time line at the next 100 s', () => {
+    expect(timeLineEnd([537, 407.2, 551.4])).toBe(600)
+    expect(timeLineEnd([600])).toBe(600)
+    expect(timeLineEnd([])).toBe(100)
   })
 })

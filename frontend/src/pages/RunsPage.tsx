@@ -5,7 +5,8 @@ import { readSource, withSource } from '../api/source'
 import { useLotDrifts } from '../api/useLotDrifts'
 import { useResource } from '../api/useResource'
 import { LotGrid, LotGridSkeleton } from '../charts/LotGrid'
-import { Icon, type IconName } from '../components/Icon'
+import { Figure } from '../components/Figure'
+import { Icon } from '../components/Icon'
 import { SourceSwitch } from '../components/SourceSwitch'
 import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
 import { AttentionPanel } from './RunsAttention'
@@ -15,10 +16,10 @@ import { RunsTablePanel } from './RunsTable'
 type Tab = 'attention' | 'all' | 'in'
 
 const TABS = [
-  { id: 'attention', text: 'Needs a look', icon: 'alert' },
-  { id: 'all', text: 'All runs', icon: 'layers' },
-  { id: 'in', text: 'In range', icon: 'check' },
-] as const satisfies ReadonlyArray<{ id: Tab; text: string; icon: IconName }>
+  { id: 'attention', text: 'Needs a look' },
+  { id: 'all', text: 'All runs' },
+  { id: 'in', text: 'In range' },
+] as const satisfies ReadonlyArray<{ id: Tab; text: string }>
 
 const EMPTY_HINTS = {
   PUBLIC: 'The public wafers show up here once the ingest command has loaded them.',
@@ -34,9 +35,10 @@ interface View {
 }
 
 /**
- * The page the app opens to. It leads with the answer, in facts: how many runs are out of range and where, the lot
- * with the most of them, and which channel each one named first. Everything shown is derived from two answers of the
- * API, the source's runs and the lot list, plus each lot's drift; the view itself lives in the URL.
+ * The page the app opens to. It leads with the answer, in facts: how many runs are out of range and where, and the lot
+ * with the most of them; then every wafer as a cassette map, and the figures that explain the out-of-range runs.
+ * Everything shown is derived from two answers of the API, the source's runs and the lot list, plus each lot's drift;
+ * the view itself lives in the URL.
  */
 export function RunsPage() {
   const [params, setParams] = useSearchParams()
@@ -76,41 +78,49 @@ export function RunsPage() {
   }
 
   useScrollToHash(ready && view.tab === 'attention')
+  const failed = page.kind === 'error'
+  const empty = ready && summary.runs.length === 0
 
   return (
     <>
       <title>Runs · ChamberWatch</title>
-      <section className="answer" aria-live="polite" aria-busy={!ready}>
-        {page.kind === 'error'
+      <section className="answer" aria-live="polite" aria-busy={!ready && !failed}>
+        {failed
           ? <h1>The runs did not load.</h1>
-          : summary === null || !ready
+          : !ready
             ? <AnswerSkeleton />
             : <Answer summary={summary} />}
       </section>
-      {/* while the runs load or the source changes, a placeholder holds the grid's place, so the tabs below do not jump */}
-      {page.kind === 'error'
-        ? null
-        : !ready || summary === null || page.kind !== 'ready'
-          ? <LotGridSkeleton source={view.source} />
-          : summary.runs.length > 0 && (
-            <LotGrid
-              runs={summary.runs}
-              lots={lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === view.source) : []}
-              k={page.data.baseline?.k ?? null}
-              source={view.source}
-            />
-          )}
-      <div className="runs-bar">
-        <Tabs tab={view.tab} summary={ready ? summary : null} onChoose={choose} />
-        <SourceSwitch value={view.source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />
-      </div>
-      <div id="runs-panel" role="tabpanel" aria-labelledby={`tab-${view.tab}`} className="runs-panel">
+      {/* one figure throughout, so the Source switch keeps its place and its focus while a source loads */}
+      <Figure
+        id="lot-grid"
+        className="lot-grid"
+        title="Every wafer, lot by lot"
+        numbered={!failed && !empty}
+        busy={!ready && !failed}
+        control={<SourceSwitch value={view.source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />}
+      >
         {page.kind === 'error'
           ? <ErrorState message={page.error.message} onRetry={reload} />
-          : !ready || summary === null || page.kind !== 'ready'
-            ? <PanelSkeleton />
+          : !ready || page.kind !== 'ready'
+            ? <LotGridSkeleton source={view.source} />
             : summary.runs.length === 0
               ? <EmptyState source={view.source} />
+              : (
+                  <LotGrid
+                    runs={summary.runs}
+                    lots={lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === view.source) : []}
+                    k={page.data.baseline?.k ?? null}
+                    source={view.source}
+                  />
+                )}
+      </Figure>
+      {!failed && !empty && (
+        <>
+          <Tabs tab={view.tab} summary={ready ? summary : null} onChoose={choose} />
+          <div id="runs-panel" role="tabpanel" aria-labelledby={`tab-${view.tab}`} className="runs-panel">
+            {!ready || page.kind !== 'ready'
+              ? <PanelSkeleton />
               : view.tab === 'attention'
                 ? <AttentionPanel key={view.source} summary={summary} baseline={page.data.baseline} drifts={drifts} source={view.source} />
                 : (
@@ -125,22 +135,27 @@ export function RunsPage() {
                       onOrder={(order) => update({ order: order === 'out' ? null : order })}
                     />
                   )}
-      </div>
+          </div>
+        </>
+      )}
     </>
   )
 }
 
 function Answer({ summary }: { summary: RunsSummary }) {
   const said = headline(summary)
-  const hasNext = said.startText !== '' || said.channelText !== null || said.detail !== null
+  const next = said.startText !== '' || said.detail !== null
   return (
     <>
-      <h1>{said.lead}</h1>
-      {hasNext && (
+      <h1>
+        {said.signal === null
+          ? said.lead
+          : <><span className="signal-count">{said.signal}</span>{said.lead.slice(said.signal.length)}</>}
+      </h1>
+      {next && (
         <p className="answer-next">
           {said.startStrong !== '' && <strong>{said.startStrong}</strong>}
           {said.startText}
-          {said.channelText !== null && ` ${said.channelText}`}
           {said.detail}
         </p>
       )}
@@ -155,7 +170,7 @@ function AnswerSkeleton() {
       <p className="visually-hidden" role="status">Loading runs</p>
       <span className="skel skel-title" aria-hidden="true" />
       <span className="skel skel-title short" aria-hidden="true" />
-      <span className="skel skel-text" aria-hidden="true" />
+      <span className="skel skel-lead" aria-hidden="true" />
     </>
   )
 }
@@ -193,7 +208,6 @@ function Tabs({ tab, summary, onChoose }: { tab: Tab; summary: RunsSummary | nul
           tabIndex={entry.id === tab ? 0 : -1}
           onClick={() => onChoose(entry.id)}
         >
-          <Icon name={entry.icon} />
           {entry.text}
           {counts[entry.id] !== null && <span className="count">{counts[entry.id]}</span>}
         </button>
@@ -202,48 +216,51 @@ function Tabs({ tab, summary, onChoose }: { tab: Tab; summary: RunsSummary | nul
   )
 }
 
+/** The "Needs a look" figures' places: two figure heads over the shapes of a cluster row and a ledger. */
 function PanelSkeleton() {
   return (
-    <div className="grid" aria-hidden="true">
-      <span className="skel skel-card" />
-      <span className="skel skel-card" />
-      <span className="skel skel-card" />
+    <div className="panel-skeleton" aria-hidden="true">
+      <div className="figure">
+        <span className="skel skel-head" />
+        <span className="skel skel-lead" />
+        <span className="skel skel-clusters" />
+      </div>
+      <div className="figure">
+        <span className="skel skel-head" />
+        <span className="skel skel-lead" />
+        <span className="skel skel-ledger" />
+      </div>
     </div>
   )
 }
 
+/** What the API said when the runs did not load, in the figure's place, with a way to ask again. */
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="state-box" role="alert">
-      <span className="chip out"><Icon name="alert" size={18} /></span>
-      <div>
-        <h2>Could not load the runs</h2>
-        <p>{message}</p>
-        <button type="button" className="button" onClick={onRetry}>
-          <Icon name="refresh" />
-          Try again
-        </button>
-      </div>
+    <div className="state" role="alert">
+      <p className="state-title">Could not load the runs</p>
+      <p>{message}</p>
+      <button type="button" className="button" onClick={onRetry}>
+        <Icon name="refresh" />
+        Try again
+      </button>
     </div>
   )
 }
 
 function EmptyState({ source }: { source: Source }) {
   return (
-    <div className="state-box" role="status">
-      <span className="chip ok"><Icon name="inbox" size={18} /></span>
-      <div>
-        <h2>Nothing to check</h2>
-        <p>
-          {EMPTY_HINTS[source]}
-          {source === 'LIVE' && <>{' '}<Link to="/live">Open the Live page</Link></>}
-        </p>
-      </div>
+    <div className="state" role="status">
+      <p className="state-title">Nothing to check</p>
+      <p>
+        {EMPTY_HINTS[source]}
+        {source === 'LIVE' && <>{' '}<Link to="/live">Open the Live page</Link></>}
+      </p>
     </div>
   )
 }
 
-/** A link to one lot's card, `/#lot-6`, scrolls to it once the cards are on the page. */
+/** A link to one lot, `/#lot-6`, scrolls to its rows in the out-of-range ledger once they are on the page. */
 function useScrollToHash(shown: boolean) {
   const { hash } = useLocation()
   useEffect(() => {

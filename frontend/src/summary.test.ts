@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { lotDriftSchema, lotsSchema, type Lot, type LotDrift, type RunRow, runsPageSchema } from './api/schema'
 import {
-  describeFirstChannels, describeLots, describeWafers, headline, type LotDriftAnswer, runState, sortRuns, summarize,
-  summarizeDrift,
+  clusterByLot, describeClean, describeDrift, describeFirstChannels, describeLots, describeWafers, headline, type LotDriftAnswer,
+  runState, sortRuns, summarize, summarizeDrift,
 } from './summary'
 
 const fixtures = import.meta.glob('../e2e/fixtures/*.json', { eager: true, import: 'default' })
@@ -19,10 +19,16 @@ const lots = lotsSchema.parse(fixture('lots.json'))
 const publicRuns = runsPageSchema.parse(fixture('runs.json')).runs
 const simulatedRuns = runsPageSchema.parse(fixture('runs-synthetic.json')).runs
 
-/** The whole answer as a reader sees it: the lead, then the start sentence and the channel count. */
+/** The whole answer as a reader sees it: the lead, then the start sentence or how the runs split. */
 function read(runs: readonly RunRow[], lotList: readonly Lot[] = lots): string[] {
   const said = headline(summarize(runs, lotList))
-  return [said.lead, `${said.startStrong}${said.startText}`, said.channelText ?? '', said.detail ?? ''].filter((part) => part !== '')
+  return [said.lead, `${said.startStrong}${said.startText}`, said.detail ?? ''].filter((part) => part !== '')
+}
+
+/** Fig. 2's answer: which channel left its range first, over the out-of-range runs. */
+function channels(runs: readonly RunRow[]): string {
+  const summary = summarize(runs, lots)
+  return describeFirstChannels(summary.firstChannels, summary.out.length)
 }
 
 let nextId = 1000
@@ -46,20 +52,33 @@ function run(lotNo: number, position: number, flags: number, z: number | null = 
 }
 
 describe('the answer at the top of the runs page', () => {
-  it('names the lots, the lot with the most out-of-range runs and the first channels on the public wafers', () => {
+  it('names the lots and the lot with the most out-of-range runs on the public wafers, in one line each', () => {
     expect(read(publicRuns)).toEqual([
       '15 of 96 runs are out of range, all in lots 6 to 9.',
-      'Start with Lot 6, which has the most out-of-range runs: wafers 4 to 10 of 10.',
-      'First channel to leave its range: Platen RF load cap in 10 of the 15 runs and Platen RF tuning cap in 5.',
+      'Start with Lot 6: wafers 4 to 10 of 10 are out.',
     ])
+    expect(channels(publicRuns)).toBe('Platen RF load cap in 10 of the 15 runs and Platen RF tuning cap in 5.')
+  })
+
+  it('sets the out-of-range count apart, and only when there is one', () => {
+    const said = headline(summarize(publicRuns, lots))
+
+    expect(said.signal).toBe('15')
+    expect(said.lead.startsWith(`${said.signal} `)).toBe(true)
+    expect(headline(summarize([run(1, 1, 0)], [])).signal).toBeNull()
+    expect(headline(summarize([], [])).signal).toBeNull()
   })
 
   it('starts the simulated wafers at lot 901 and counts single channels together', () => {
     expect(read(simulatedRuns)).toEqual([
       '8 of 40 runs are out of range, all in lots 6, 7 and 901.',
-      'Start with Lot 901, which has the most out-of-range runs: wafers 5 to 7, 9 and 10 of 10.',
-      'First channel to leave its range: Platen RF load cap in 3 of the 8 runs, Helium backside pressure in 2 and 3 other channels in 1 each.',
+      'Start with Lot 901: wafers 5 to 7, 9 and 10 of 10 are out.',
     ])
+    expect(channels(simulatedRuns)).toBe('Platen RF load cap in 3 of the 8 runs, Helium backside pressure in 2 and 3 other channels in 1 each.')
+  })
+
+  it('says "is" for a lot with one wafer out', () => {
+    expect(read([run(4, 1, 0), run(4, 2, 2)], [])[1]).toBe('Start with Lot 4: wafer 2 of 2 is out.')
   })
 
   it('names every lot that ties for the most out-of-range runs and picks none of them', () => {
@@ -70,9 +89,9 @@ describe('the answer at the top of the runs page', () => {
     expect(said.startStrong).toBe('')
     expect(read(runs, [])).toEqual([
       '5 of 8 runs are out of range, all in lots 3, 5 and 8.',
-      'Lots 3 and 5 tie for the most out-of-range runs, 2 each.',
-      'First channel to leave its range: Gas 5 flow in 5 of the 5 runs.',
+      'Lots 3 and 5 tie for the most: 2 out each.',
     ])
+    expect(describeFirstChannels(summarize(runs, []).firstChannels, 5)).toBe('Gas 5 flow in 5 of the 5 runs.')
   })
 
   it('names the start lot even when the tied lots are not the most unusual', () => {
@@ -95,9 +114,30 @@ describe('the answer at the top of the runs page', () => {
 
   it('counts runs that name no first channel apart from the channels', () => {
     expect(describeFirstChannels([{ channel: 'Gas5Flow', count: 2 }, { channel: null, count: 1 }], 3))
-      .toBe('First channel to leave its range: Gas 5 flow in 2 of the 3 runs. 1 run names no first channel.')
+      .toBe('Gas 5 flow in 2 of the 3 runs. 1 run names no first channel.')
     expect(describeFirstChannels([{ channel: null, count: 2 }], 2)).toBe('No out-of-range run names a first channel.')
-    expect(describeFirstChannels([{ channel: 'Pressure', count: 1 }], 1)).toBe('First channel to leave its range: Chamber pressure in 1 of the 1 run.')
+    expect(describeFirstChannels([{ channel: 'Pressure', count: 1 }], 1)).toBe('Chamber pressure in 1 of the 1 run.')
+  })
+})
+
+describe('the first channels, clustered by lot', () => {
+  it('keeps each channel\'s runs and clusters them by lot in lot order', () => {
+    const summary = summarize(publicRuns, lots)
+    const [load, tuning] = summary.firstChannels
+    const clusters = (runs: readonly RunRow[]) => clusterByLot(runs).map((cluster) => `${cluster.lotNo}:${cluster.runs.map((row) => row.positionInLot).join(',')}`)
+
+    expect(load?.channel).toBe('PlatenRFLoadCapacitor')
+    expect(clusters(load?.runs ?? [])).toEqual(['6:4,5,6,7', '7:4,5,6', '8:7', '9:7,8'])
+    expect(clusters(tuning?.runs ?? [])).toEqual(['6:8,9,10', '9:9,10'])
+    expect(clusterByLot([])).toEqual([])
+  })
+})
+
+describe('the clean lots in one line', () => {
+  it('counts the wafers of the lots with nothing out of range', () => {
+    expect(describeClean(summarize(publicRuns, lots).clean)).toBe('Lots 1 to 5 and 10: 60 wafers, none out of range.')
+    expect(describeClean(summarize([run(3, 1, 0)], []).clean)).toBe('Lot 3: 1 wafer, none out of range.')
+    expect(describeClean([])).toBeNull()
   })
 })
 
@@ -147,6 +187,15 @@ describe('lot drift on the runs page', () => {
     expect(drift.groups).toEqual([{ label: 'No drift data', lotNos: [1, 2, 3, 4, 5, 7, 8, 9, 10] }])
     expect(drift.loading).toEqual([])
     expect(drift.k).toBe(3)
+    expect(describeDrift(drift)).toBe('4 channels are outside the band or heading out, by each lot\'s last wafer.')
+  })
+
+  it('answers the drift figure only once a lot has answered', () => {
+    expect(describeDrift({ lines: [], groups: [], loading: [1, 2], k: null })).toBeNull()
+    expect(describeDrift({ lines: [], groups: [{ label: 'No drift data', lotNos: [1] }], loading: [], k: null }))
+      .toBe('No channel is outside the band or heading out, by each lot\'s last wafer.')
+    expect(describeDrift({ lines: [{ channel: 'Pressure', text: 'heading out in lot 2' }], groups: [], loading: [], k: 3 }))
+      .toBe('1 channel is outside the band or heading out, by each lot\'s last wafer.')
   })
 
   it('accounts for every simulated lot, the ones still loading included', () => {
