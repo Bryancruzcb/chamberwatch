@@ -119,11 +119,9 @@ describe('format', () => {
     const depth = { set: 'EIGHTY_NINE_POINT', points: 89, meanDepthUm: 43.69, lossUm: 0.31, referenceWafers: 3 } as const
 
     expect(describeRun({ assessment: score, channels, good: false, depth })).toBe(
-      'Platen RF load cap left its range first at 407.2 s. One other channel was out of range too. '
+      'Platen RF load cap left its range first at 407.2 s. One other channel left its range too. '
       + 'Measured afterwards, the wafer etched 43.69 µm deep, 0.31 µm shallower than wafers 1 to 3 of its lot.',
     )
-    expect(describeRun({ assessment: score, channels: [...channels, channel('ForeLinePressure', { deviation: true })], good: false, depth: undefined }))
-      .toBe('Platen RF load cap left its range first at 407.2 s. 2 other channels were out of range too.')
     expect(describeRun({ assessment: score, channels: channels.slice(0, 1), good: false, depth: undefined }))
       .toBe('Platen RF load cap left its range at 407.2 s.')
     expect(describeRun({ assessment: score, channels, good: false, depth: { ...depth, lossUm: -0.12 } }))
@@ -132,19 +130,68 @@ describe('format', () => {
       .toContain('Measured afterwards, the wafer etched 43.69 µm deep.')
   })
 
+  it('counts the channels with a moment on the etch apart from those caught on a phase mean or spread alone', () => {
+    const score = { limitFlags: 25, deviationFlags: 3, stuckFlags: 0, persistentZ: 18.8, firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 407.2 }
+    const load = channel('PlatenRFLoadCapacitor', { excursions: 21 })
+    const tuning = channel('PlatenRFTuningCapacitor', { excursions: 4 })
+    const off = ['ForeLinePressure', 'Pressure', 'Gas4Flow'].map((name) => channel(name, { deviation: true }))
+    const say = (channels: Channel[]) => describeRun({ assessment: score, channels, good: false, depth: undefined })
+
+    expect(say([load, tuning, ...off.slice(0, 1)]))
+      .toBe('Platen RF load cap left its range first at 407.2 s. One other channel left its range too. One more channel was out of range on a phase mean or spread alone.')
+    expect(say([load, tuning, channel('Gas5Flow', { holds: 1 }), ...off]))
+      .toBe('Platen RF load cap left its range first at 407.2 s. 2 other channels left their range too. 3 more channels were out of range on a phase mean or spread alone.')
+    // nothing else left its range, so nothing was "first"
+    expect(say([load, ...off]))
+      .toBe('Platen RF load cap left its range at 407.2 s. 3 other channels were out of range on a phase mean or spread alone.')
+    expect(say([load, ...off.slice(0, 1)]))
+      .toBe('Platen RF load cap left its range at 407.2 s. One other channel was out of range on a phase mean or spread alone.')
+    // a channel with an excursion that also deviates is counted once, with the channels that left
+    expect(say([load, { ...tuning, deviation: true }])).toBe('Platen RF load cap left its range first at 407.2 s. One other channel left its range too.')
+  })
+
   it('says how the first channel gave a run away: an excursion, a stuck value, or a phase mean or spread', () => {
     const score = { limitFlags: 0, deviationFlags: 0, stuckFlags: 1, persistentZ: 3.6, firstChannel: 'HeliumBPPressure', firstTimeS: 498.8 }
 
     expect(describeRun({ assessment: score, channels: [channel('HeliumBPPressure', { holds: 1 })], good: false, depth: undefined }))
       .toBe('Helium backside pressure got stuck on one value at 498.8 s.')
-    expect(describeRun({
-      assessment: { ...score, stuckFlags: 0, deviationFlags: 1, firstTimeS: null },
-      channels: [channel('HeliumBPPressure', { deviation: true })],
-      good: false,
-      depth: undefined,
-    })).toBe('Helium backside pressure moved its phase mean or spread away from the good runs\'.')
     expect(describeRun({ assessment: { ...score, firstChannel: null, firstTimeS: null }, channels: [], good: false, depth: undefined }))
       .toBe('A detector flagged this run.')
+  })
+
+  it('says a sensor got stuck when its value froze before it fell out of range', () => {
+    const score = { limitFlags: 1, deviationFlags: 0, stuckFlags: 1, persistentZ: 7.2, firstChannel: 'ForeLinePressure', firstTimeS: 498.8 }
+    const both = channel('ForeLinePressure', { excursions: 1, holds: 1 })
+    const at = (holdSlot: number, excursionSlot: number): Channel => ({
+      ...both,
+      holds: both.holds.map((hold) => ({ ...hold, startSlot: holdSlot })),
+      excursions: both.excursions.map((excursion) => ({ ...excursion, startSlot: excursionSlot })),
+    })
+    const say = (subject: Channel) => describeRun({ assessment: score, channels: [subject], good: false, depth: undefined })
+
+    // the value froze in one phase and only left the band at the next phase change
+    expect(say(at(2880, 2900))).toBe('Foreline pressure got stuck on one value at 498.8 s.')
+    expect(say(at(2900, 2880))).toBe('Foreline pressure left its range at 498.8 s.')
+    // a tie goes to the excursion, as the detectors time it
+    expect(say(at(2880, 2880))).toBe('Foreline pressure left its range at 498.8 s.')
+  })
+
+  it('names no moment and no "first" for a run caught only on a phase mean or spread', () => {
+    const score = { limitFlags: 0, deviationFlags: 3, stuckFlags: 0, persistentZ: 3.1, firstChannel: 'Pressure', firstTimeS: null }
+    const off = ['Pressure', 'Gas4Flow', 'PlatenRFLoadPower'].map((name) => channel(name, { deviation: true }))
+    const say = (channels: Channel[]) => describeRun({ assessment: score, channels, good: false, depth: undefined })
+
+    expect(say(off)).toBe('Chamber pressure was out of range on a phase mean or spread. 2 other channels were out of range too.')
+    expect(say(off.slice(0, 2))).toBe('Chamber pressure was out of range on a phase mean or spread. One other channel was out of range too.')
+    expect(say(off.slice(0, 1))).toBe('Chamber pressure was out of range on a phase mean or spread.')
+  })
+
+  it('names the 9-point set when a wafer was only measured there', () => {
+    const score = { limitFlags: 4, deviationFlags: 0, stuckFlags: 0, persistentZ: 9.1, firstChannel: 'PlatenRFLoadCapacitor', firstTimeS: 195 }
+    const depth = { set: 'NINE_POINT', points: 9, meanDepthUm: 40.5, lossUm: 0.29, referenceWafers: 3 } as const
+
+    expect(describeRun({ assessment: score, channels: [channel('PlatenRFLoadCapacitor', { excursions: 4 })], good: false, depth }))
+      .toBe('Platen RF load cap left its range at 195.0 s. Measured afterwards on the 9-point set, the wafer etched 40.50 µm deep, 0.29 µm shallower than wafers 1 to 3 of its lot.')
   })
 
   it('opens an in-range run plainly, and says when it taught the range', () => {

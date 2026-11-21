@@ -109,7 +109,8 @@ function MeasurementsView({ measurements }: { measurements: Measurements }) {
         <p>
           Depth is step height less the oxide left on top. The 9-point and 89-point sets were measured months apart
           with different instruments, so they are never mixed. Sites near the center and near the edge are the third of
-          the sites closest to the center and the third farthest from it.
+          the sites closest to the center and the third farthest from it, widened so that a ring of sites at the same
+          distance is never split.
         </p>
       </details>
     </section>

@@ -88,11 +88,15 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
         <p className="subtitle">
           {[lot.runDate === null ? null : `Run on ${formatDate(lot.runDate)}`, conditioning].filter((part) => part !== null).join('. ')}
         </p>
-        <p className="answer-next">
-          {runs.kind === 'ready'
-            ? describeLot({ runs: runs.data.runs, channels, phase })
-            : <span className="skel skel-line" aria-hidden="true" />}
-        </p>
+        {/* when the runs fail to load, the figure below says why; a placeholder here would wait forever */}
+        {runs.kind !== 'error' && (
+          <p className="answer-next">
+            {runs.kind === 'ready'
+              // the answer's phase is the one the counts were made for, not the one just clicked and still loading
+              ? describeLot({ runs: runs.data.runs, channels, phase: drift.phase })
+              : <span className="skel skel-line" aria-hidden="true" />}
+          </p>
+        )}
       </header>
       <div className="lot-overview">
         <section className="panel" aria-labelledby="lot-wafers-title">
@@ -107,7 +111,7 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
           </Loaded>
         </section>
         <section className="panel" aria-labelledby="lot-verdicts-title">
-          <h2 id="lot-verdicts-title">{`Each channel's ${phase} mean by the last wafer`}</h2>
+          <h2 id="lot-verdicts-title">{`Each channel's ${drift.phase} mean by the last wafer`}</h2>
           <DriftShare channels={channels} />
         </section>
       </div>
@@ -122,7 +126,7 @@ function LotDetails({ drift, phase, onPhase, onReference }: {
         </section>
         {selected === undefined
           ? <section className="panel"><p className="status-line">No channel has a good-run band for this phase.</p></section>
-          : <DriftPanel channel={selected} rule={rule} phase={phase} reference={drift.reference} referenceWafers={drift.referenceWafers} />}
+          : <DriftPanel channel={selected} rule={rule} phase={drift.phase} reference={drift.reference} referenceWafers={drift.referenceWafers} />}
       </div>
     </>
   )

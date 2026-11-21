@@ -109,7 +109,7 @@ async function film(videoDir) {
   await sleep(2500)
 
   await page.getByRole('link', { name: 'open its page' }).click()
-  await page.getByRole('heading', { level: 2, name: 'Channels by rank' }).waitFor()
+  await page.getByRole('heading', { level: 2, name: 'Every channel against the limit' }).waitFor()
   await sleep(3000)
   await page.locator('figure.chart').first().scrollIntoViewIfNeeded()
   await sleep(3500)

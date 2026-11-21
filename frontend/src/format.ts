@@ -191,31 +191,55 @@ function describeIn(good: boolean): string {
     : 'No channel left the good-run range.'
 }
 
+/**
+ * The out-of-range sentence. The other channels are counted in two groups, because the run's timeline can only draw
+ * the first: those with a moment on the etch (an excursion or a stuck value), and those caught on a phase mean or
+ * spread alone. "First" is only said of a channel that left before another one did.
+ */
 function describeOut(assessment: Score, channels: readonly Channel[]): string {
   const first = assessment.firstChannel
-  const others = channels.filter((channel) => channel.channel !== first && isOut(channel)).length
-  const followers = others === 0 ? '' : ` ${others === 1 ? 'One other channel was' : `${others} other channels were`} out of range too.`
   if (first === null) {
-    return `A detector flagged this run.${followers}`
+    return 'A detector flagged this run.'
   }
-  const departure = describeDeparture(channels.find((channel) => channel.channel === first))
+  const firstChannel = channels.find((channel) => channel.channel === first)
+  const rest = channels.filter((channel) => channel.channel !== first)
+  const departed = rest.filter(hasDeparted).length
+  const deviating = rest.filter((channel) => !hasDeparted(channel) && channel.deviation).length
+  // The detectors rank a channel that left its range above every channel that did not, so a first channel caught only
+  // on a phase mean or spread has no moment to name, and it is first by size, not by time.
+  if (firstChannel !== undefined && !hasDeparted(firstChannel) && firstChannel.deviation) {
+    const others = departed + deviating
+    const too = others === 0 ? '' : ` ${others === 1 ? 'One other channel was' : `${others} other channels were`} out of range too.`
+    return `${formatChannelName(first)} was out of range on a phase mean or spread.${too}`
+  }
   const when = assessment.firstTimeS === null ? '' : ` at ${formatSeconds(assessment.firstTimeS)}`
-  return `${formatChannelName(first)} ${departure}${others === 0 ? '' : ' first'}${when}.${followers}`
+  const lead = `${formatChannelName(first)} ${describeDeparture(firstChannel)}${departed === 0 ? '' : ' first'}${when}.`
+  const left = departed === 0
+    ? ''
+    : ` ${departed === 1 ? 'One other channel left its range' : `${departed} other channels left their range`} too.`
+  const word = departed === 0 ? 'other' : 'more'
+  const off = deviating === 0
+    ? ''
+    : ` ${deviating === 1 ? `One ${word} channel was` : `${deviating} ${word} channels were`} out of range on a phase mean or spread alone.`
+  return `${lead}${left}${off}`
 }
 
-function isOut(channel: Channel): boolean {
-  return channel.excursions.length > 0 || channel.holds.length > 0 || channel.deviation
+/** Whether a channel has a moment on the etch: an excursion past the limit, or a stuck value. */
+function hasDeparted(channel: Channel): boolean {
+  return channel.excursions.length > 0 || channel.holds.length > 0
 }
 
-/** What the first channel did, by the rule that caught it: an excursion, a stuck value, or a phase mean or spread. */
+/**
+ * What the first channel did at the time the run names. The detectors time a channel's departure from whichever came
+ * first, its first excursion or its first stuck value, and a tie goes to the excursion; a sensor that froze and only
+ * later fell out of its range at a phase change got stuck first.
+ */
 function describeDeparture(channel: Channel | undefined): string {
-  if (channel === undefined || channel.excursions.length > 0) {
+  if (channel === undefined) {
     return 'left its range'
   }
-  if (channel.holds.length > 0) {
-    return 'got stuck on one value'
-  }
-  return channel.deviation ? 'moved its phase mean or spread away from the good runs\'' : 'left its range'
+  const firstSlot = (spans: readonly { startSlot: number }[]) => spans.reduce((min, span) => Math.min(min, span.startSlot), Infinity)
+  return firstSlot(channel.holds) < firstSlot(channel.excursions) ? 'got stuck on one value' : 'left its range'
 }
 
 /** The lineup's answer: how many of the run's channels went past the limit, and which one went furthest. */
@@ -252,8 +276,13 @@ export function describeEvidence(assessment: Score, channels: readonly Channel[]
   return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`
 }
 
+/**
+ * The depth sentence. The 89-point set is the default and goes unnamed; the 9-point set reads about 3 µm shallower on
+ * the same wafer, so a wafer only measured there says so.
+ */
 function describeMeasured(depth: MeasuredDepth): string {
-  const etched = `Measured afterwards, the wafer etched ${formatMicrons(depth.meanDepthUm)} deep`
+  const measured = depth.set === 'NINE_POINT' ? 'Measured afterwards on the 9-point set' : 'Measured afterwards'
+  const etched = `${measured}, the wafer etched ${formatMicrons(depth.meanDepthUm)} deep`
   if (depth.lossUm === null) {
     return `${etched}.`
   }
@@ -350,8 +379,8 @@ export function describeResidual(residualUm: number | null): string {
 }
 
 /**
- * The depth map's answer: the wafer's mean depth over its sites, and how the third of the sites nearest the edge
- * compares with the third nearest the center. Null for a set with no measurement.
+ * The depth map's answer: the wafer's mean depth over its sites, and how the sites nearest the edge compare with those
+ * nearest the center, about a third of the sites each (see `centerAndEdge`). Null for a set with no measurement.
  */
 export function describeWaferDepth(measurements: Measurements): string | null {
   if (measurements.meanDepthUm === null || measurements.points === 0) {

@@ -9,7 +9,7 @@ test('maps the 89 measured sites of a wafer and switches to the 9-point set', as
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Measured depth')
   await expect(page.getByRole('img', { name: /^Etch depth at 89 sites/ }).locator('[data-kind="site"]')).toHaveCount(89)
   await expect(panel.locator('.panel-answer')).toHaveText(
-    '43.69 µm deep on average across 89 sites. Sites near the edge etched 6.88 µm deeper than sites near the center.',
+    '43.69 µm deep on average across 89 sites. Sites near the edge etched 6.45 µm deeper than sites near the center.',
   )
   await expect(panel.locator('.wafer-facts')).toContainText('Mean43.69 µm')
   await expect(panel.locator('.wafer-facts')).toContainText('Range11.57 µm')
@@ -18,7 +18,11 @@ test('maps the 89 measured sites of a wafer and switches to the 9-point set', as
 
   await expect(page).toHaveURL(/set=NINE_POINT/)
   await expect(page.getByRole('img', { name: /^Etch depth at 9 sites/ }).locator('[data-kind="site"]')).toHaveCount(9)
-  await expect(panel.locator('.panel-answer')).toContainText('40.50 µm deep on average across 9 sites.')
+  // nine sites sit on a center point and two rings of four; the comparison never splits a ring
+  await expect(panel.locator('.panel-answer')).toHaveText(
+    '40.50 µm deep on average across 9 sites. Sites near the edge etched 0.98 µm deeper than sites near the center.',
+  )
+  await expect(page.locator('[data-kind="profile-end"]')).toHaveText(['39.16 µm', '42.53 µm'])
 })
 
 test('plots each site\'s depth against its distance from the center', async ({ page }) => {

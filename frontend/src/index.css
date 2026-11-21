@@ -893,9 +893,11 @@ td .badge {
   background: var(--out);
 }
 
+/* A stuck value is hatched as well as brown, so it never rests on color alone: red and brown read alike to a
+   red-green color-blind eye. The stripes repeat down a span's height, so even one 2px wide shows them. */
 .lane-span.hold,
 .key-span.hold {
-  background: var(--drift);
+  background: repeating-linear-gradient(-45deg, var(--drift) 0 3px, var(--drift-wash) 3px 5px);
 }
 
 .lane-fault {

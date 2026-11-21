@@ -25,6 +25,44 @@ test('opens a lot on its answer: which wafers are out of range, and how its chan
   await expect(page.getByRole('link', { name: 'Show them in the runs table' })).toHaveAttribute('href', '/?lot=6')
 })
 
+test('says why when a lot\'s runs do not load, and leaves no placeholder waiting in the header', async ({ page }) => {
+  await serveApi(page)
+  await page.route((url) => url.pathname === '/api/runs' && url.searchParams.get('lot') === '6', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/problem+json',
+    body: JSON.stringify({ title: 'Service Unavailable', detail: 'the database is starting' }),
+  }))
+  await page.goto('/lots/6')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lot 6')
+  await expect(page.getByRole('alert')).toContainText('the database is starting')
+  await expect(page.locator('.page-head .answer-next')).toHaveCount(0)
+  await expect(page.locator('.page-head .skel')).toHaveCount(0)
+})
+
+test('keeps the answer and the heading on the phase its counts were made for while another phase loads', async ({ page }) => {
+  await serveApi(page)
+  let release = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route((url) => url.pathname === '/api/lots/6/drift' && url.searchParams.get('phase') === 'C4F8', async (route) => {
+    await held
+    await route.fallback()
+  })
+  await page.goto('/lots/6')
+  await page.getByRole('group', { name: 'Phase' }).getByRole('button', { name: 'C4F8' }).click()
+
+  // the C4F8 answer is on its way: the control shows the click, the numbers still say what they count
+  await expect(page.getByRole('group', { name: 'Phase' }).getByRole('button', { name: 'C4F8' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('region', { name: "Each channel's SF6 mean by the last wafer" })).toBeVisible()
+  await expect(page.locator('.page-head .answer-next')).toContainText('the SF6 mean of 4 channels')
+
+  release()
+  await expect(page.getByRole('region', { name: "Each channel's C4F8 mean by the last wafer" })).toBeVisible()
+  await expect(page.locator('.page-head .answer-next')).toContainText('C4F8 mean')
+})
+
 test('opens a lot on the channel that left the band', async ({ page }) => {
   const api = await serveApi(page)
   await page.goto('/lots')

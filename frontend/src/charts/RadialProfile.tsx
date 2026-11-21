@@ -22,11 +22,15 @@ export function RadialProfile({ sites }: { sites: readonly MeasurementPoint[] })
   const profile = radialProfile(sites)
   const depths = profile.map((point) => point.depthUm)
   const range: Interval = [Math.min(...depths), Math.max(...depths)]
-  const span = range[1] - range[0] || 1
+  const span = range[1] - range[0]
   const plotWidth = width - MARGIN.left - MARGIN.right
   const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom
   const x = (mm: number) => MARGIN.left + (Math.min(mm, EDGE_MM) / EDGE_MM) * plotWidth
-  const y = (um: number) => MARGIN.top + (1 - HEADROOM - ((um - range[0]) / span) * (1 - 2 * HEADROOM)) * plotHeight
+  // sites that all read the same depth have no range to spread over, so they sit at mid-height
+  const share = (um: number) => (span > 0 ? (um - range[0]) / span : 0.5)
+  const y = (um: number) => MARGIN.top + (1 - HEADROOM - share(um) * (1 - 2 * HEADROOM)) * plotHeight
+  // the ends of the scale, as one label where they print the same
+  const ends = formatMicrons(range[0]) === formatMicrons(range[1]) ? [range[0]] : [range[0], range[1]]
   return (
     <figure className="profile-plot">
       <figcaption className="profile-title">Depth from center to edge</figcaption>
@@ -39,8 +43,8 @@ export function RadialProfile({ sites }: { sites: readonly MeasurementPoint[] })
           aria-label={`Depth of ${profile.length} sites by distance from the wafer's center, from ${formatMicrons(range[0])} to ${formatMicrons(range[1])}.`}
         >
           <line className="profile-axis" x1={MARGIN.left} x2={width - MARGIN.right} y1={HEIGHT - MARGIN.bottom} y2={HEIGHT - MARGIN.bottom} />
-          {[range[0], range[1]].map((um) => (
-            <text key={um} className="tick" x={MARGIN.left - 8} y={y(um) + 4} textAnchor="end">{`${um.toFixed(1)} µm`}</text>
+          {ends.map((um, index) => (
+            <text key={index} className="tick" data-kind="profile-end" x={MARGIN.left - 8} y={y(um) + 4} textAnchor="end">{formatMicrons(um)}</text>
           ))}
           {profile.map((point, index) => (
             <circle
