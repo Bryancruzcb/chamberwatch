@@ -4,7 +4,7 @@ ChamberWatch watches a plasma etch chamber.
 
 It learns what a good wafer looks like from the first few after a chamber clean, then flags later wafers that leave that band and names the sensor that left first. For every flag it puts the sensor next to the measured etch depth on that wafer.
 
-![The Runs page opens on its answer: 15 of 96 runs are out of range, all in lots 6 to 9. Start with lot 6, where wafers 4 to 10 are out of range; the platen RF load cap left its range first in 10 of the 15 runs](docs/images/runs.png)
+![The Runs page opens on its answer: 15 of 96 runs are out of range, all in lots 6 to 9. Start with lot 6, where wafers 4 to 10 are out of range; the platen RF load cap left its range first in 10 of the 15 runs. Below, every wafer sits in a grid of lots by position, the out-of-range ones in a block in lots 6 to 9](docs/images/runs.png)
 
 ## What it found
 
@@ -24,7 +24,7 @@ The public set has no labeled faults, so a seeded simulator plants five known fa
 
 The numbers live in [results/metrics.json](results/metrics.json). How the simulator and the score are built is in [docs/EVALUATION.md](docs/EVALUATION.md).
 
-The telemetry also says something about the etch depth itself. A ridge regression on the phase means and spreads, fitted without the lot it predicts, gets a wafer's mean 89-point depth to 0.162 µm, where a line on wafer position gets 0.221 µm and the lot's own first wafers get 0.708 µm. The lots page shows the comparison and a wafer's page puts the prediction beside the measurement. [docs/DEPTH.md](docs/DEPTH.md) has the method, the features that carry it, and what it is not.
+The telemetry also says something about the etch depth itself. A ridge regression on the phase means and spreads, fitted without the lot it predicts, gets a wafer's mean 89-point depth to 0.162 µm over all 88 measured wafers, where a line on wafer position gets 0.221 µm. On the 58 wafers after each lot's first three, the only ones the lot's own first wafers can guess, it gets 0.156 µm, against 0.210 µm for the line and 0.708 µm for the first wafers. The lots page shows the comparison and a wafer's page puts the prediction beside the measurement. [docs/DEPTH.md](docs/DEPTH.md) has the method, the features that carry it, and what it is not.
 
 ## How it works
 
@@ -38,13 +38,13 @@ This is a per-slot baseline plus three rules, not a trained model. [docs/DESIGN.
 
 ## Data
 
-96 wafers in 10 lots, 31 tool channels at 5 Hz, and etch depth on each wafer. The files are not in this repository. [docs/DATA.md](docs/DATA.md) covers the source, the download, and the quirks the code handles.
+96 wafers in 10 lots, 31 tool channels at 5 Hz, and etch depth on 90 of the wafers: 88 measured at 89 points and 75 at 9 points. Wafers 5 to 10 of lot 10 have no depth. The files are not in this repository. [docs/DATA.md](docs/DATA.md) covers the source, the download, and the quirks the code handles.
 
 A wafer can also be etched right now: [chamber-sim/](chamber-sim) is a plasma etch chamber in C11 that streams a run over TCP, and the Live page records it into the same runs table, aligned and scored like any other wafer. Taught by 30 clean live wafers, the same number the public baseline learns from, it flagged all 12 faulted wafers it was given, 11 with the faulty channel named first, and left 9 of 10 clean ones alone.
 
 ![The Live page records a wafer from the C chamber simulator; when it ends, the run page shows the SF6 flow named first at 170.0 s, for a fault put in at 170.2 s, with the foreline pressure it dragged down ranked second](docs/images/live.gif)
 
-The GIF is made by `frontend/e2e/record-live.mjs` against the running app, not against recorded answers.
+The GIF is made by `frontend/e2e/record-live.mjs` against the running app, not against recorded answers. It was filmed in September 2026, and the run page it ends on has changed its layout since.
 
 The same dataset also holds the light the plasma gave off, 3,648 wavelengths per sample across 7.9 GB of daily files. Those are optional: everything above works without them. With them downloaded, `ingest-spectra` reduces five emission lines into the recipe's slots and stores them as channels of the wafers beside the flows and powers, so the same bands, detectors and charts read them. Three fluorine lines rise while the etch step cuts; two C2 bands rise while the passivation step protects, about 40 times brighter in that half of the cycle.
 

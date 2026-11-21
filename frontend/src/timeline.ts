@@ -30,9 +30,9 @@ export interface Timeline {
 
 /** More lanes than this read as a wall; the channels table below lists every channel anyway. */
 const MAX_LANES = 6
-/** Tick steps in seconds, the first that keeps the axis to six labels or fewer wins. */
-const TICK_STEPS = [10, 20, 50, 100, 200] as const
-const LONGEST_TICK_STEP = 500
+/** Tick steps in seconds, the first that keeps the axis to six labels or fewer wins. The longest covers an etch of hours. */
+const TICK_STEPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000] as const
+const LONGEST_TICK_STEP = 5000
 const MAX_TICKS = 6
 
 /** Where `s` falls in the etch from `fromS` to `toS`, clamped to its edges. */
@@ -72,12 +72,23 @@ export function ticksBetween(fromS: number, toS: number): number[] {
   if (toS <= fromS) {
     return []
   }
-  const step: number = TICK_STEPS.find((candidate) => (toS - fromS) / candidate <= MAX_TICKS) ?? LONGEST_TICK_STEP
+  // count the labels a step would draw, not the intervals between them: both ends on a round second make one more
+  const labels = (candidate: number) => Math.floor(toS / candidate) - Math.ceil(fromS / candidate) + 1
+  const step: number = TICK_STEPS.find((candidate) => labels(candidate) <= MAX_TICKS) ?? LONGEST_TICK_STEP
   const ticks: number[] = []
   for (let s = Math.ceil(fromS / step) * step; s <= toS; s += step) {
     ticks.push(s)
   }
   return ticks
+}
+
+/**
+ * The channels caught on a phase mean or spread, in rank order, for an out-of-range run with no moment to draw. As many
+ * as the timeline has lanes; `hidden` counts the rest.
+ */
+export function deviatingChannels(channels: readonly Channel[]): { shown: Channel[]; hidden: number } {
+  const deviating = channels.filter((channel) => channel.deviation).sort((a, b) => a.rank - b.rank)
+  return { shown: deviating.slice(0, MAX_LANES), hidden: Math.max(0, deviating.length - MAX_LANES) }
 }
 
 /** The channel that came closest to the limit, for a run where none left its range. */

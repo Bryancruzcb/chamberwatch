@@ -1,15 +1,16 @@
 import { Link } from 'react-router'
-import type { Channel, InjectedFault, Score } from '../api/schema'
+import { type Channel, type InjectedFault, isFlagged, type Score } from '../api/schema'
 import { ZMeter } from '../components/ZMeter'
 import { describeEvidence, formatChannelName, formatSeconds, formatUnusual } from '../format'
-import { closestChannel, etchTimeline, type Lane, positionIn } from '../timeline'
+import { closestChannel, deviatingChannels, etchTimeline, type Lane, positionIn } from '../timeline'
 
 const percent = (share: number) => `${(share * 100).toFixed(3)}%`
 
 /**
- * When each channel left its range, along the etch: one lane per channel in rank order, red for an excursion past the
- * limit and amber for a stuck value, with the fault the simulator put in as a dashed line. Each lane ends on how unusual
- * the channel got against the limit. A run no channel left shows the one that came closest instead.
+ * When each channel left its range, along the etch: one lane per channel in rank order, solid red for an excursion past
+ * the limit and hatched brown for a stuck value, with the fault the simulator put in as a dashed line. Each lane ends on
+ * how unusual the channel got against the limit. A run no channel left shows the one that came closest instead, and a
+ * run caught only on a phase mean or spread lists those channels.
  */
 export function EtchTimeline({ assessment, channels, k, etch, fault }: {
   assessment: Score
@@ -20,6 +21,26 @@ export function EtchTimeline({ assessment, channels, k, etch, fault }: {
 }) {
   const timeline = etchTimeline(channels, etch.fromS, etch.toS)
   const evidence = describeEvidence(assessment, channels)
+  const deviating = timeline.lanes.length === 0 && isFlagged(assessment) ? deviatingChannels(channels) : null
+  if (deviating !== null && deviating.shown.length > 0) {
+    // Out of range with nothing to draw: no meter either, since the meter shows the limit rule, which these passed.
+    return (
+      <section className="panel timeline" aria-labelledby="timeline-title">
+        <h2 id="timeline-title">Phase mean or spread off the good runs</h2>
+        <ul className="lanes">
+          {deviating.shown.map((channel) => (
+            <li key={channel.channel} className="lane lane-closest">
+              <ChannelLink channel={channel} />
+            </li>
+          ))}
+        </ul>
+        <p className="timeline-foot">
+          {`${evidence ?? ''} No channel stayed past the limit or got stuck, so there is no moment to draw along the etch.`.trim()}
+          {deviating.hidden > 0 && ` ${deviating.hidden} more ${deviating.hidden === 1 ? 'channel is' : 'channels are'} in the list below.`}
+        </p>
+      </section>
+    )
+  }
   if (timeline.lanes.length === 0) {
     const closest = closestChannel(channels)
     return (

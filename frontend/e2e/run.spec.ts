@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { serveApi } from './api.ts'
 
@@ -7,12 +9,14 @@ test('shows why a flagged wafer was flagged', async ({ page }) => {
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
   await expect(page.locator('.page-head .answer-next')).toHaveText(
-    'Platen RF load cap left its range first at 407.2 s. One other channel was out of range too. '
+    'Platen RF load cap left its range first at 407.2 s. One other channel left its range too. '
     + 'Measured afterwards, the wafer etched 43.69 µm deep, 0.31 µm shallower than wafers 1 to 3 of its lot.',
   )
   const timeline = page.getByRole('region', { name: 'When channels left their range' })
   await expect(timeline.locator('.lane-name')).toHaveText(['Platen RF load cap', 'Platen RF tuning cap'])
   await expect(timeline.locator('[data-kind="excursion"]')).toHaveCount(25)
+  // an excursion is a solid mark; a stuck value is hatched, so the two never differ by color alone
+  await expect(timeline.locator('[data-kind="excursion"]').first()).toHaveCSS('background-image', 'none')
   await expect(timeline.getByRole('meter').first()).toHaveAttribute('aria-valuetext', '18.8')
   await expect(timeline).toContainText('25 excursions on 2 channels.')
   await expect(page.getByRole('heading', { level: 2, name: 'Platen RF load cap' })).toBeVisible()
@@ -39,7 +43,35 @@ test('puts the measured depth of a flagged wafer next to its flags', async ({ pa
   const timeline = page.getByRole('region', { name: 'When channels left their range' })
   await expect(timeline).toContainText('172 excursions on 2 channels and a phase mean or spread off the good runs on 9 channels.')
   await expect(timeline.getByRole('meter').first()).toHaveAttribute('aria-valuetext', '>20')
-  await expect(page.locator('.page-head .answer-next')).not.toContainText('Measured afterwards')
+  // the sentence counts what the timeline draws (two lanes) apart from the channels it cannot draw
+  await expect(timeline.locator('.lane-name')).toHaveText(['Gas 5 flow', 'Foreline pressure'])
+  await expect(page.locator('.page-head .answer-next')).toHaveText(
+    'Gas 5 flow left its range first at 189.3 s. One other channel left its range too. 7 more channels were out of range on a phase mean or spread alone.',
+  )
+})
+
+test('lists the channels of a run caught only on a phase mean or spread, with no meter and no moment', async ({ page }) => {
+  await serveApi(page)
+  // run 11 as the API would send it had three of its channels deviated: no excursion, no stuck value, no first time
+  const run = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures', 'run-11.json'), 'utf8'))
+  const off = ['Gas1Flow', 'PlatenRFPeakToPeak', 'Emission623']
+  await page.route((url) => url.pathname === '/api/runs/11', (route) => route.fulfill({
+    json: {
+      ...run,
+      good: false,
+      assessment: { ...run.assessment, deviationFlags: 3, firstChannel: 'Gas1Flow', firstTimeS: null },
+      channels: run.channels.map((channel: { channel: string }) => (off.includes(channel.channel) ? { ...channel, deviation: true } : channel)),
+    },
+  }))
+  await page.goto('/runs/11')
+  const panel = page.getByRole('region', { name: 'Phase mean or spread off the good runs' })
+
+  await expect(page.locator('.page-head .badge-critical')).toHaveText('Out of range')
+  await expect(page.locator('.page-head .answer-next')).toContainText('Gas 1 flow was out of range on a phase mean or spread. 2 other channels were out of range too.')
+  await expect(panel.locator('.lane-name')).toHaveText(['Gas 1 flow', 'Platen RF peak-to-peak', 'Fluorine 624.0 nm'])
+  await expect(panel.getByRole('meter')).toHaveCount(0)
+  await expect(panel).toContainText('A phase mean or spread off the good runs on 3 channels. No channel stayed past the limit or got stuck, so there is no moment to draw along the etch.')
+  await expect(page.getByRole('region', { name: 'Closest to the limit' })).toHaveCount(0)
 })
 
 test('reads one bucket at a time off the chart from the keyboard', async ({ page }) => {
@@ -142,6 +174,7 @@ test('shows a stuck sensor as a hold next to the fault the simulator injected', 
   const timeline = page.getByRole('region', { name: 'When channels left their range' })
   await expect(timeline.locator('.lane-name')).toHaveText(['Helium backside pressure'])
   await expect(timeline.locator('[data-kind="hold"]')).toHaveCount(1)
+  await expect(timeline.locator('[data-kind="hold"]')).toHaveCSS('background-image', /repeating-linear-gradient/)
   await expect(timeline).toContainText('1 stuck value.')
   await expect(panel).toContainText('Sensor stuck')
   await expect(panel).toContainText('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')

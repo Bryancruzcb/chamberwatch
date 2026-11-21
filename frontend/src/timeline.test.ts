@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Channel, runDetailSchema } from './api/schema'
-import { closestChannel, etchTimeline, positionIn, ticksBetween } from './timeline'
+import { closestChannel, deviatingChannels, etchTimeline, positionIn, ticksBetween } from './timeline'
 
 const fixtures = import.meta.glob('../e2e/fixtures/run-*.json', { eager: true, import: 'default' })
 
@@ -27,8 +27,31 @@ describe('timeline', () => {
   it('labels the axis in round seconds, six labels at most', () => {
     expect(ticksBetween(30.2, 629.3)).toEqual([100, 200, 300, 400, 500, 600])
     expect(ticksBetween(0, 50)).toEqual([0, 10, 20, 30, 40, 50])
-    expect(ticksBetween(0, 5000)).toEqual([0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000])
+    // both ends on a round second would make a seventh label at the finer step
+    expect(ticksBetween(0, 60)).toEqual([0, 20, 40, 60])
+    expect(ticksBetween(100, 700)).toEqual([200, 400, 600])
+    expect(ticksBetween(0, 5000)).toEqual([0, 1000, 2000, 3000, 4000, 5000])
     expect(ticksBetween(10, 10)).toEqual([])
+    for (const [from, to] of [[0, 60], [100, 700], [0, 1200], [0, 5000], [7.3, 29999], [30.2, 629.3], [118.6, 710.9]] as const) {
+      expect(ticksBetween(from, to).length).toBeLessThanOrEqual(6)
+      expect(ticksBetween(from, to).length).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('lists the channels caught only on a phase mean or spread, in rank order, when there is no moment to draw', () => {
+    const { detail, fromS, toS } = run(11)
+    const off = ['Gas1Flow', 'PlatenRFPeakToPeak', 'Emission623']
+    const channels: Channel[] = detail.channels.map((channel) => (off.includes(channel.channel) ? { ...channel, deviation: true } : channel))
+
+    expect(etchTimeline(channels, fromS, toS).lanes).toEqual([])
+    expect(deviatingChannels(channels).shown.map((channel) => channel.channel)).toEqual(['Gas1Flow', 'PlatenRFPeakToPeak', 'Emission623'])
+    expect(deviatingChannels(channels).hidden).toBe(0)
+    // the channel closest to the limit is not one of them, which is why the page must not show it for this run
+    expect(off).not.toContain(closestChannel(channels)?.channel)
+    // run 133 has nine deviating channels: six are listed and three counted
+    expect(deviatingChannels(run(133).detail.channels)).toMatchObject({ hidden: 3 })
+    expect(deviatingChannels(run(133).detail.channels).shown).toHaveLength(6)
+    expect(deviatingChannels(detail.channels)).toEqual({ shown: [], hidden: 0 })
   })
 
   it('draws a lane for each channel that left its range, in rank order, with every excursion on it', () => {
