@@ -12,6 +12,27 @@ async function failing(page: Page, matches: (url: URL) => boolean, detail = 'the
   }))
 }
 
+function fixtureJson(name: string): unknown {
+  return JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8'))
+}
+
+/** A fixture list with each object in it changed. */
+function mapItems(list: unknown, change: (item: Record<string, unknown>) => Record<string, unknown>): unknown {
+  return Array.isArray(list) ? list.map((item: unknown) => (typeof item === 'object' && item !== null ? change({ ...item }) : item)) : list
+}
+
+/** A fixture object with one field replaced. */
+function withField(value: unknown, field: string, next: unknown): unknown {
+  return typeof value === 'object' && value !== null ? { ...value, [field]: next } : value
+}
+
+/** The public runs with Lot 2's wafer 4 relabelled good, so the baseline runs are no longer each lot's first three. */
+function relabelledRuns(): unknown {
+  const runs = fixtureJson('runs.json')
+  const list = typeof runs === 'object' && runs !== null && 'runs' in runs ? runs.runs : []
+  return withField(runs, 'runs', mapItems(list, (run) => (run.lotNo === 2 && run.positionInLot === 4 ? { ...run, good: true } : run)))
+}
+
 /** Holds one API path until the returned function is called. */
 async function holding(page: Page, matches: (url: URL) => boolean): Promise<() => void> {
   let release = () => {}
@@ -42,7 +63,7 @@ test('opens on the answer: which lots hold the out-of-range runs, then every lot
   // the baseline is the first three wafers of every lot, so one bracket names it over the column
   await expect(table.locator('.wafers-bracket')).toHaveCount(1)
   await expect(table.locator('.disc.baseline')).toHaveCount(0)
-  await expect(table.locator('.lots-key')).toHaveText('Filled: out of range. Ring: in range. Dash: not run. The bracket marks wafers 1 to 3, the baseline runs.')
+  await expect(table.locator('.lots-key')).toHaveText('Filled: out of range. Ring: in range. Dash: not run. Wafers 1 to 3, left of the dotted line, are the baseline runs.')
   await expect(table.getByRole('row', { name: /Lot 6/ }).locator('.c-out')).toHaveText('7')
   await expect(page.getByRole('img', { name: /^Mean drift score by wafer position/ }).locator('[data-kind="dot"]')).toHaveCount(10)
   await expect(page.getByRole('img', { name: /^Depth loss by wafer position/ }).locator('[data-kind="dot"]')).toHaveCount(20)
@@ -69,6 +90,8 @@ test('draws the baseline zone and labels each line at its end, the drift peak an
   const loss = page.getByRole('img', { name: /^Depth loss by wafer position/ })
 
   await expect(drift.locator('.baseline-zone text')).toHaveText('BASELINE')
+  // on the depth charts the shaded wafers are the depth reference, so the zone says which wafers, not what they are
+  await expect(loss.locator('.baseline-zone text')).toHaveText('FIRST 3')
   await expect(drift.locator('.end-value')).toHaveText('1.20')
   await expect(drift.locator('.peak-label')).toHaveText('1.35')
   await expect(loss.locator('.end-value')).toHaveText(['0.90', '0.84'])
@@ -118,7 +141,7 @@ test('holds the answer and the table\'s place while the lots load, with the Sour
   const release = await holding(page, (url) => url.pathname === '/api/lots')
   await page.goto('/lots')
 
-  await expect(page.getByRole('status')).toHaveText('Loading lots')
+  await expect(page.getByRole('status').filter({ hasText: 'Loading lots' })).toHaveText('Loading lots')
   await expect(page.locator('.answer .skel-title')).toHaveCount(2)
   const figure = page.getByRole('region', { name: 'Every lot' })
   await expect(figure).toHaveAttribute('aria-busy', 'true')
@@ -180,6 +203,126 @@ test('never calls a source with no baseline clean', async ({ page }) => {
   await expect(page.locator('.answer-next')).toHaveText('There is no baseline yet, so no run has a score.')
 })
 
+test('waits for the runs before calling clean lots clean, and claims nothing about scoring if they fail', async ({ page }) => {
+  await serveApi(page)
+  const clean = mapItems(fixtureJson('lots.json'), (lot) => ({ ...lot, flaggedRuns: 0 }))
+  await page.route((url) => url.pathname === '/api/lots', (route) => route.fulfill({ json: clean }))
+  await page.route((url) => url.pathname === '/api/runs', (route) => route.fulfill({ json: withField(fixtureJson('runs.json'), 'baseline', null) }))
+  const release = await holding(page, (url) => url.pathname === '/api/runs')
+  await page.goto('/lots')
+
+  // the lots are in, the runs that say whether anything was scored are not: no sentence yet
+  await expect(page.locator('table.lots tbody tr')).toHaveCount(10)
+  await expect(page.locator('.answer .skel-title')).toHaveCount(2)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lots')
+  release()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('None of the 10 lots has been scored yet.')
+
+  await failing(page, (url) => url.pathname === '/api/runs')
+  await page.reload()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('No lot has an out-of-range run on record.')
+})
+
+test('gives the simulated drift figure an answer from how many lots ran each position, and the readout the runs', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots?source=SYNTHETIC')
+  const figure = page.getByRole('region', { name: 'Drift and depth by wafer position' })
+  const chart = page.getByRole('img', { name: /^Mean drift score by wafer position/ })
+
+  await expect(figure.locator('.figure-answer')).toHaveText('Wafers 4 to 10 come from one lot; wafers 1 to 3 average 11 lots.')
+  // the planted fault at wafer 7 is one lot's wafer, so it is not called the peak
+  await expect(chart.locator('[data-kind="dot"]')).toHaveCount(10)
+  await expect(chart.locator('.peak-label')).toHaveCount(0)
+  await chart.focus()
+  await page.keyboard.press('End')
+  await expect(figure.locator('.readout')).toContainText('Runs')
+  await expect(figure.locator('.readout')).toContainText('Wafer 10')
+  await expect(figure.getByRole('status')).toHaveText('Wafer 10. Mean drift score 1.47. Runs 1.')
+  await figure.getByText('How this is counted').click()
+  await expect(figure.getByText(/A position averages every lot that ran a wafer there/)).toBeVisible()
+  // the note sits under the answer, never over the title
+  const title = await figure.locator('h2').boundingBox()
+  const note = await figure.locator('.figure-note').boundingBox()
+  expect(note?.y ?? 0).toBeGreaterThanOrEqual((title?.y ?? 0) + (title?.height ?? 0))
+})
+
+test('keeps the note under the title when a figure has no answer line', async ({ page }) => {
+  await serveApi(page)
+  const report = fixtureJson('drift-vs-depth-synthetic.json')
+  const full = typeof report === 'object' && report !== null && 'positions' in report
+    ? withField(report, 'positions', mapItems(report.positions, (position) => ({ ...position, runs: 11 })))
+    : report
+  await page.route((url) => url.pathname === '/api/reports/drift-vs-depth', (route) => route.fulfill({ json: full }))
+  await page.goto('/lots?source=SYNTHETIC')
+  const figure = page.getByRole('region', { name: 'Drift and depth by wafer position' })
+
+  await expect(figure.locator('.figure-note')).toHaveText('Simulated wafers have no measured depth, so only the drift score is shown.')
+  await expect(figure.locator('.figure-answer')).toHaveCount(0)
+  const title = await figure.locator('h2').boundingBox()
+  const note = await figure.locator('.figure-note').boundingBox()
+  expect(note?.y ?? 0).toBeGreaterThanOrEqual((title?.y ?? 0) + (title?.height ?? 0))
+})
+
+test('gives no drift answer while another source\'s report loads', async ({ page }) => {
+  await serveApi(page)
+  const release = await holding(page, (url) => url.pathname === '/api/reports/drift-vs-depth' && url.searchParams.get('source') === 'SYNTHETIC')
+  await page.goto('/lots')
+  const figure = page.getByRole('region', { name: 'Drift and depth by wafer position' })
+  await expect(figure.locator('.figure-answer')).toContainText('By wafer 10')
+
+  await page.getByRole('group', { name: 'Source' }).getByRole('button', { name: 'Simulated' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lots 6, 7 and 901 hold all 8 out-of-range runs.')
+  await expect(figure.locator('.figure-answer')).toHaveCount(0)
+  await expect(figure).toHaveAttribute('aria-busy', 'true')
+  release()
+  await expect(figure.locator('.figure-answer')).toContainText('one lot')
+  await expect(figure).not.toHaveAttribute('aria-busy', 'true')
+})
+
+test('shades the baseline on the drift chart only while the baseline runs are each lot\'s first wafers', async ({ page }) => {
+  await serveApi(page)
+  const runs = relabelledRuns()
+  await page.route((url) => url.pathname === '/api/runs', (route) => route.fulfill({ json: runs }))
+  await page.goto('/lots')
+
+  await expect(page.locator('[data-kind="mini"]')).toHaveCount(96)
+  await expect(page.locator('.lots-key')).toContainText('A centre dot marks a baseline run.')
+  await expect(page.getByRole('img', { name: /^Mean drift score by wafer position/ }).locator('.baseline-zone')).toHaveCount(0)
+  await expect(page.getByRole('img', { name: /^Depth loss by wafer position/ }).locator('.baseline-zone text')).toHaveText('FIRST 3')
+  await expect(page.getByRole('img', { name: /^Measured and predicted mean depth/ }).locator('.baseline-zone text')).toHaveText('FIRST 3')
+  await expect(page.getByRole('table', { name: /How far each guess misses/ })).toContainText('Wafers after the first 3, root mean square error.')
+})
+
+test('reads the depth model\'s wafers aloud and shows them as a table', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots')
+  const figure = page.getByRole('region', { name: 'Depth predicted from the telemetry' })
+  const chart = page.getByRole('img', { name: /^Measured and predicted mean depth by wafer position/ })
+
+  await expect(figure.getByRole('status')).toHaveText('')
+  await chart.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(figure.getByRole('status')).toContainText('Wafer 2. Measured')
+  await figure.getByRole('button', { name: 'Show as a table' }).click()
+  await expect(figure.getByRole('button', { name: 'Hide the table' })).toHaveAttribute('aria-expanded', 'true')
+  await expect(figure.getByRole('table', { name: 'Measured and predicted mean depth by wafer position' }).locator('tbody tr')).toHaveCount(10)
+})
+
+test('sets the figures one gap apart, 48px on a wide page and 36px on a phone', async ({ page }) => {
+  for (const [width, gap] of [[1280, 48], [375, 36]] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await serveApi(page)
+    await page.goto('/lots')
+    await expect(page.locator('[data-kind="mini"]')).toHaveCount(96)
+    await expect(page.locator('.figure.numbered')).toHaveCount(3)
+    const boxes = await page.locator('.figure.numbered').evaluateAll((figures) => figures.map((figure) => figure.getBoundingClientRect()))
+    for (const [index, box] of boxes.slice(1).entries()) {
+      const above = boxes[index]
+      expect(Math.round(box.top - (above?.bottom ?? 0))).toBe(gap)
+    }
+  }
+})
+
 test('says why the drift report did not load, in its figure, and keeps the lots', async ({ page }) => {
   await serveApi(page)
   await failing(page, (url) => url.pathname === '/api/reports/drift-vs-depth')
@@ -222,7 +365,7 @@ test('shows the drift as a table and opens the method on request', async ({ page
   await expect(drift.getByRole('table', { name: 'Drift and depth by wafer position' }).locator('tbody tr')).toHaveCount(10)
   await expect(drift.getByRole('button', { name: 'Hide the table' })).toHaveAttribute('aria-expanded', 'true')
   await drift.getByText('How this is counted').click()
-  await expect(drift.getByText(/Each position averages every lot/)).toBeVisible()
+  await expect(drift.getByText(/A position averages every lot that ran a wafer there/)).toBeVisible()
 })
 
 for (const width of [320, 375]) {
@@ -252,7 +395,7 @@ test('opens a lot on its answer: its wafers as discs over the sentence that says
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafers 4 to 10 of Lot 6 are out of range.')
   await expect(page).toHaveTitle('Lot 6 · ChamberWatch')
   await expect(page.locator('.page-head .answer-next')).toHaveText(
-    'By the last wafer, the SF6 mean of 4 channels is outside the band, and none is heading out.',
+    "By the last wafer, the line fitted through the lot's SF6 means is outside the band for 4 channels, and none is heading out.",
   )
   const strip = page.getByRole('group', { name: 'Lot 6, wafer by wafer' })
   await expect(strip.locator('.disc')).toHaveCount(10)
@@ -319,11 +462,11 @@ test('keeps the answer and the heading on the phase its counts were made for whi
   // the C4F8 answer is on its way: the control shows the click, the numbers still say what they count
   await expect(page.getByRole('group', { name: 'Phase' }).getByRole('button', { name: 'C4F8' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('region', { name: 'SF6 mean by the last wafer' })).toBeVisible()
-  await expect(page.locator('.page-head .answer-next')).toContainText('the SF6 mean of 4 channels')
+  await expect(page.locator('.page-head .answer-next')).toContainText("the lot's SF6 means is outside the band for 4 channels")
 
   release()
   await expect(page.getByRole('region', { name: 'C4F8 mean by the last wafer' })).toBeVisible()
-  await expect(page.locator('.page-head .answer-next')).toContainText('C4F8 mean')
+  await expect(page.locator('.page-head .answer-next')).toContainText('C4F8 means')
 })
 
 test('opens a simulated lot from the simulated lots, its links kept on that source', async ({ page }) => {
@@ -360,9 +503,13 @@ test('holds the lot\'s shape while it loads, and says when a lot does not exist'
   release()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafers 4 to 10 of Lot 6 are out of range.')
 
+  // a lot the API has never heard of gets the not-found page, with the way back to the lots
   await page.goto('/lots/99')
-  await expect(page.locator('.state-title')).toHaveText('This lot did not load')
-  await expect(page.getByRole('alert')).toContainText('no lot 99')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('There is no lot 99.')
+  await expect(page).toHaveTitle('Not found · ChamberWatch')
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Back to the lots' }).click()
+  await expect(page).toHaveURL(/\/lots$/)
   await page.goto('/lots/six')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Nothing is at this address.')
 })
@@ -378,5 +525,109 @@ for (const width of [320, 375]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
     const strip = page.locator('.lot-strip')
     expect(await strip.evaluate((row) => row.scrollWidth - row.clientWidth)).toBe(0)
+  })
+}
+
+test('says why a lot that exists did not load, with a way to ask again under a heading', async ({ page }) => {
+  await serveApi(page)
+  await failing(page, (url) => url.pathname === '/api/lots/6/drift')
+  await page.goto('/lots/6')
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lot')
+  await expect(page.locator('h1')).toHaveClass(/visually-hidden/)
+  await expect(page.locator('.state-title')).toHaveText('This lot did not load')
+  await expect(page.getByRole('alert')).toContainText('the database is starting')
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  await expect(page).toHaveTitle('Lot · ChamberWatch')
+})
+
+test("prints the fitted line's z beside the verdict, which is what the verdict judges", async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots?source=SYNTHETIC')
+  await page.getByRole('link', { name: 'Lot 901', exact: true }).click()
+
+  const verdicts = page.getByRole('region', { name: 'SF6 mean by the last wafer' })
+  await expect(verdicts.locator('.drift-table thead th')).toHaveText(['Channel', 'By the last wafer', 'Fitted z'])
+  // Gas 5 flow's last wafer sits dead centre, but the line a faulted wafer tilted is 120 sd below the band
+  await expect(verdicts.locator('.drift-table tbody tr').first()).toHaveText(/Gas 5 flow\s*Out of band\s*-120/)
+  await expect(page.locator('.page-head .answer-next')).toHaveText(
+    "By the last wafer, the line fitted through the lot's SF6 means is outside the band for 6 channels, and none is heading out.",
+  )
+  // the wafer table keeps each wafer's own z beside its mean
+  const wafers = page.getByRole('table', { name: 'Wafer by wafer' })
+  await expect(wafers.locator('tbody tr').last().locator('td').nth(2)).toHaveText('0.0')
+})
+
+test("folds the lot's channels with no trend behind a button, and opens it for a folded channel", async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots/6')
+  const verdicts = page.getByRole('region', { name: 'SF6 mean by the last wafer' })
+  const more = verdicts.getByRole('button', { name: '17 more channels, no trend' })
+
+  await expect(verdicts.locator('.drift-table tbody tr')).toHaveCount(14)
+  // the counts above still count every channel
+  await expect(verdicts.locator('.drift-counts li')).toHaveText([/4\s*Out of band/, /10\s*Stays in the band/, /17\s*No trend/])
+  await expect(more).toHaveAttribute('aria-expanded', 'false')
+  await more.click()
+  await expect(verdicts.locator('.drift-table tbody tr')).toHaveCount(31)
+  await expect(verdicts.getByRole('button', { name: 'Hide the 17 channels with no trend' })).toHaveAttribute('aria-expanded', 'true')
+
+  // a channel with no trend picked from the address opens the fold, so its row shows
+  await page.goto('/lots/6?channel=Gas5Flow')
+  await expect(verdicts.locator('.drift-table tbody tr')).toHaveCount(31)
+  await expect(verdicts.getByRole('link', { name: 'Gas 5 flow' })).toHaveAttribute('aria-current', 'true')
+  await verdicts.getByRole('button', { name: 'Hide the 16 channels with no trend' }).click()
+  // folded again, the picked channel keeps its row
+  await expect(verdicts.locator('.drift-table tbody tr')).toHaveCount(15)
+  await expect(verdicts.getByRole('button', { name: '16 more channels, no trend' })).toBeVisible()
+})
+
+test('defines the words the lot page uses, with the numbers of its drift rule', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots/6')
+  const verdicts = page.getByRole('region', { name: 'SF6 mean by the last wafer' })
+  const words = verdicts.locator('details.words-how')
+
+  await expect(words).not.toHaveAttribute('open')
+  await expect(words.locator('summary')).toHaveText('The words this page uses')
+  await words.locator('summary').click()
+  await expect(words.locator('dt')).toHaveText(['SF6 and C4F8', 'Fitted z', 'z', 'Fitted line, slope and t', 'Verdicts'])
+  await expect(words).toContainText('under 2.5')
+  await expect(words).toContainText('a lot of 10')
+  await expect(words).toContainText('fewer than 4 wafers')
+})
+
+test("keys the lot chart's dots with a dot and lines its wafer table's decimal points up", async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/lots/6')
+  const channel = page.getByRole('region', { name: 'Platen RF tuning cap' })
+
+  await expect(channel.locator('.chart-key li').first().locator('span').first()).toHaveClass(/key-dot/)
+  const means = await channel.getByRole('table', { name: 'Wafer by wafer' }).locator('tbody tr td:nth-child(2)').allTextContents()
+  expect(means).toHaveLength(10)
+  expect(means.every((mean) => /^\d+\.\d\d$/.test(mean))).toBe(true)
+  expect(means[1]).toBe('27.30')
+})
+
+for (const width of [320, 375]) {
+  test(`keeps each wafer's name clear of its disc on a ${width}px phone, the discs in one column`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await serveApi(page)
+    await page.goto('/lots/21')
+
+    const rows = page.locator('[data-kind="lot-run"]')
+    await expect(rows).toHaveCount(10)
+    await page.evaluate(() => document.fonts.ready)
+    const lefts: number[] = []
+    for (const row of await rows.all()) {
+      const name = await row.locator('.c-wafer a').boundingBox()
+      const disc = await row.locator('.c-state .disc').boundingBox()
+      expect(name).not.toBeNull()
+      expect(disc).not.toBeNull()
+      expect((disc?.x ?? 0)).toBeGreaterThanOrEqual((name?.x ?? 0) + (name?.width ?? 0))
+      lefts.push(Math.round(disc?.x ?? 0))
+    }
+    expect(new Set(lefts).size).toBe(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
   })
 }

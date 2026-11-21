@@ -142,6 +142,27 @@ describe('the lineup', () => {
     expect(hidden.map((row) => row.channel)).toEqual(['Gas12Flow', 'Gas13Flow'])
   })
 
+  it('always shows the channel with the largest score, in rank order, on a run no channel left', () => {
+    const { shown, hidden } = splitLineup(run11.channels, 6)
+
+    expect(shown).toHaveLength(11)
+    expect(shown.map((row) => row.channel)).toContain('PlatenRFLoadCapacitor')
+    expect(shown.at(-1)?.channel).toBe('PlatenRFLoadCapacitor')
+    expect(shown.map((row) => row.rank)).toEqual([...shown.map((row) => row.rank)].sort((a, b) => a - b))
+    expect(describeHiddenChannels(hidden)).toBe('20 more channels, all under 3.0')
+  })
+
+  it('never folds away a channel that deviates or got stuck', () => {
+    const deviating = Array.from({ length: 14 }, (_, index) => ({ ...channel(`Gas${index}Flow`, index + 1, 3.9 - index * 0.1), deviation: true }))
+    const quiet = Array.from({ length: 6 }, (_, index) => channel(`Quiet${index}`, 15 + index, 0.5))
+    const stuck = { ...channel('Pressure', 21, 0.2), holds: [{ channel: 'Pressure', startSlot: 9, confirmSlot: 12, endSlot: 40, cycle: 2, phase: 'SF6', offset: 1, startTimeS: 1, confirmTimeS: 2, endTimeS: 8, samples: 31, value: 1 }] } satisfies Channel
+    const { shown, hidden } = splitLineup([...deviating, ...quiet, stuck], 4)
+
+    expect(shown.map((row) => row.channel)).toEqual([...deviating.map((row) => row.channel), 'Pressure'])
+    expect(hidden.map((row) => row.channel)).toEqual(quiet.map((row) => row.channel))
+    expect(hidden.some((row) => row.deviation || row.holds.length > 0)).toBe(false)
+  })
+
   it('orders by rank whatever order the channels arrive in, and folds nothing from a short list', () => {
     const { shown, hidden } = splitLineup([channel('B', 2, 1), channel('A', 1, 2)], 6)
 

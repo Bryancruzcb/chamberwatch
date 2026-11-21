@@ -6,8 +6,8 @@ import { useResource } from '../api/useResource'
 import { Figure } from '../components/Figure'
 import { Stat } from '../components/Stat'
 import { AnswerSkeleton, ErrorState } from '../components/States'
-import { formatChannelName, formatCount, formatFaultKind, formatSeconds, MISSING } from '../format'
-import { liveAnswer } from '../live'
+import { formatChannelName, formatCount, formatFaultKind, formatSeconds, MISSING, tieUnits } from '../format'
+import { liveAnswer, showsHowToStart } from '../live'
 
 /** How often the page asks the server what the chamber is doing. One tick of the recipe is 0.2 s. */
 const POLL_MS = 500
@@ -50,6 +50,8 @@ export function LivePage() {
 
   const live = session.kind === 'ready' ? session.data : null
   const answer = live === null ? null : liveAnswer(live)
+  // the instructions are the page's one next step when nothing has happened yet; a read-only instance cannot use them
+  const howOpen = live !== null && settings.kind !== 'loading' && showsHowToStart(live, settings.kind === 'ready' && settings.data.readOnly)
   return (
     <div className="sheet">
       <title>Live · ChamberWatch</title>
@@ -60,11 +62,11 @@ export function LivePage() {
             ? <AnswerSkeleton name="Live chamber" lead={false} />
             : (
                 <>
-                  <h1>{answer.title}</h1>
-                  {answer.lead !== null && <p className="answer-next">{answer.lead}</p>}
+                  <h1>{tieUnits(answer.title)}</h1>
+                  {answer.lead !== null && <p className="answer-next">{tieUnits(answer.lead)}</p>}
                 </>
               )}
-        <details className="how live-how">
+        <details className="how live-how" open={howOpen}>
           <summary>How to start the chamber simulator</summary>
           <p>
             The chamber simulator in <code>chamber-sim/</code> etches a wafer and streams what its 31 channels read,
@@ -109,7 +111,7 @@ export function LivePage() {
                         magnitude: 0.36,
                       }, liveSessionSchema))}
                     >
-                      Starve the SF6 flow
+                      Plant a fault: cut Gas 5 flow to 36%
                     </button>
                     <button
                       type="button"

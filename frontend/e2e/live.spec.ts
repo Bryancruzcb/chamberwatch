@@ -10,10 +10,17 @@ test('watches a wafer being etched and links to the run it stored', async ({ pag
   await expect(page.locator('.answer-next')).toHaveText('Start the chamber simulator, then record from it here.')
   await expect(page).toHaveTitle('Live · ChamberWatch')
   await expect(page.getByRole('button', { name: 'Stop recording' })).toBeDisabled()
+  // with nothing recorded yet, how to start the simulator is the one next step, so it shows
+  const how = page.locator('details.live-how')
+  await expect(how).toHaveAttribute('open')
+  await expect(how).toContainText('chamber-sim --port=5610')
+  await expect(page.getByRole('button', { name: 'Plant a fault: cut Gas 5 flow to 36%' })).toBeDisabled()
 
   await page.getByRole('button', { name: /Record from/ }).click()
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('A wafer is being etched now.')
+  await expect(page.getByRole('button', { name: /Gas 5 flow to 36%/ })).toBeEnabled()
+  await expect(how).not.toHaveAttribute('open')
   await expect(page.locator('.answer-next')).toHaveText('LIVE-s7-L1-W01, at cycle 12 of 100, 128.0 s in.')
   await expect(stat(page, 'Wafer')).toHaveText('LIVE-s7-L1-W01')
   await expect(stat(page, 'Step')).toHaveText('ETCH_SF6')
@@ -33,6 +40,8 @@ test('a read-only ChamberWatch says it does not record live runs', async ({ page
   await page.goto('/live')
 
   await expect(page.getByText('This ChamberWatch is read-only, so it does not record live runs.')).toBeVisible()
+  // it cannot record, so the instructions for starting the simulator stay closed
+  await expect(page.locator('details.live-how')).not.toHaveAttribute('open')
   await expect(page.getByRole('button', { name: /Record from/ })).toHaveCount(0)
 })
 

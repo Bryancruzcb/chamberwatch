@@ -163,12 +163,19 @@ export interface LineupSplit {
 }
 
 /**
- * The lineup's rows in the detectors' rank: the first ten, plus every channel past the limit k should more than ten
- * be, then the rest behind a button.
+ * The lineup's rows in the detectors' rank: the first ten, plus every channel past the limit k, the channel with the
+ * largest score (the one the figure's answer names) and every channel that deviates or got stuck, wherever they rank;
+ * then the rest behind a button, so nothing folded away is something the reader should see.
  */
 export function splitLineup(channels: readonly Channel[], k: number): LineupSplit {
   const ranked = [...channels].sort((a, b) => a.rank - b.rank)
-  const shows = (channel: Channel, index: number) => index < LINEUP_SHOWN || channel.persistentZ > k
+  // every channel tied for the largest score shows, so the one the answer names is among them whatever the order
+  const largest = Math.max(...channels.map((channel) => channel.persistentZ))
+  const shows = (channel: Channel, index: number) => index < LINEUP_SHOWN
+    || channel.persistentZ > k
+    || channel.persistentZ === largest
+    || channel.deviation
+    || channel.holds.length > 0
   return {
     shown: ranked.filter(shows),
     hidden: ranked.filter((channel, index) => !shows(channel, index)),

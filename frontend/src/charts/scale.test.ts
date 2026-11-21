@@ -1,5 +1,56 @@
 import { describe, expect, it } from 'vitest'
-import { linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, spreadLabels, timeLineEnd, verdictEnd } from './scale'
+import {
+  endClearsLimit, linearScale, niceInterval, niceTicks, roundUpTo, scoreLineEnd, spreadLabels, startClearsLimit, tickFormat, timeLineEnd, verdictEnd,
+} from './scale'
+
+describe('endClearsLimit', () => {
+  it("keeps the end's label only where it sits at least the gap clear of the limit's centred label", () => {
+    // run 11's lineup: the limit 6.0 at 60% of a 10 scale; "10" is 14.4px
+    expect(endClearsLimit(133, 0.6, 'limit 6.0', '10', 12, 8)).toBe(false)
+    expect(endClearsLimit(362, 0.6, 'limit 6.0', '10', 12, 8)).toBe(true)
+    // run 55's: the limit at 30% of a 20 scale leaves the end plenty of room
+    expect(endClearsLimit(129.7, 0.3, 'limit 6.0', '20', 12, 8)).toBe(true)
+    // the edge: 14.4 + 8 = 0.4 * w - 32.4 at w = 137
+    expect(endClearsLimit(136.9, 0.6, 'limit 6.0', '10', 12, 8)).toBe(false)
+    expect(endClearsLimit(137.1, 0.6, 'limit 6.0', '10', 12, 8)).toBe(true)
+    // run 133's: a limit near 0 sets its label rightward from the limit, so all of it counts
+    expect(endClearsLimit(129.7, 0.1, 'limit 6.0', '60+', 12, 8, false)).toBe(true)
+    expect(endClearsLimit(100, 0.1, 'limit 6.0', '60+', 12, 8, false)).toBe(false)
+  })
+})
+
+describe('tickFormat', () => {
+  it('prints every tick of an axis with the decimals its step needs, and no more', () => {
+    const tenths = niceTicks([27.02, 27.68], 5)
+    expect(tenths.map(tickFormat(tenths))).toEqual(['27.1', '27.2', '27.3', '27.4', '27.5', '27.6'])
+    expect([0, 20, 40, 140].map(tickFormat([0, 20, 40]))).toEqual(['0', '20', '40', '140'])
+    expect([0.6, 0.8, 1, 1.2, 1.4].map(tickFormat([0.6, 0.8, 1]))).toEqual(['0.6', '0.8', '1.0', '1.2', '1.4'])
+    expect([0, 0.05, 0.1].map(tickFormat([0, 0.05, 0.1]))).toEqual(['0.00', '0.05', '0.10'])
+    expect([2000, 4000].map(tickFormat([2000, 4000]))).toEqual(['2,000', '4,000'])
+  })
+
+  it('takes the step from the first two ticks, through the binary noise of a sum', () => {
+    expect([0.2, 0.30000000000000004].map(tickFormat([0.2, 0.30000000000000004]))).toEqual(['0.2', '0.3'])
+  })
+
+  it('prints a lone tick as it is', () => {
+    expect(tickFormat([27.25])(27.25)).toBe('27.25')
+    expect(tickFormat([])(5)).toBe('5')
+  })
+})
+
+describe('startClearsLimit', () => {
+  it("keeps the 0 only where it sits at least the gap clear of the limit's centred label", () => {
+    // run 55's lineup: the limit 6.0 at 30% of a 20 scale; "0" is 7.2px and "limit 6.0" 64.8px in 12px mono
+    expect(startClearsLimit(129.7, 0.3, 'limit 6.0', 12, 8)).toBe(false)
+    expect(startClearsLimit(133, 0.3, 'limit 6.0', 12, 8)).toBe(false)
+    expect(startClearsLimit(362, 0.3, 'limit 6.0', 12, 8)).toBe(true)
+    // the edge: 7.2 + 8 = 0.3 * w - 32.4 at w = 158.67
+    expect(startClearsLimit(158.6, 0.3, 'limit 6.0', 12, 8)).toBe(false)
+    expect(startClearsLimit(158.7, 0.3, 'limit 6.0', 12, 8)).toBe(true)
+    expect(startClearsLimit(0, 0.3, 'limit 6.0', 12, 8)).toBe(false)
+  })
+})
 
 describe('linearScale', () => {
   it('maps the domain onto the range and back', () => {

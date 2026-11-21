@@ -5,7 +5,7 @@ import { scoreLineEnd, timeLineEnd } from '../charts/scale'
 import { Disc } from '../components/Disc'
 import { Figure } from '../components/Figure'
 import { ScoreLine } from '../components/ScoreLine'
-import { formatChannelName, formatConditioning, formatDate, formatScore, formatSeconds, formatShortScore, MISSING } from '../format'
+import { formatBigScore, formatChannelName, formatConditioning, formatDate, formatScore, formatSeconds, formatShortScore, MISSING } from '../format'
 import {
   capitalize, type ChannelCount, clusterByLot, describeClean, describeDrift, describeFirstChannels, describeLots, type DriftSummary,
   type LotDriftAnswer, type LotRuns, type RunsSummary, summarizeDrift,
@@ -94,7 +94,7 @@ function OutLedger({ summary, k }: { summary: RunsSummary; k: number | null }) {
   const top = scored.reduce<(typeof scored)[number] | null>((best, entry) => (best === null || entry.z > best.z ? entry : best), null)
   const answer = top === null
     ? null
-    : `The highest score is ${formatScore(top.z)}, Lot ${top.run.lotNo} wafer ${top.run.positionInLot}. Each line runs from 0 to ${end}`
+    : `The highest score is ${formatBigScore(top.z)}, Lot ${top.run.lotNo} wafer ${top.run.positionInLot}. Each line runs from 0 to ${end}`
       + `${k === null ? '' : `; the tick is the limit, ${formatScore(k)}`}`
       + `${past === 0 ? '' : `, and ${past} ${past === 1 ? 'score runs' : 'scores run'} past its end`}.`
   return (

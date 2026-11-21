@@ -32,6 +32,25 @@ export function niceTicks(interval: Interval, count: number): number[] {
   return ticks
 }
 
+/**
+ * How an axis prints its ticks: every one with the decimals its step needs, so a step of 0.1 gives 27.0, 27.1 and a
+ * step of 20 gives 0, 20, 140. The step is the gap between the first two ticks; a lone tick prints as it is.
+ */
+export function tickFormat(ticks: readonly number[]): (value: number) => string {
+  const [first, second] = ticks
+  if (first === undefined || second === undefined || second === first) {
+    return (value) => tickNumber(20).format(value)
+  }
+  // the small allowance keeps a step of 0.1 that a sum left at 0.09999999 to one decimal
+  const decimals = Math.max(0, Math.ceil(-Math.log10(Math.abs(second - first)) - 1e-6))
+  const format = tickNumber(decimals, decimals)
+  return (value) => format.format(value)
+}
+
+function tickNumber(maximumFractionDigits: number, minimumFractionDigits = 0): Intl.NumberFormat {
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits, maximumFractionDigits })
+}
+
 /** The interval grown outward to the nearest round values, so an axis starts and ends on a labeled tick. */
 export function niceInterval(interval: Interval, count: number): Interval {
   const [low, high] = widen(ordered(interval))
@@ -68,6 +87,28 @@ function roundToStep(value: number, step: number): number {
 /** The value rounded up to the next multiple of `step`, and never below one step, so a scale never ends at 0. */
 export function roundUpTo(value: number, step: number): number {
   return Math.max(step, Math.ceil(value / step - 1e-9) * step)
+}
+
+/** A mono label's advance per character as a share of its font size: IBM Plex Mono's glyphs are 600 units of 1,000. */
+const MONO_ADVANCE = 0.6
+
+/**
+ * Whether a scale's "0", set from the start of a track `width` px wide, clears by at least `gap` px the limit's label,
+ * `limitText` centred on the limit at `share` of the track. Both labels are mono at `px`.
+ */
+export function startClearsLimit(width: number, share: number, limitText: string, px: number, gap: number): boolean {
+  const advance = MONO_ADVANCE * px
+  return advance + gap <= share * width - (limitText.length * advance) / 2
+}
+
+/**
+ * The same for the scale's end label, `endText`, set flush with the end of the track. A limit near 0 sets its label
+ * from the limit rightward rather than centred on it: pass `centred` false.
+ */
+export function endClearsLimit(width: number, share: number, limitText: string, endText: string, px: number, gap: number, centred = true): boolean {
+  const advance = MONO_ADVANCE * px
+  const limitReach = limitText.length * advance * (centred ? 0.5 : 1)
+  return endText.length * advance + gap <= (1 - share) * width - limitReach
 }
 
 /** A score line's end runs past the limit by at most this many limits, so one step change cannot flatten the rest. */

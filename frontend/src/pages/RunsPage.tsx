@@ -8,6 +8,7 @@ import { LotGrid, LotGridSkeleton } from '../charts/LotGrid'
 import { Figure } from '../components/Figure'
 import { SourceSwitch } from '../components/SourceSwitch'
 import { AnswerSkeleton, ErrorState } from '../components/States'
+import { tieUnits } from '../format'
 import { EMPTY_HINTS } from '../sources'
 import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
 import { AttentionPanel } from './RunsAttention'
@@ -144,14 +145,14 @@ function Answer({ summary }: { summary: RunsSummary }) {
     <>
       <h1>
         {said.signal === null
-          ? said.lead
-          : <><span className="signal-count">{said.signal}</span>{said.lead.slice(said.signal.length)}</>}
+          ? tieUnits(said.lead)
+          : <><span className="signal-count">{said.signal}</span>{tieUnits(said.lead.slice(said.signal.length))}</>}
       </h1>
       {next && (
         <p className="answer-next">
           {said.startStrong !== '' && <strong>{said.startStrong}</strong>}
-          {said.startText}
-          {said.detail}
+          {tieUnits(said.startText)}
+          {said.detail === null ? null : tieUnits(said.detail)}
         </p>
       )}
     </>

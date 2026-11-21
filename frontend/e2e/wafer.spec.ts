@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { serveApi } from './api.ts'
 
-test('opens a wafer on where it etched deepest, then maps its 89 sites and switches to the 9-point set', async ({ page }) => {
+test('opens a wafer on which of its edge and center etched deeper, then maps its 89 sites and switches to the 9-point set', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55/wafer')
   const panel = page.getByRole('region', { name: 'Etch depth across the wafer' })
 
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 etched deepest at its edge.')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 etched deeper at its edge than at its center.')
   await expect(page).toHaveTitle('Lot 6, wafer 5 depth · ChamberWatch')
   await expect(page.locator('.page-meta .run-key')).toHaveText('Day_2024_08_01_Wafer_05')
   await expect(page.getByRole('img', { name: /^Etch depth at 89 sites/ }).locator('[data-kind="site"]')).toHaveCount(89)
@@ -51,7 +51,7 @@ test('reaches the wafer from its run page, and the run from the wafer', async ({
   await page.getByRole('link', { name: 'Measured depth' }).click()
 
   await expect(page).toHaveURL(/\/runs\/55\/wafer$/)
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 etched deepest at its edge.')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 etched deeper at its edge than at its center.')
   await page.locator('.page-meta').getByRole('link', { name: 'Its run' }).click()
   await expect(page).toHaveURL(/\/runs\/55$/)
 })
@@ -77,13 +77,14 @@ test('says so when a wafer has no measurements in the set', async ({ page }) => 
   await expect(page.locator('[data-kind="site"]')).toHaveCount(0)
 })
 
-test('says why a wafer and its prediction did not load, with a way to ask again', async ({ page }) => {
+test('says a wafer the API has never heard of is not there, and why its prediction did not load', async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/9999/wafer')
 
-  await expect(page.locator('.state-title')).toHaveText('This wafer did not load')
-  await expect(page.getByRole('alert')).toContainText('no run 9999')
-  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('There is no run 9999.')
+  await expect(page).toHaveTitle('Not found · ChamberWatch')
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Back to the runs' })).toHaveAttribute('href', '/')
 
   // run 11 is public but its depth was not captured: the figure says why and the map still shows
   await page.goto('/runs/11/wafer')
@@ -106,7 +107,7 @@ test('holds the heading and the map\'s place while the measurements load', async
   await expect(page.locator('.page-head .skel-title')).toHaveCount(2)
   await expect(page.locator('.skel-wafer')).toBeVisible()
   release()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 etched deepest at its edge.')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6 etched deeper at its edge than at its center.')
 })
 
 for (const width of [320, 375]) {
@@ -120,3 +121,51 @@ for (const width of [320, 375]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
   })
 }
+
+test('says why a wafer that exists did not load, with a way to ask again under a heading', async ({ page }) => {
+  await serveApi(page)
+  await page.route((url) => url.pathname === '/api/runs/55', (route) => route.fulfill({
+    status: 503, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Service Unavailable', detail: 'the database is starting' }),
+  }))
+  await page.goto('/runs/55/wafer')
+
+  await expect(page.locator('.state-title')).toHaveText('This wafer did not load')
+  await expect(page.getByRole('alert')).toContainText('the database is starting')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Measured depth')
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+})
+
+test('heads the page with the wafer plainly when its measurements fail, with no placeholder waiting', async ({ page }) => {
+  await serveApi(page)
+  await page.route((url) => url.pathname === '/api/runs/55/measurements', (route) => route.fulfill({
+    status: 500, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Internal Server Error', detail: 'boom' }),
+  }))
+  await page.goto('/runs/55/wafer')
+
+  await expect(page.getByRole('region', { name: 'Etch depth across the wafer' }).getByRole('alert')).toContainText('boom')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wafer 5 of Lot 6')
+  await expect(page.getByRole('heading', { level: 1 })).not.toHaveClass(/visually-hidden/)
+  await expect(page.locator('.page-head .skel')).toHaveCount(0)
+})
+
+test('gives no prediction answer while the next set\'s prediction loads, and dims its strip', async ({ page }) => {
+  await serveApi(page)
+  let release = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route((url) => url.pathname === '/api/runs/55/depth' && url.searchParams.get('set') === 'NINE_POINT', async (route) => {
+    await held
+    await route.fallback()
+  })
+  await page.goto('/runs/55/wafer')
+  const predicted = page.getByRole('region', { name: 'Predicted from the telemetry' })
+  await expect(predicted.locator('.figure-answer')).toContainText('43.64')
+
+  await page.getByRole('group', { name: 'Measurement set' }).getByRole('button', { name: '9-point', exact: true }).click()
+  await expect(predicted.locator('.figure-answer')).toHaveCount(0)
+  await expect(predicted.locator('.figure-body.refreshing')).toHaveCount(1)
+  await expect(predicted).toHaveAttribute('aria-busy', 'true')
+  release()
+  await expect(predicted.locator('.figure-body.refreshing')).toHaveCount(0)
+})

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { lotDriftSchema, lotsSchema, type Lot, type LotDrift, type RunRow, runsPageSchema } from './api/schema'
 import {
-  clusterByLot, describeClean, describeDrift, describeFirstChannels, describeLots, describeWafers, headline, type LotDriftAnswer,
+  clusterByLot, describeClean, describeDrift, describeFirstChannels, describeLots, describeWafers, headline, leftNoRange, type LotDriftAnswer,
   runState, sortRuns, summarize, summarizeDrift,
 } from './summary'
 
@@ -112,6 +112,34 @@ describe('the answer at the top of the runs page', () => {
     expect(read([], [])).toEqual(['No runs stored for this source yet.'])
   })
 
+  it('says nothing has been scored when no run is, never that none is out of range', () => {
+    const unscored = publicRuns.map((row) => ({ ...row, score: null }))
+    const failed = { ...run(2, 1, 0, null), alignment: 'FAILED' as const }
+
+    expect(read(unscored)).toEqual(['None of the 96 runs has been scored yet.'])
+    expect(read([run(2, 1, 0, null)], [])).toEqual(['The run has not been scored yet.'])
+    expect(read([failed], [])).toEqual(['The run has not been scored yet.', 'It could not be aligned.'])
+    expect(read([run(2, 2, 0, null), run(2, 3, 0, null), failed], [])).toEqual([
+      'None of the 3 runs has been scored yet.',
+      'Of those, 2 were not scored and 1 could not be aligned.',
+    ])
+  })
+
+  it('says "is" for one run out of range, and speaks of a source with one run as the one run', () => {
+    const onlyLot8 = publicRuns.map((row) => (row.lotNo === 8 || row.score === null
+      ? row
+      : { ...row, score: { ...row.score, limitFlags: 0, deviationFlags: 0, stuckFlags: 0 } }))
+
+    expect(read(onlyLot8)).toEqual(['1 of 96 runs is out of range, in lot 8.', 'Start with Lot 8: wafer 7 of 10 is out.'])
+    expect(headline(summarize(onlyLot8, lots)).signal).toBe('1')
+    expect(read([run(4, 1, 0)], [])).toEqual(['The one run is in range.'])
+    expect(read([run(4, 1, 3)], [])).toEqual(['The one run is out of range, in lot 4.'])
+  })
+
+  it('leaves out "of N" when a lot skipped wafers and the positions run past its count', () => {
+    expect(read([run(3, 4, 2), run(3, 5, 2), run(5, 1, 0)], [])[1]).toBe('Start with Lot 3: wafers 4 and 5 are out.')
+  })
+
   it('counts runs that name no first channel apart from the channels', () => {
     expect(describeFirstChannels([{ channel: 'Gas5Flow', count: 2 }, { channel: null, count: 1 }], 3))
       .toBe('Gas 5 flow in 2 of the 3 runs. 1 run names no first channel.')
@@ -139,6 +167,15 @@ describe('the clean lots in one line', () => {
     expect(describeClean(summarize([run(3, 1, 0)], []).clean)).toBe('Lot 3: 1 wafer, none out of range.')
     expect(describeClean([])).toBeNull()
   })
+
+  it('says "none scored" for the lots with no scored run', () => {
+    const unscored = publicRuns.map((row) => ({ ...row, score: null }))
+    const someScored = publicRuns.map((row) => (row.lotNo === 10 ? { ...row, score: null } : row))
+
+    expect(describeClean(summarize(unscored, lots).clean)).toBe('Lots 1 to 10: 96 wafers, none scored.')
+    expect(describeClean(summarize(someScored, lots).clean))
+      .toBe('Lots 1 to 5: 50 wafers, none out of range. Lot 10: 10 wafers, none scored.')
+  })
 })
 
 describe('lots and wafers in words', () => {
@@ -160,6 +197,14 @@ describe('run states and the table orders', () => {
     expect(runState(run(1, 2, 0, null))).toBe('unscored')
     expect(runState(run(1, 3, 2))).toBe('out')
     expect(runState(run(1, 4, 0))).toBe('in')
+  })
+
+  it('knows a run that names neither a first channel nor a time, scored or not', () => {
+    expect(leftNoRange(run(1, 1, 0))).toBe(true)
+    expect(leftNoRange(run(1, 2, 0, null))).toBe(true)
+    expect(leftNoRange(run(1, 3, 2))).toBe(false)
+    const timed = run(1, 4, 2)
+    expect(leftNoRange({ ...timed, score: timed.score === null ? null : { ...timed.score, firstChannel: null } })).toBe(false)
   })
 
   it('orders the public wafers most unusual first', () => {

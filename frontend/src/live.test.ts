@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LiveSession } from './api/schema'
-import { liveAnswer } from './live'
+import { liveAnswer, showsHowToStart } from './live'
 
 const IDLE: LiveSession = { recording: false, run: null, state: null, cycle: 0, samples: 0, timeS: 0, stored: null, failure: null }
 const STORED = {
@@ -26,5 +26,15 @@ describe('the Live page answer', () => {
 
   it('says how to start when nothing has been recorded', () => {
     expect(liveAnswer(IDLE)).toEqual({ title: 'Nothing is being etched.', lead: 'Start the chamber simulator, then record from it here.' })
+  })
+})
+
+describe("the Live page's instructions", () => {
+  it('opens how to start only on a writable instance that has recorded nothing and is not recording', () => {
+    expect(showsHowToStart(IDLE, false)).toBe(true)
+    expect(showsHowToStart(IDLE, true)).toBe(false)
+    expect(showsHowToStart({ ...IDLE, recording: true }, false)).toBe(false)
+    expect(showsHowToStart({ ...IDLE, stored: STORED }, false)).toBe(false)
+    expect(showsHowToStart({ ...IDLE, failure: 'the simulator closed the connection' }, false)).toBe(false)
   })
 })

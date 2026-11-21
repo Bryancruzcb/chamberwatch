@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 
 /** The rendered width of an element, kept current as the layout changes. Pass the returned callback as its ref. */
-export function useWidth(): [number, (element: HTMLDivElement | null) => void] {
+export function useWidth(): [number, (element: HTMLElement | null) => void] {
   const [width, setWidth] = useState(0)
   const observer = useRef<ResizeObserver | null>(null)
-  const measure = useCallback((element: HTMLDivElement | null) => {
+  const measure = useCallback((element: HTMLElement | null) => {
     observer.current?.disconnect()
     observer.current = null
     if (element === null) {

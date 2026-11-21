@@ -24,3 +24,11 @@ export function liveAnswer(session: LiveSession): Answer {
   }
   return { title: 'Nothing is being etched.', lead: 'Start the chamber simulator, then record from it here.' }
 }
+
+/**
+ * Whether the Live page opens its instructions for starting the simulator: only when they are the one next step, on an
+ * instance that records, with nothing recording, nothing stored and no failure to read first.
+ */
+export function showsHowToStart(session: LiveSession, readOnly: boolean): boolean {
+  return !readOnly && !session.recording && session.stored === null && session.failure === null
+}

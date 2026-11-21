@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Excursion, TracePoint } from '../api/schema'
-import { bandSegments, bucketsIn, clips, envelopeOutlines, excursionSpans, fitTraceDomain, nearestIndex, traceExtent } from './trace'
+import { linearScale } from './scale'
+import { bandSegments, bucketsIn, clips, envelopeOutlines, excursionSpans, fitTraceDomain, nearestIndex, railMark, spansIn, traceExtent } from './trace'
 
 function bucket({ at, min, max = min, band = null }: { at: number; min: number; max?: number; band?: TracePoint['band'] }): TracePoint {
   return { startS: at, endS: at, samples: min === max ? 1 : 2, min, max, position: null, band }
@@ -18,6 +19,35 @@ describe('envelopeOutlines', () => {
 
     expect(outlines).toEqual([[[0, 1], [0.2, 1], [0.2, 1], [0, 1]], [[41.3, 3], [41.3, 2]]])
     expect(envelopeOutlines([])).toEqual([])
+  })
+})
+
+describe('spansIn', () => {
+  it('keeps the spans that overlap the drawn time range, edges included, in their order', () => {
+    const spans = [{ start: 1, end: 2 }, { start: 9, end: 10.5 }, { start: 12, end: 13 }, { start: 30, end: 31 }]
+
+    expect(spansIn(spans, [10, 20])).toEqual([{ start: 9, end: 10.5 }, { start: 12, end: 13 }])
+    expect(spansIn(spans, [2, 9])).toEqual([{ start: 1, end: 2 }, { start: 9, end: 10.5 }])
+    expect(spansIn(spans, [14, 29])).toEqual([])
+  })
+})
+
+describe('railMark', () => {
+  const x = linearScale([10, 20], [50, 150])
+
+  it('maps a span inside the view to pixels', () => {
+    expect(railMark({ start: 12, end: 14 }, x, 2.5)).toEqual({ x: 70, width: 20 })
+  })
+
+  it('cuts a span that runs past either edge at the plot', () => {
+    expect(railMark({ start: 8, end: 11 }, x, 2.5)).toEqual({ x: 50, width: 10 })
+    expect(railMark({ start: 19, end: 40 }, x, 2.5)).toEqual({ x: 140, width: 10 })
+    expect(railMark({ start: 0, end: 40 }, x, 2.5)).toEqual({ x: 50, width: 100 })
+  })
+
+  it('keeps a mark at least the narrowest width, still inside the plot', () => {
+    expect(railMark({ start: 15, end: 15 }, x, 2.5)).toEqual({ x: 100, width: 2.5 })
+    expect(railMark({ start: 20, end: 20 }, x, 2.5)).toEqual({ x: 147.5, width: 2.5 })
   })
 })
 

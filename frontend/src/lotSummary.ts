@@ -15,15 +15,16 @@ export interface Answer {
 /**
  * The Lots page's answer, from the lot list of one source: which lots hold the out-of-range runs, then what the other
  * lots ran. `scored` is false when the source has no baseline, so no run has a score and "none out of range" would
- * claim more than is known.
+ * claim more than is known. Only the runs say which, so while they load, or if they fail, a source whose lots are all
+ * clean gets no answer, or one that claims nothing about scoring. Null means wait.
  */
-export function lotsAnswer(lots: readonly Lot[], scored: boolean): Answer {
+export function lotsAnswer(lots: readonly Lot[], scored: boolean | 'loading' | 'failed'): Answer | null {
   const n = lots.length
   const first = lots[0]
   if (first === undefined) {
     return { title: 'No lots yet.', lead: null }
   }
-  if (!scored) {
+  if (scored === false) {
     return {
       title: n === 1 ? `Lot ${first.lotNo} has not been scored yet.` : `None of the ${n} lots has been scored yet.`,
       lead: 'There is no baseline yet, so no run has a score.',
@@ -32,6 +33,12 @@ export function lotsAnswer(lots: readonly Lot[], scored: boolean): Answer {
   const holding = lots.filter((lot) => lot.flaggedRuns > 0)
   const others = lots.filter((lot) => lot.flaggedRuns === 0)
   const out = holding.reduce((sum, lot) => sum + lot.flaggedRuns, 0)
+  if (holding.length === 0 && scored === 'loading') {
+    return null
+  }
+  if (holding.length === 0 && scored === 'failed') {
+    return { title: 'No lot has an out-of-range run on record.', lead: null }
+  }
   if (holding.length === 0) {
     return { title: n === 1 ? `Lot ${first.lotNo} has no out-of-range run.` : `None of the ${n} lots has an out-of-range run.`, lead: null }
   }
@@ -45,6 +52,46 @@ export function lotsAnswer(lots: readonly Lot[], scored: boolean): Answer {
   const wafers = others.reduce((sum, lot) => sum + lot.runs, 0)
   const rest = others.length === 1 ? 'The other lot ran' : `The other ${others.length} lots ran`
   return { title, lead: `${rest} ${wafers} ${wafers === 1 ? 'wafer' : 'wafers'} with none out of range.` }
+}
+
+/** A wafer position and how many lots ran a wafer there. */
+export interface PositionRuns {
+  readonly position: number
+  readonly runs: number
+}
+
+/**
+ * The positions whose average rests on fewer than half the lots of the fullest position, such as the slots only one
+ * long lot reached. A position one lot short, as when one lot skipped a slot, is not thin.
+ */
+export function thinPositions(positions: readonly PositionRuns[]): number[] {
+  const most = Math.max(0, ...positions.map((entry) => entry.runs))
+  return positions.filter((entry) => entry.runs * 2 < most).map((entry) => entry.position)
+}
+
+/**
+ * The answer for a by-position figure with no depth to speak of: which positions come from only a few lots, against
+ * how many the others average. "Wafers 4 to 10 come from one lot; wafers 1 to 3 average 11 lots." Null when no position
+ * is thin.
+ */
+export function describeRunsByPosition(positions: readonly PositionRuns[]): string | null {
+  const thinAt = thinPositions(positions)
+  const thin = positions.filter((entry) => thinAt.includes(entry.position))
+  const full = positions.filter((entry) => !thinAt.includes(entry.position))
+  if (thin.length === 0 || full.length === 0) {
+    return null
+  }
+  const fewest = Math.min(...thin.map((entry) => entry.runs))
+  const most = Math.max(...thin.map((entry) => entry.runs))
+  const lotsWord = (count: number) => (count === 1 ? 'lot' : 'lots')
+  const from = fewest === most
+    ? `${fewest === 1 ? 'one' : fewest} ${lotsWord(fewest)}`
+    : `${fewest} to ${most} lots each`
+  const average = Math.round(full.reduce((sum, entry) => sum + entry.runs, 0) / full.length)
+  const thinWords = capitalize(describeWafers(thin.map((entry) => entry.position)))
+  const fullWords = describeWafers(full.map((entry) => entry.position))
+  return `${thinWords} ${thin.length === 1 ? 'comes' : 'come'} from ${from}; `
+    + `${fullWords} ${full.length === 1 ? 'averages' : 'average'} ${average} ${lotsWord(average)}.`
 }
 
 interface StateCounts {
@@ -98,7 +145,7 @@ export function lotHeadline(lotNo: number, runs: readonly RunRow[]): string {
 
 /**
  * The line under a lot's `h1`: how the wafers that are not out of range divide when some were not scored or aligned,
- * then how many channels' phase mean has left the band or is heading out by the last wafer.
+ * then for how many channels the line fitted through the phase means is outside the band or heading out by the last wafer.
  */
 export function lotLead({ runs, channels, phase }: { runs: readonly RunRow[]; channels: readonly DriftChannel[]; phase: Phase }): string {
   return [describeRest(runs), describeChannels(channels, phase)].filter((part) => part !== null).join(' ')
@@ -118,22 +165,85 @@ function describeRest(runs: readonly RunRow[]): string | null {
   return out.length > 0 ? `Of the rest, ${rest}.` : `${capitalize(rest)}.`
 }
 
-/** How many channels' phase mean is outside the band by the last wafer, and how many more are heading out. */
+/**
+ * For how many channels the line fitted through the lot's phase means is outside the band by the last wafer, and for
+ * how many more it is heading out. The verdicts judge the fitted line, not the last wafer's own mean, which can sit
+ * inside the band while one faulted wafer tilts the line out of it. A channel with too few wafers was never judged.
+ */
 function describeChannels(channels: readonly DriftChannel[], phase: Phase): string {
   if (channels.length === 0) {
     return 'No channel has a good-run band for this phase yet.'
   }
-  const outside = channels.filter((channel) => channel.state === 'OUT_OF_BAND').length
-  const leaving = channels.filter((channel) => channel.state === 'WILL_EXIT').length
-  const channelWord = (count: number) => (count === 1 ? '1 channel' : `${count} channels`)
+  const count = (state: DriftState) => channels.filter((channel) => channel.state === state).length
+  const outside = count('OUT_OF_BAND')
+  const leaving = count('WILL_EXIT')
+  const few = count('INSUFFICIENT_RUNS')
+  if (few === channels.length) {
+    return `Too few wafers to judge a trend in the ${phase} mean yet.`
+  }
+  const channelWord = (n: number) => (n === 1 ? '1 channel' : `${n} channels`)
+  const line = `the line fitted through the lot's ${phase} means`
+  const unjudged = few === 0 ? null : `There are too few wafers to judge ${channelWord(few)}.`
   if (outside === 0 && leaving === 0) {
-    return `No channel's ${phase} mean has left the band or is heading out.`
+    if (unjudged === null) {
+      return `${capitalize(line)} is inside the band for every channel, and none is heading out.`
+    }
+    const judged = channels.length - few
+    return `${unjudged} For the other ${judged === 1 ? 'channel' : judged}, ${line} is inside the band, and none is heading out.`
   }
-  if (outside === 0) {
-    return `No channel's ${phase} mean is outside the band yet; ${channelWord(leaving)} ${leaving === 1 ? 'is' : 'are'} heading out.`
+  const verdict = outside === 0
+    ? `${capitalize(line)} is heading out of the band for ${channelWord(leaving)}, and is outside it for none yet.`
+    : `By the last wafer, ${line} is outside the band for ${channelWord(outside)}, and ${
+      leaving === 0 ? 'none is heading out' : `${leaving} more ${leaving === 1 ? 'is' : 'are'} heading out`}.`
+  return unjudged === null ? verdict : `${verdict} ${unjudged}`
+}
+
+/**
+ * Where the line fitted through the lot's wafers sits at the last wafer, in the band's standard deviations from its
+ * centre: the number the channel's verdict judges. Null before a line can be fitted, or for a band of no width.
+ */
+export function fittedZ(channel: DriftChannel): number | null {
+  const fit = channel.points.at(-1)?.fit ?? null
+  if (fit === null || channel.bandSd === 0) {
+    return null
   }
-  const heading = leaving === 0 ? 'none is heading out' : `${leaving} more ${leaving === 1 ? 'is' : 'are'} heading out`
-  return `By the last wafer, the ${phase} mean of ${channelWord(outside)} is outside the band, and ${heading}.`
+  return (fit.fitted - channel.bandMean) / channel.bandSd
+}
+
+/** The verdicts a lot's channel table always shows: a trend that is out, leaving, or staying in the band. */
+const SHOWN_VERDICTS: readonly DriftState[] = ['OUT_OF_BAND', 'WILL_EXIT', 'STAYS_IN']
+
+/**
+ * A lot's channels split for its table, keeping their rank order: the ones with a trend verdict and the picked one show,
+ * and the ones with no trend or too few wafers fold behind a button.
+ */
+export function splitDriftChannels(channels: readonly DriftChannel[], picked: DriftChannel | undefined): {
+  shown: DriftChannel[]
+  hidden: DriftChannel[]
+} {
+  const shows = (channel: DriftChannel) => channel === picked || SHOWN_VERDICTS.includes(channel.state)
+  return { shown: channels.filter(shows), hidden: channels.filter((channel) => !shows(channel)) }
+}
+
+/**
+ * The button over the folded channels, saying what they are: "17 more channels, no trend" while they are folded, and
+ * "Hide the 17 channels with no trend" while they show.
+ */
+export function describeHiddenDriftChannels(hidden: readonly DriftChannel[], open = false): string {
+  if (hidden.length === 0) {
+    return ''
+  }
+  const few = hidden.filter((channel) => channel.state === 'INSUFFICIENT_RUNS').length
+  const quiet = hidden.length - few
+  if (open) {
+    const what = few === 0 ? 'no trend' : quiet === 0 ? 'too few wafers to judge' : 'no trend or too few wafers to judge'
+    return hidden.length === 1 ? `Hide the channel with ${what}` : `Hide the ${hidden.length} channels with ${what}`
+  }
+  const more = hidden.length === 1 ? '1 more channel' : `${hidden.length} more channels`
+  if (few === 0) {
+    return `${more}, no trend`
+  }
+  return quiet === 0 ? `${more}, too few wafers to judge` : `${more}: ${quiet} no trend, ${few} too few wafers to judge`
 }
 
 /** The drift verdicts in the order a reader should meet them: out first, then heading out, then the quiet ones. */
@@ -157,7 +267,8 @@ export function driftWarns(state: DriftState): boolean {
 
 /**
  * The key under the lot table's small discs, naming only the marks it holds: "Filled: out of range. Ring: in range.
- * Dash: not run. The bracket marks wafers 1 to 3, the baseline runs."
+ * Dash: not run. Wafers 1 to 3, left of the dotted line, are the baseline runs." The dotted line is drawn at every width,
+ * where the bracket over the column is not.
  */
 export function describeWaferKey(kinds: GridKinds, baseline: number | null): string {
   return [
@@ -168,7 +279,7 @@ export function describeWaferKey(kinds: GridKinds, baseline: number | null): str
     !kinds.baseline
       ? null
       : baseline !== null
-        ? `The bracket marks ${describeWafers(Array.from({ length: baseline }, (_, index) => index + 1))}, the baseline runs.`
+        ? `${capitalize(describeWafers(Array.from({ length: baseline }, (_, index) => index + 1)))}, left of the dotted line, ${baseline === 1 ? 'is the baseline run' : 'are the baseline runs'}.`
         : 'A centre dot marks a baseline run.',
   ].filter((part) => part !== null).join(' ')
 }

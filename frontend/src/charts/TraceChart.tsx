@@ -1,7 +1,7 @@
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, useId, useMemo, useState } from 'react'
 import type { Hold, Trace, TracePoint } from '../api/schema'
-import { describeClip, formatScore, formatSeconds, formatValue, MISSING } from '../format'
-import { type LinearScale, linearScale, niceInterval, niceTicks } from './scale'
+import { describeClip, formatChannelName, formatScore, formatSeconds, formatValue, MISSING } from '../format'
+import { type LinearScale, linearScale, niceInterval, niceTicks, tickFormat } from './scale'
 import {
   bandAt,
   bandSegments,
@@ -14,6 +14,8 @@ import {
   excursionSpans,
   fitTraceDomain,
   nearestIndex,
+  railMark,
+  spansIn,
   traceExtent,
   type Vertex,
 } from './trace'
@@ -32,6 +34,11 @@ const BAND_LABEL_AT = 0.22
 const MIN_BAND_LABEL = 6
 /** How far either side of the first excursion, in pixels, the reading is checked for room for its label. */
 const FIRST_LABEL_REACH = 60
+/** Room the clip note keeps to the plot's right edge. */
+const NOTE_ROOM = 240
+/** Rough advances of the chart's sans labels, generous so two labels judged clear of each other really are. */
+const NOTE_CHAR = 6.5
+const ANN_CHAR = 7.5
 /** The narrowest an excursion's tick on the rail is drawn, so one sample still shows. */
 const MIN_TICK = 2.5
 
@@ -81,9 +88,12 @@ export function TraceChart({ trace, holds = [] }: {
     ? []
     : [{ start: hold.startTimeS, end: hold.endTimeS, key: hold.startSlot }])), [holds])
   const layout = useMemo(() => layoutTrace(trace, spans, stuck[0]?.start ?? null, width), [trace, spans, stuck, width])
+  // a span of cycles arrives with every excursion of the channel, so the rail and the key take only those in view
+  const inView = layout === null ? spans : spansIn(spans, layout.x.domain)
+  const stuckInView = layout === null ? stuck : spansIn(stuck, layout.x.domain)
   const railWords = [
-    ...(spans.length > 0 ? [`${spans.length} ${spans.length === 1 ? 'excursion' : 'excursions'}`] : []),
-    ...(stuck.length > 0 ? [`${stuck.length} stuck ${stuck.length === 1 ? 'value' : 'values'}`] : []),
+    ...(inView.length > 0 ? [`${inView.length} ${inView.length === 1 ? 'excursion' : 'excursions'}`] : []),
+    ...(stuckInView.length > 0 ? [`${stuckInView.length} stuck ${stuckInView.length === 1 ? 'value' : 'values'}`] : []),
   ].join(', ')
 
   if (trace.points.length === 0) {
@@ -132,14 +142,17 @@ export function TraceChart({ trace, holds = [] }: {
   const range = trace.fromCycle === null || trace.toCycle === null
     ? 'the whole record'
     : `cycles ${trace.fromCycle} to ${trace.toCycle}`
+  const name = formatChannelName(trace.channel)
+  const yTick = tickFormat(layout?.yTicks ?? [])
+  const xTick = tickFormat(layout?.xTicks ?? [])
 
   return (
     <figure className="chart trace">
       <ul className="chart-key" aria-label="Key">
         <li><span className="key-swatch key-reading" />Reading, lowest to highest per bucket</li>
         {trace.k !== null && <li><span className="key-swatch key-band" />Good-run range</li>}
-        {spans.length > 0 && <li><span className="key-swatch key-excursion" />Out of the range</li>}
-        {stuck.length > 0 && <li><span className="key-swatch key-span hold" />Stuck value</li>}
+        {inView.length > 0 && <li><span className="key-swatch key-excursion" />Out of the range</li>}
+        {stuckInView.length > 0 && <li><span className="key-swatch key-span hold" />Stuck value</li>}
       </ul>
       <div className="chart-frame" ref={measure}>
         {layout !== null && (
@@ -147,10 +160,10 @@ export function TraceChart({ trace, holds = [] }: {
             viewBox={`0 0 ${width} ${HEIGHT}`}
             height={HEIGHT}
             role="img"
-            aria-label={`${trace.channel} across ${range}. Arrow keys read one bucket at a time.`}
+            aria-label={`${name} across ${range}. Arrow keys read one bucket at a time.`}
             tabIndex={0}
             onKeyDown={step}
-            onFocus={() => setActive((current) => current ?? startIndex(trace.points, spans))}
+            onFocus={() => setActive((current) => current ?? startIndex(trace.points, inView))}
             onBlur={() => setActive(null)}
           >
             <defs>
@@ -165,7 +178,7 @@ export function TraceChart({ trace, holds = [] }: {
               <g key={tick}>
                 <line className="gridline" x1={layout.left} x2={layout.right} y1={layout.y.map(tick)} y2={layout.y.map(tick)} />
                 <text className="tick" x={layout.left - 8} y={layout.y.map(tick)} dy="0.32em" textAnchor="end">
-                  {formatValue(tick)}
+                  {yTick(tick)}
                 </text>
               </g>
             ))}
@@ -179,50 +192,40 @@ export function TraceChart({ trace, holds = [] }: {
               <g className="rail">
                 <text className="chart-note" x={layout.left} y={layout.top - 24}>{railWords}</text>
                 <line className="rail-line" x1={layout.left} x2={layout.right} y1={layout.top - 10} y2={layout.top - 10} />
-                {spans.map((span) => {
-                  const x = layout.x.map(span.start)
-                  return (
-                    <rect
-                      key={span.excursion.startSlot}
-                      data-kind="excursion"
-                      className="rail-tick"
-                      x={x}
-                      y={layout.top - 16}
-                      width={Math.max(MIN_TICK, layout.x.map(span.end) - x)}
-                      height={12}
-                    />
-                  )
-                })}
-                {stuck.map((hold) => {
-                  const x = layout.x.map(hold.start)
-                  return (
-                    <rect
-                      key={hold.key}
-                      data-kind="hold"
-                      className="rail-hold"
-                      fill={`url(#${hatchId})`}
-                      x={x}
-                      y={layout.top - 16}
-                      width={Math.max(MIN_TICK * 2, layout.x.map(hold.end) - x)}
-                      height={12}
-                    />
-                  )
-                })}
+                {inView.map((span) => (
+                  <rect
+                    key={span.excursion.startSlot}
+                    data-kind="excursion"
+                    className="rail-tick"
+                    {...railMark(span, layout.x, MIN_TICK)}
+                    y={layout.top - 16}
+                    height={12}
+                  />
+                ))}
+                {stuckInView.map((hold) => (
+                  <rect
+                    key={hold.key}
+                    data-kind="hold"
+                    className="rail-hold"
+                    fill={`url(#${hatchId})`}
+                    {...railMark(hold, layout.x, MIN_TICK * 2)}
+                    y={layout.top - 16}
+                    height={12}
+                  />
+                ))}
               </g>
             )}
             {layout.first !== null && (
-              <Annotation label={layout.first.label} className="chart-ann" dashed>
-                {`${layout.first.kind === 'hold' ? 'Stuck from' : 'First,'} ${formatSeconds(layout.first.s)}`}
-              </Annotation>
+              <Annotation label={layout.first.label} className="chart-ann" dashed>{firstText(layout.first)}</Annotation>
             )}
             {layout.bandLabel !== null && trace.k !== null && (
-              <Annotation label={layout.bandLabel} className="chart-note">{`Good-run range, mean ± ${formatScore(trace.k)} sd`}</Annotation>
+              <Annotation label={layout.bandLabel} className="chart-note">{bandText(trace.k)}</Annotation>
             )}
             <line className="axis-line" x1={layout.left} x2={layout.right} y1={layout.bottom} y2={layout.bottom} />
             {layout.xTicks.map((tick) => (
               <g key={tick}>
                 <line className="axis-mark" x1={layout.x.map(tick)} x2={layout.x.map(tick)} y1={layout.bottom} y2={layout.bottom + 5} />
-                <text className="tick" x={layout.x.map(tick)} y={layout.bottom + 19} textAnchor="middle">{tick}</text>
+                <text className="tick" x={layout.x.map(tick)} y={layout.bottom + 19} textAnchor="middle">{xTick(tick)}</text>
               </g>
             ))}
             <text className="tick" x={layout.right + 4} y={layout.bottom + 19}>s</text>
@@ -255,11 +258,15 @@ export function TraceChart({ trace, holds = [] }: {
         {point !== undefined && layout !== null && (
           <Readout point={point} k={trace.k} spans={spans} x={layout.x.map(bucketTime(point))} width={width} />
         )}
+        {/* mounted with the chart and empty until a bucket is read, since a live region inserted with text goes unread */}
+        <p className="visually-hidden" role="status" aria-atomic="true">
+          {point === undefined ? '' : readoutText(point, trace.k, spans)}
+        </p>
       </div>
       <button type="button" className="link-button" aria-expanded={tableShown} onClick={() => setTableShown(!tableShown)}>
         {tableShown ? 'Hide the table' : 'Show as a table'}
       </button>
-      {tableShown && <TraceTable trace={trace} />}
+      {tableShown && <TraceTable trace={trace} name={name} />}
     </figure>
   )
 }
@@ -273,6 +280,22 @@ function Annotation({ label, className, dashed = false, children }: { label: Lab
       <text className={className} x={label.x} y={label.y} textAnchor={label.anchor}>{children}</text>
     </g>
   )
+}
+
+/** The readout's words in one line, for the live region a screen reader announces. */
+function readoutText(point: TracePoint, k: number | null, spans: readonly ExcursionSpan[]): string {
+  const time = bucketTime(point)
+  const band = bandAt(point, k)
+  const span = spans.find((candidate) => time >= candidate.start && time <= candidate.end)
+  const value = point.min === point.max ? formatValue(point.min) : `${formatValue(point.min)} to ${formatValue(point.max)}`
+  const recipe = point.position === null
+    ? 'outside the etch'
+    : `cycle ${point.position.cycle}, ${point.position.phase} slot ${point.position.offset}`
+  return [
+    `${value} at ${formatSeconds(time)}, ${recipe}.`,
+    `Good runs ${band === null ? MISSING : `${formatValue(band.low)} to ${formatValue(band.high)}`}.`,
+    ...(span === undefined ? [] : [`Excursion, peak z ${formatScore(span.excursion.peakZ)}.`]),
+  ].join(' ')
 }
 
 function Readout({ point, k, spans, x, width }: {
@@ -312,11 +335,11 @@ function Readout({ point, k, spans, x, width }: {
   )
 }
 
-function TraceTable({ trace }: { trace: Trace }) {
+function TraceTable({ trace, name }: { trace: Trace; name: string }) {
   return (
     <div className="table-wrap table-scroll">
       <table>
-        <caption className="visually-hidden">{`${trace.channel}, one row per bucket`}</caption>
+        <caption className="visually-hidden">{`${name}, one row per bucket`}</caption>
         <thead>
           <tr>
             <th scope="col" className="num">Time</th>
@@ -371,6 +394,9 @@ function layoutTrace(trace: Trace, spans: readonly ExcursionSpan[], stuckFrom: n
   // a ramp clipped at the start gets its note just past the ramp, on the side it was cut
   const ramp = cut.find((clip) => clip.atStart)
   const below = cut.some((clip) => clip.side === 'below')
+  const plot = { left, right, top, bottom }
+  const first = firstMoment(spans[0]?.start ?? null, stuckFrom, trace.points, x, y, plot, width < NARROW)
+  const firstBox = first === null ? null : textBox(first.label, firstText(first), ANN_CHAR)
   return {
     x,
     y,
@@ -381,13 +407,14 @@ function layoutTrace(trace: Trace, spans: readonly ExcursionSpan[], stuckFrom: n
     reading: envelopeOutlines(trace.points).map(outline),
     out: spans.map((span) => ({ key: span.excursion.startSlot, paths: envelopeOutlines(bucketsIn(trace.points, span)).map(outline) })),
     band: segments.map((segment) => areaPath(segment, x, y)),
-    bandLabel: bandLabel(segments, x, y, { left, right, top, bottom }),
-    first: firstMoment(spans[0]?.start ?? null, stuckFrom, trace.points, x, y, { left, right, top, bottom }, width < NARROW),
+    bandLabel: trace.k === null ? null : bandLabel(segments, x, y, plot, bandText(trace.k), firstBox),
+    first,
     note: cut.length === 0
       ? null
       : {
           text: cut.map(describeClip).join('. '),
-          x: Math.min(Math.max(left + 8, ramp === undefined ? 0 : x.map(ramp.untilS) + 6), right - 240),
+          // past the ramp, short of the right edge, and last of all never left of the plot
+          x: Math.max(left + 8, Math.min(ramp === undefined ? 0 : x.map(ramp.untilS) + 6, right - NOTE_ROOM)),
           y: below ? bottom - 8 : top + 16,
         },
     xTicks: niceTicks(extent.time, Math.max(2, Math.floor((right - left) / 100))),
@@ -397,11 +424,34 @@ function layoutTrace(trace: Trace, spans: readonly ExcursionSpan[], stuckFrom: n
 
 type Plot = { left: number; right: number; top: number; bottom: number }
 
-/** The first moment the channel left its range, an excursion or a stuck value, whichever came first. */
+/** The words of the first moment's label and the band's. */
+function firstText(first: NonNullable<Layout['first']>): string {
+  return `${first.kind === 'hold' ? 'Stuck from' : 'First,'} ${formatSeconds(first.s)}`
+}
+
+function bandText(k: number): string {
+  return `Good-run range, mean ± ${formatScore(k)} sd`
+}
+
+/** About where a label's text sits, from its anchor and a rough advance per character. */
+function textBox(label: Label, text: string, char: number): Plot {
+  const width = text.length * char
+  const left = label.anchor === 'start' ? label.x : label.x - width
+  return { left, right: left + width, top: label.y - 13, bottom: label.y + 4 }
+}
+
+function overlaps(a: Plot, b: Plot): boolean {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+/**
+ * The first moment the channel left its range, an excursion or a stuck value, whichever came first over the whole run,
+ * so a zoomed view never calls a later one first. None when that moment lies outside the view.
+ */
 function firstMoment(excursionS: number | null, stuckS: number | null, points: readonly TracePoint[], x: LinearScale, y: LinearScale, plot: Plot, narrow: boolean): Layout['first'] {
   const kind = excursionS === null || (stuckS !== null && stuckS < excursionS) ? 'hold' : 'excursion'
   const s = kind === 'hold' ? stuckS : excursionS
-  if (s === null) {
+  if (s === null || s < x.domain[0] || s > x.domain[1]) {
     return null
   }
   return { label: firstLabel(s, points, x, y, plot, narrow), s, kind }
@@ -424,9 +474,10 @@ function firstLabel(s: number, points: readonly TracePoint[], x: LinearScale, y:
 
 /**
  * Where the band's direct label goes: a fifth of the way along, under the band if there is room above the axis and
- * over it otherwise, with a leader into the band. None where no band reaches that point or there is no room.
+ * over it otherwise, with a leader into the band, and never on the first moment's label. None where no band reaches
+ * that point or there is no room.
  */
-function bandLabel(segments: readonly (readonly BandVertex[])[], x: LinearScale, y: LinearScale, plot: Plot): Label | null {
+function bandLabel(segments: readonly (readonly BandVertex[])[], x: LinearScale, y: LinearScale, plot: Plot, text: string, avoid: Plot | null): Label | null {
   const target = x.invert(plot.left + (plot.right - plot.left) * BAND_LABEL_AT)
   const vertex = segments.flat().reduce<BandVertex | null>((best, candidate) => (
     best === null || Math.abs(candidate.time - target) < Math.abs(best.time - target) ? candidate : best
@@ -441,12 +492,16 @@ function bandLabel(segments: readonly (readonly BandVertex[])[], x: LinearScale,
   if (low - high < MIN_BAND_LABEL) {
     return null
   }
-  if (low + 44 < plot.bottom - 24) {
-    return { x: at + 14, y: low + 44, anchor: 'start', leader: [at + 12, low + 32, at, low - 4] }
+  const clear = (label: Label) => avoid === null || !overlaps(textBox(label, text, NOTE_CHAR), avoid)
+  const under: Label = { x: at + 14, y: low + 44, anchor: 'start', leader: [at + 12, low + 32, at, low - 4] }
+  if (low + 44 < plot.bottom - 24 && clear(under)) {
+    return under
   }
-  if (high - 30 > plot.top + 14) {
-    return { x: at + 14, y: high - 30, anchor: 'start', leader: [at + 12, high - 26, at, high + 4] }
+  const over: Label = { x: at + 14, y: high - 30, anchor: 'start', leader: [at + 12, high - 26, at, high + 4] }
+  if (high - 30 > plot.top + 14 && clear(over)) {
+    return over
   }
+  // the key still names the band
   return null
 }
 
