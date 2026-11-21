@@ -10,5 +10,6 @@ export default defineConfig({
   plugins: [react()],
   server: { proxy: { '/api': api } },
   preview: { proxy: { '/api': api } },
-  test: { include: ['src/**/*.test.ts'] },
+  // the stylesheet is read as text by designRules.test.ts; without this Vitest hands every CSS import back empty
+  test: { include: ['src/**/*.test.ts'], css: true },
 })

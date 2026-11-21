@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import type { Channel } from '../api/schema'
-import { describeLineup, formatChannelName, formatScore, formatUnusual } from '../format'
+import { describeLineup, formatAgainstLimit, formatChannelName, formatScore } from '../format'
 
 const percent = (share: number) => `${(share * 100).toFixed(3)}%`
 
@@ -49,7 +49,7 @@ export function ChannelLineup({ channels, selected, k, n }: {
                 <span className={over ? 'lineup-dot over' : 'lineup-dot'} style={{ left: percent(at(channel.persistentZ)) }} />
               </span>
               <span className={over ? 'lineup-value num over' : 'lineup-value num'}>
-                {formatUnusual(channel.persistentZ)}
+                {formatAgainstLimit(channel.persistentZ, k)}
                 <span className="visually-hidden">{over ? ', past the limit' : ', under the limit'}</span>
               </span>
             </li>
@@ -68,7 +68,7 @@ export function ChannelLineup({ channels, selected, k, n }: {
         </li>
       </ul>
       <p className="figure-source">
-        {`How unusual: the most standard deviations a channel stayed from the good runs for ${n} samples in a row. The shaded part of each line is under the limit.`}
+        {`In the detectors' rank: channels that left their range or got stuck come first, by when; the rest follow by how far a phase's mean or spread moved from the good runs, so the dots need not fall in order. How unusual: the most standard deviations a channel stayed from the good runs for ${n} samples in a row. The shaded part of each line is under the limit.`}
       </p>
     </section>
   )

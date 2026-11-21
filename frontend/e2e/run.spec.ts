@@ -216,8 +216,90 @@ test('lines every channel up against the limit, and opens one on the trace', asy
 test("ranks the plasma's own light among the channels it scores", async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')
+  const rows = page.getByRole('region', { name: 'Every channel against the limit' }).getByRole('listitem')
 
+  // five emission lines are scored beside the sensors, at the detectors' ranks 4 to 7 and 11
+  await expect(rows).toHaveCount(31)
+  await expect(rows.nth(3)).toContainText('Fluorine 624.0 nm')
+  await expect(rows.nth(4)).toContainText('Fluorine 703.7 nm')
+  await expect(rows.nth(5)).toContainText('Carbon C2 563.6 nm')
+  await expect(rows.nth(6)).toContainText('Fluorine 685.6 nm')
+  await expect(rows.nth(6)).toContainText('2.7, under the limit')
+  await expect(rows.nth(10)).toContainText('Carbon C2 516.5 nm')
+})
+
+test('lines an in-range run up in the detectors\' rank, with the open channel on top', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/11')
   const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
-  await expect(lineup.getByRole('listitem').filter({ hasText: 'Fluorine 685.6 nm' })).toBeVisible()
-  await expect(lineup.getByRole('listitem').filter({ hasText: 'Carbon C2 516.5 nm' })).toBeVisible()
+
+  // the rank is not by how unusual: the closest channel to the limit is not the first row, and the figure says why
+  await expect(lineup.locator('.panel-answer')).toHaveText('No channel went past the limit of 6.0. The closest was Platen RF load cap, at 5.5.')
+  await expect(lineup.getByRole('listitem').first()).toContainText('Gas 1 flow')
+  await expect(lineup.getByRole('listitem').first().getByRole('link')).toHaveAttribute('aria-current', 'true')
+  await expect(lineup.locator('.figure-source')).toContainText('In the detectors\' rank')
+  await expect(lineup.locator('.figure-source')).toContainText('so the dots need not fall in order')
+})
+
+test('tints the open channel\'s row inside the figure, with no shadow reaching past it', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55')
+  const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
+  const selected = lineup.locator('.lineup-row.selected')
+
+  await expect(selected).toHaveCSS('box-shadow', 'none')
+  const figure = await lineup.boundingBox()
+  const row = await selected.boundingBox()
+  const name = await selected.getByRole('link').boundingBox()
+  expect(row?.x ?? 0).toBeGreaterThanOrEqual((figure?.x ?? 0) - 0.5)
+  expect((row?.x ?? 0) + (row?.width ?? 0)).toBeLessThanOrEqual((figure?.x ?? 0) + (figure?.width ?? 0) + 0.5)
+  // the tint has room either side of the text
+  expect((name?.x ?? 0) - (row?.x ?? 0)).toBeGreaterThanOrEqual(8)
+  // the meter track is the same tint in every figure, now that figures have no card behind them
+  const timeline = page.getByRole('region', { name: 'When channels left their range' })
+  await expect(timeline.locator('.meter-track').first()).toHaveCSS('background-color', 'rgb(228, 221, 205)')
+})
+
+test('starts every figure of the run on the phone\'s gutter and keeps the scale readable', async ({ page }) => {
+  await serveApi(page)
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto('/runs/55')
+  const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
+  await expect(lineup.locator('.lineup-dot')).toHaveCount(31)
+
+  const figure = await lineup.boundingBox()
+  const heading = await lineup.getByRole('heading', { level: 2 }).boundingBox()
+  expect(Math.abs((figure?.x ?? 0) - 16)).toBeLessThan(1)
+  expect(Math.abs((heading?.x ?? 0) - 16)).toBeLessThan(1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375)
+  // at this width the three labels of the scale fit side by side
+  const ticks = lineup.locator('.lineup-tick')
+  await expect(ticks).toHaveText(['0.0', 'limit 6.0', '12.0'])
+  const boxes = await ticks.evaluateAll((labels) => labels.map((label) => {
+    const box = label.getBoundingClientRect()
+    return { left: box.left, right: box.right }
+  }))
+  expect(boxes[0]?.right ?? 0).toBeLessThanOrEqual(boxes[1]?.left ?? 0)
+  expect(boxes[1]?.right ?? 0).toBeLessThanOrEqual(boxes[2]?.left ?? 0)
+
+  // on the narrowest phones only the limit keeps its label, which is the one every dot is read against
+  await page.setViewportSize({ width: 320, height: 800 })
+  await expect(lineup.locator('.lineup-tick.limit')).toBeVisible()
+  await expect(lineup.locator('.lineup-tick:not(.limit)').first()).toBeHidden()
+  await expect(lineup.locator('.lineup-tick:not(.limit)').last()).toBeHidden()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+})
+
+test('lists the channels by rank, with no limit to line them up against, when there is no baseline', async ({ page }) => {
+  await serveApi(page)
+  const run = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures', 'run-55.json'), 'utf8'))
+  await page.route((url) => url.pathname === '/api/runs/55', (route) => route.fulfill({ json: { ...run, baseline: null, assessment: null } }))
+  await page.goto('/runs/55')
+  const channels = page.getByRole('region', { name: 'Channels by rank' })
+
+  await expect(page.getByRole('region', { name: 'Every channel against the limit' })).toHaveCount(0)
+  await expect(channels.locator('tbody tr')).toHaveCount(31)
+  await expect(channels.locator('tbody tr').first()).toContainText('Platen RF load cap')
+  await expect(channels.locator('tbody tr').first().locator('td').nth(2)).toHaveText('18.8')
+  await expect(channels.getByRole('meter')).toHaveCount(0)
 })

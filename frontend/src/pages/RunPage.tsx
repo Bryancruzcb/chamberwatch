@@ -24,7 +24,6 @@ import { EtchTimeline } from '../charts/EtchTimeline'
 import { TraceChart } from '../charts/TraceChart'
 import { Loaded } from '../components/Loaded'
 import { RunStatus } from '../components/Status'
-import { ZMeter } from '../components/ZMeter'
 import {
   describeCatch, describeFault, describeRun, formatChannelName, formatFaultKind, formatLabel, formatScore, formatSeconds,
   formatValue,
@@ -122,15 +121,16 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
           {run.injectedFault !== null && (
             <InjectedFaultPanel fault={run.injectedFault} assessment={assessment} scoredChannels={run.channels} />
           )}
-          {baseline !== null && run.channels.length > 0
+          {/* a run with no scored channel shows neither: the trace's column already says so */}
+          {run.channels.length > 0 && (baseline !== null
             ? <ChannelLineup channels={run.channels} selected={selected} k={baseline.k} n={baseline.n} />
             : (
               // with no baseline there is no limit to line the channels up against, so the plain ranked list stands in
               <section className="panel" aria-labelledby="channels-title">
                 <h2 id="channels-title">Channels by rank</h2>
-                <ChannelsTable channels={run.channels} selected={selected} k={null} />
+                <ChannelsTable channels={run.channels} selected={selected} />
               </section>
-            )}
+            ))}
           <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={onRelabeled} />
           <section className="panel" aria-labelledby="alignment-title">
             <h2 id="alignment-title">Alignment</h2>
@@ -146,10 +146,7 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
   )
 }
 
-function ChannelsTable({ channels, selected, k }: { channels: readonly Channel[]; selected: Channel | undefined; k: number | null }) {
-  if (channels.length === 0) {
-    return <p className="status-line">None.</p>
-  }
+function ChannelsTable({ channels, selected }: { channels: readonly Channel[]; selected: Channel | undefined }) {
   return (
     <div className="table-wrap">
       <table className="compact">
@@ -177,7 +174,7 @@ function ChannelsTable({ channels, selected, k }: { channels: readonly Channel[]
                 {channel.deviation && <span className="tag">Deviates</span>}
                 {channel.holds.length > 0 && <span className="tag">Stuck</span>}
               </td>
-              <td>{k === null ? formatScore(channel.persistentZ) : <ZMeter z={channel.persistentZ} k={k} />}</td>
+              <td>{formatScore(channel.persistentZ)}</td>
               <td className="num">{channel.excursions.length}</td>
             </tr>
           ))}
