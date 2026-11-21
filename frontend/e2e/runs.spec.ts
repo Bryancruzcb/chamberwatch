@@ -24,6 +24,34 @@ test('opens on the answer: which runs are out of range, where to start and which
   await expect(page.getByRole('img', { name: /^How unusual each wafer of Lot 6 was/ }).locator('[data-kind="dot"]')).toHaveCount(10)
 })
 
+test('shows every wafer in a grid of lots by position, and opens one', async ({ page }) => {
+  await page.goto('/')
+  const grid = page.getByRole('region', { name: 'Every wafer, lot by lot' })
+
+  await expect(grid.locator('[data-kind="grid-cell"]')).toHaveCount(96)
+  await expect(grid.locator('[data-kind="grid-cell"][data-state="out"]')).toHaveCount(15)
+  await expect(grid.getByRole('row', { name: /^Lot 6/ }).locator('[data-state="out"]')).toHaveCount(7)
+  await expect(grid.getByRole('row', { name: /^Lot 7/ }).locator('.cell-empty')).toHaveCount(4)
+  await expect(grid.getByRole('link', { name: 'Lot 6, wafer 5: out of range, how unusual 18.8' })).toHaveAttribute('href', '/runs/55')
+  await expect(grid.getByRole('link', { name: 'Lot 2, wafer 1: in range, how unusual 5.5, baseline run' })).toBeVisible()
+  await expect(grid).toContainText('Source: Zenodo record 17122442')
+
+  await expect(grid.getByRole('link', { name: /^Lot 9, wafer 10: out of range/ })).toHaveAttribute('href', '/runs/86')
+
+  // run 55 is the flagged wafer the captured responses hold a page for
+  await grid.getByRole('link', { name: /^Lot 6, wafer 5:/ }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
+})
+
+test('the grid follows the source', async ({ page }) => {
+  await page.goto('/?source=SYNTHETIC')
+  const grid = page.getByRole('region', { name: 'Every wafer, lot by lot' })
+
+  await expect(grid.locator('[data-kind="grid-cell"]')).toHaveCount(40)
+  await expect(grid.locator('[data-kind="grid-cell"][data-state="out"]')).toHaveCount(8)
+  await expect(grid).toContainText('seeded simulator')
+})
+
 test('brings the lot drift onto the page and says which lots have no drift data', async ({ page }) => {
   await page.goto('/')
   const drift = page.getByRole('article').filter({ has: page.getByRole('heading', { name: /Drift along the lots/ }) })
@@ -36,7 +64,7 @@ test('brings the lot drift onto the page and says which lots have no drift data'
 
 test('lists every public wafer in the table and narrows to the ones in range', async ({ page }) => {
   await page.goto('/')
-  const rows = page.locator('table tbody tr')
+  const rows = page.locator('table.runs-table tbody tr')
 
   await page.getByRole('tab', { name: /All runs/ }).click()
   await expect(rows).toHaveCount(96)
@@ -49,16 +77,16 @@ test('lists every public wafer in the table and narrows to the ones in range', a
 
 test('filters to one lot', async ({ page }) => {
   await page.goto('/?show=all')
-  await page.getByLabel('Lot').selectOption('6')
+  await page.getByRole('combobox', { name: 'Lot' }).selectOption('6')
 
-  await expect(page.locator('table tbody tr')).toHaveCount(10)
+  await expect(page.locator('table.runs-table tbody tr')).toHaveCount(10)
   await expect(page).toHaveURL(/lot=6/)
 })
 
 test('orders the runs by persistent z and opens one', async ({ page }) => {
   await page.goto('/?show=all&order=z')
 
-  await expect(page.locator('table tbody tr').first()).toContainText('Day_2024_08_01_Wafer_06')
+  await expect(page.locator('table.runs-table tbody tr').first()).toContainText('Day_2024_08_01_Wafer_06')
   await page.getByRole('link', { name: 'Lot 6 · Wafer 5' }).click()
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Day_2024_08_01_Wafer_05')
@@ -68,7 +96,7 @@ test('a link from before the tabs still opens the table', async ({ page }) => {
   await page.goto('/?flagged=true&order=z')
 
   await expect(page.getByRole('tab', { name: /All runs/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.locator('table tbody tr').first()).toContainText('Day_2024_08_01_Wafer_06')
+  await expect(page.locator('table.runs-table tbody tr').first()).toContainText('Day_2024_08_01_Wafer_06')
 })
 
 test('switches to the simulated lots and opens a wafer with a known fault', async ({ page }) => {
@@ -81,10 +109,10 @@ test('switches to the simulated lots and opens a wafer with a known fault', asyn
   await expect(page.locator('.answer-next')).toContainText('Helium backside pressure in 2 and 3 other channels in 1 each.')
 
   await page.getByRole('tab', { name: /All runs/ }).click()
-  const rows = page.locator('table tbody tr')
+  const rows = page.locator('table.runs-table tbody tr')
   await expect(rows).toHaveCount(40)
-  await expect(page.getByLabel('Lot').locator('option')).toHaveCount(12)
-  await page.getByLabel('Lot').selectOption({ label: 'Lot 901, 5 out of range' })
+  await expect(page.getByRole('combobox', { name: 'Lot' }).locator('option')).toHaveCount(12)
+  await page.getByRole('combobox', { name: 'Lot' }).selectOption({ label: 'Lot 901, 5 out of range' })
 
   await expect(rows).toHaveCount(10)
   await page.getByRole('link', { name: 'Lot 901 · Wafer 7' }).click()

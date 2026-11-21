@@ -147,7 +147,10 @@ test('shows a stuck sensor as a hold next to the fault the simulator injected', 
   await expect(panel).toContainText('Helium backside pressure repeats its last reading for 6.6 s from 499.0 s.')
   // the hold is timed from the first sample of the value it repeats, which came just before the fault
   await expect(panel).toContainText('Yes. Helium backside pressure was named first, as the fault began.')
-  await expect(page.locator('table.compact').getByText('Stuck', { exact: true })).toBeVisible()
+  const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
+  await expect(lineup.getByRole('listitem').filter({ hasText: 'Helium backside pressure' }).getByText('Stuck', { exact: true })).toBeVisible()
+  // a stuck value flags the run without any channel passing the limit
+  await expect(lineup.locator('.panel-answer')).toHaveText('No channel went past the limit of 6.0. The closest was Gas 7 flow, at 3.6.')
   await expect(page.getByRole('table', { name: /^Holds:/ }).locator('tbody tr')).toHaveCount(1)
   await expect(page.getByRole('table', { name: /^Holds:/ })).toContainText('34')
 })
@@ -160,11 +163,28 @@ test('shows no fault panel for a public run', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Injected fault' })).toHaveCount(0)
 })
 
+test('lines every channel up against the limit, and opens one on the trace', async ({ page }) => {
+  await serveApi(page)
+  await page.goto('/runs/55')
+  const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
+
+  await expect(lineup.locator('.panel-answer')).toHaveText('2 of 31 channels went past the limit of 6.0. Platen RF load cap went furthest, to 18.8.')
+  await expect(lineup.locator('.lineup-dot')).toHaveCount(31)
+  await expect(lineup.locator('.lineup-dot.over')).toHaveCount(2)
+  await expect(lineup.getByRole('listitem').first()).toContainText('Platen RF load cap')
+  await expect(lineup.getByRole('listitem').first()).toContainText('18.8, past the limit')
+
+  await lineup.getByRole('link', { name: 'Platen DC bias' }).click()
+  await expect(page).toHaveURL(/channel=PlatenDcBias/)
+  await expect(page.getByRole('heading', { level: 2, name: 'Platen DC bias' })).toBeVisible()
+  await expect(lineup.getByRole('link', { name: 'Platen DC bias' })).toHaveAttribute('aria-current', 'true')
+})
+
 test("ranks the plasma's own light among the channels it scores", async ({ page }) => {
   await serveApi(page)
   await page.goto('/runs/55')
 
-  const channels = page.getByRole('region', { name: 'Channels by rank' })
-  await expect(channels.getByRole('row', { name: /Fluorine 685.6 nm/ })).toBeVisible()
-  await expect(channels.getByRole('row', { name: /Carbon C2 516.5 nm/ })).toBeVisible()
+  const lineup = page.getByRole('region', { name: 'Every channel against the limit' })
+  await expect(lineup.getByRole('listitem').filter({ hasText: 'Fluorine 685.6 nm' })).toBeVisible()
+  await expect(lineup.getByRole('listitem').filter({ hasText: 'Carbon C2 516.5 nm' })).toBeVisible()
 })

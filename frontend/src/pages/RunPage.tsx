@@ -19,6 +19,7 @@ import {
 } from '../api/schema'
 import { withSource } from '../api/source'
 import { useResource } from '../api/useResource'
+import { ChannelLineup } from '../charts/ChannelLineup'
 import { EtchTimeline } from '../charts/EtchTimeline'
 import { TraceChart } from '../charts/TraceChart'
 import { Loaded } from '../components/Loaded'
@@ -121,10 +122,15 @@ function RunDetails({ run, onRelabeled }: { run: RunDetail; onRelabeled: () => v
           {run.injectedFault !== null && (
             <InjectedFaultPanel fault={run.injectedFault} assessment={assessment} scoredChannels={run.channels} />
           )}
-          <section className="panel" aria-labelledby="channels-title">
-            <h2 id="channels-title">Channels by rank</h2>
-            <ChannelsTable channels={run.channels} selected={selected} k={baseline?.k ?? null} />
-          </section>
+          {baseline !== null && run.channels.length > 0
+            ? <ChannelLineup channels={run.channels} selected={selected} k={baseline.k} n={baseline.n} />
+            : (
+              // with no baseline there is no limit to line the channels up against, so the plain ranked list stands in
+              <section className="panel" aria-labelledby="channels-title">
+                <h2 id="channels-title">Channels by rank</h2>
+                <ChannelsTable channels={run.channels} selected={selected} k={null} />
+              </section>
+            )}
           <RelabelPanel runId={run.id} label={run.label} readOnly={readOnly} onRelabeled={onRelabeled} />
           <section className="panel" aria-labelledby="alignment-title">
             <h2 id="alignment-title">Alignment</h2>

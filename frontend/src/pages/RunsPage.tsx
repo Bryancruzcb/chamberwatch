@@ -4,6 +4,7 @@ import { lotsSchema, runsPageSchema, type Source } from '../api/schema'
 import { readSource, withSource } from '../api/source'
 import { useLotDrifts } from '../api/useLotDrifts'
 import { useResource } from '../api/useResource'
+import { LotGrid } from '../charts/LotGrid'
 import { Icon, type IconName } from '../components/Icon'
 import { SourceSwitch } from '../components/SourceSwitch'
 import { headline, type RunsSummary, summarize, type TableOrder } from '../summary'
@@ -86,6 +87,14 @@ export function RunsPage() {
             ? <AnswerSkeleton />
             : <Answer summary={summary} />}
       </section>
+      {ready && page.kind === 'ready' && summary.runs.length > 0 && (
+        <LotGrid
+          runs={summary.runs}
+          lots={lots.kind === 'ready' ? lots.data.filter((lot) => lot.source === view.source) : []}
+          k={page.data.baseline?.k ?? null}
+          source={view.source}
+        />
+      )}
       <div className="runs-bar">
         <Tabs tab={view.tab} summary={ready ? summary : null} onChoose={choose} />
         <SourceSwitch value={view.source} onChange={(next) => update({ source: next === 'PUBLIC' ? null : next, lot: null })} />
